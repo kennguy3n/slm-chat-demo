@@ -62,7 +62,7 @@ export function TranslationCaption({
     return () => {
       cancelled = true;
     };
-  }, [messageId, targetLanguage, requested]);
+  }, [messageId, channelId, targetLanguage, requested]);
 
   if (!requested) {
     return (
