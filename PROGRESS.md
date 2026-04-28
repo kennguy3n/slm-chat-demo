@@ -1,6 +1,6 @@
 # KChat SLM Demo — Progress Tracker
 
-Last updated: 2026-04-28 (Phase 1 status row)
+Last updated: 2026-04-28 (Phase 2 second-brain batch)
 
 ---
 
@@ -10,7 +10,7 @@ Last updated: 2026-04-28 (Phase 1 status row)
 |-------|--------|----------|
 | Phase 0: Consolidated prototype foundation | Complete | 100% |
 | Phase 1: Local LLM MVP | In progress | ~90% |
-| Phase 2: B2C second-brain demo | In progress | ~25% |
+| Phase 2: B2C second-brain demo | In progress | ~85% |
 | Phase 3: B2B KApps MVP | Not started | 0% |
 | Phase 4: AI Employees and recipe engine | Not started | 0% |
 | Phase 5: Connectors and knowledge graph | Not started | 0% |
@@ -61,13 +61,13 @@ Last updated: 2026-04-28 (Phase 1 status row)
 - [x] Inline translation under message bubbles (delivered in Phase 1 — `TranslationCaption`)
 - [x] AI task-created pills (inline badges) — `TaskCreatedPill` rendered in `ChatSurface` after the user accepts items from a `TaskExtractionCard`
 - [x] "Why suggested" explanations — `PrivacyStrip` now renders an expandable `whyDetails[]` list with per-signal source links
-- [ ] AI Memory page (learned facts, preferences, routines)
-- [ ] Family checklist generation
-- [ ] Shopping list with nudges ("Add sunscreen because field trip is tomorrow")
-- [ ] Community event / RSVP card generation
+- [x] AI Memory page (learned facts, preferences, routines) — `AIMemoryPage` mounted on the B2C right-rail Memory tab; backed by an IndexedDB store with an in-memory fallback (`features/memory/memoryStore.ts`); local-only, 0 B egress
+- [x] Family checklist generation — `ai:family-checklist` IPC + `runFamilyChecklist` (`electron/inference/secondBrain.ts`); `FamilyChecklistCard` accepts an event hint and renders an on-device checklist with source attribution and an E2B routing privacy strip
+- [x] Shopping list with nudges ("Add sunscreen because field trip is tomorrow") — `ai:shopping-nudges` IPC + `runShoppingNudges`; `ShoppingNudgesPanel` owns a local list and folds AI suggestions into it without the list ever leaving the device
+- [x] Community event / RSVP card generation — `ai:event-rsvp` IPC + `runEventRSVP`; `EventRSVPCard` lifts events out of community chats with title / when / location / RSVP-by and lets the user mark Yes / Maybe / No locally
 - [ ] Guardrail rewrite card (risky post detection)
 - [x] Morning digest (multi-chat summary) — `MorningDigestPanel` mounted in the B2C right rail, reuses the unread-summary IPC + `ai:stream` pattern with chats / messages / egress / compute metrics
-- [ ] Local-only memory index (IndexedDB)
+- [x] Local-only memory index (IndexedDB) — `features/memory/memoryStore.ts` opens `kchat-slm-memory`/`facts` and falls back to an in-memory map under jsdom / SSR; the AI never auto-writes to memory
 - [ ] Metrics dashboard ("I handled 6 items this morning")
 
 ---
@@ -173,3 +173,4 @@ Last updated: 2026-04-28 (Phase 1 status row)
 | 2026-04-28 | Phase 1: B2B Draft artifact section — new `ai:draft-artifact` IPC channel, `buildDraftArtifact` returns prompt + sources for streaming via `ai:stream` (same single-inference pattern as ThreadSummary), `ArtifactDraftCard` renders the streamed body with a blinking cursor, sources expandable, accept / edit / discard controls, and supports PRD / RFC / Proposal / SOP / QBR plus optional goal / requirements / risks section. |
 | 2026-04-28 | Phase 1 status row bumped to ~90% (the two remaining B2B items shipped); preload bridge + `types/electron.d.ts` extended with `prefillApproval` / `draftArtifact`. |
 | 2026-04-28 | Phase 2 kicked off (~25%): `TaskCreatedPill` inline badge in `ChatSurface` records accepted items from a `TaskExtractionCard` keyed by source message id; `PrivacyStrip` gained an expandable `whyDetails[]` list with per-signal source links and `aria-expanded` on the toggle button; `MorningDigestPanel` mounted in `B2CLayout`'s right rail, reuses the unread-summary IPC pattern and renders chats / messages / egress / compute metrics next to the streamed digest. |
+| 2026-04-28 | Phase 2 second-brain batch — 5 surfaces shipped. New `ai:family-checklist`, `ai:shopping-nudges`, `ai:event-rsvp` IPC channels (handlers in `electron/ipc-handlers.ts`, helpers in `electron/inference/secondBrain.ts`, contract types in `electron/inference/adapter.ts`). New renderer components: `FamilyChecklistCard`, `ShoppingNudgesPanel`, `EventRSVPCard`, plus a tabbed B2C right rail (Digest / Family / Shopping / Events / Memory). New `features/memory/` module: `AIMemoryPage` UI and a local-only `MemoryStore` (`memoryStore.ts`) backed by IndexedDB (object store `facts` in DB `kchat-slm-memory`) with an in-memory fallback for jsdom / SSR. Renderer types in `types/ai.ts` and `types/electron.d.ts` extended; preload bridge wired in `electron/preload.ts`. New Vitest specs: `secondBrain.test.ts` (17 cases), `memoryStore.test.ts` (9), `AIMemoryPage.test.tsx` (6), `FamilyChecklistCard.test.tsx` (3), `ShoppingNudgesPanel.test.tsx` (4), `EventRSVPCard.test.tsx` (4) — frontend test count 152 → 189. Phase 2 status row: ~25% → ~85%. |

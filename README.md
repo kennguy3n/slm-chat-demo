@@ -31,7 +31,8 @@ For the full product thesis, architecture, phasing, and progress, see:
 | Shell       | Electron 31 (main + preload + renderer), TypeScript                            |
 | Renderer    | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL      |
 | Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` and an `InferenceRouter` that picks E2B / E4B per task. |
-| IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `modelStatus`, `loadModel`, `unloadModel`, `route`. |
+| IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `familyChecklist`, `shoppingNudges`, `eventRSVP`, `modelStatus`, `loadModel`, `unloadModel`, `route`. |
+| Local memory | `features/memory/memoryStore.ts` — IndexedDB (`kchat-slm-memory` / `facts`) with an in-memory fallback. The AI never auto-writes; users add / edit / remove facts from the AI Memory page. 0 B egress. |
 | Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
 | Persistence | (Phase 0) in-memory; (Phase 6+) PostgreSQL + NATS JetStream + MinIO/S3         |
 
@@ -146,12 +147,14 @@ slm-chat-demo/
 │   │       ├── ollama.ts        (HTTP client for the local daemon, NDJSON streaming)
 │   │       ├── router.ts        (PROPOSAL.md §2 scheduler — E2B / E4B / fallback)
 │   │       ├── tasks.ts         (smart-reply / translate / extract-tasks / summary helpers)
+│   │       ├── secondBrain.ts   (Phase 2: family checklist, shopping nudges, RSVP extraction)
 │   │       └── bootstrap.ts     (pings Ollama; chooses real vs. mock adapter set)
 │   ├── src/
 │   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
 │   │   ├── features/
 │   │   │   ├── chat/            (ChatSurface, ThreadPanel, MessageList, MessageBubble, Composer)
-│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel)
+│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard)
+│   │   │   ├── memory/          (AIMemoryPage + memoryStore — local-only IndexedDB-backed second brain)
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer)
 │   │   │   ├── artifacts/       (placeholder)
 │   │   │   ├── ai-employees/    (placeholder)
@@ -297,6 +300,27 @@ go test ./...
   right rail. One button generates an on-device catch-up across all
   seeded B2C chats and renders chats / messages / egress / compute
   metrics next to the streamed digest body.
+- **Family checklist** — `FamilyChecklistCard` reads the active family
+  chat and asks the on-device router for a concrete prep list (with an
+  optional event focus like "Soccer practice tomorrow"). Each item
+  back-links to the chat message that produced it; the privacy strip
+  shows E2B routing and 0 B egress.
+- **Shopping list with nudges** — `ShoppingNudgesPanel` owns a small
+  local shopping list. The "Suggest from chat" button asks the model
+  for additions grounded in the conversation ("Add sunscreen because
+  field trip is tomorrow"); the existing list is forwarded as a
+  dedup hint and never leaves the device.
+- **Community event / RSVP cards** — `EventRSVPCard` lifts events out
+  of community chats with title / when / location / RSVP-by metadata
+  and lets the user mark Yes / Maybe / No locally.
+- **AI Memory page** — `features/memory/AIMemoryPage` renders the
+  user's local-only memory index (people, preferences, routines,
+  free-form notes), with add / edit / remove. Backed by a tiny
+  IndexedDB-or-in-memory store (`memoryStore.ts`); the AI never
+  auto-writes — every entry passes through a confirmation step.
+- **Tabbed B2C right rail** — `B2CLayout` now switches between Digest /
+  Family / Shopping / Events / Memory in the right rail so the
+  second-brain surfaces share one column without overflowing.
 
 ## What's deferred to later phases
 

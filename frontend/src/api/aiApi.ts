@@ -207,3 +207,66 @@ export async function fetchThreadSummary(req: {
     body: JSON.stringify(req),
   });
 }
+
+// ---------- Phase 2 B2C second-brain helpers ----------
+
+export async function fetchFamilyChecklist(req: {
+  channelId: string;
+  eventHint?: string;
+}): Promise<import('../types/ai').FamilyChecklistResponse> {
+  const ipc = getElectronAI();
+  if (!ipc) {
+    throw new Error('family checklist requires the Electron preload bridge');
+  }
+  const messages = await fetchChannelMessages(req.channelId);
+  return ipc.familyChecklist({
+    channelId: req.channelId,
+    messages: messages.map((m) => ({
+      id: m.id,
+      channelId: m.channelId,
+      senderId: m.senderId,
+      content: m.content,
+    })),
+    eventHint: req.eventHint,
+  });
+}
+
+export async function fetchShoppingNudges(req: {
+  channelId: string;
+  existingItems: string[];
+}): Promise<import('../types/ai').ShoppingNudgesResponse> {
+  const ipc = getElectronAI();
+  if (!ipc) {
+    throw new Error('shopping nudges requires the Electron preload bridge');
+  }
+  const messages = await fetchChannelMessages(req.channelId);
+  return ipc.shoppingNudges({
+    channelId: req.channelId,
+    messages: messages.map((m) => ({
+      id: m.id,
+      channelId: m.channelId,
+      senderId: m.senderId,
+      content: m.content,
+    })),
+    existingItems: req.existingItems,
+  });
+}
+
+export async function fetchEventRSVP(req: {
+  channelId: string;
+}): Promise<import('../types/ai').EventRSVPResponse> {
+  const ipc = getElectronAI();
+  if (!ipc) {
+    throw new Error('event RSVP requires the Electron preload bridge');
+  }
+  const messages = await fetchChannelMessages(req.channelId);
+  return ipc.eventRSVP({
+    channelId: req.channelId,
+    messages: messages.map((m) => ({
+      id: m.id,
+      channelId: m.channelId,
+      senderId: m.senderId,
+      content: m.content,
+    })),
+  });
+}

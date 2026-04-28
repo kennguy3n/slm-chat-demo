@@ -19,13 +19,21 @@ import {
   runSmartReply,
   runTranslate,
 } from './inference/tasks.js';
+import {
+  runEventRSVP,
+  runFamilyChecklist,
+  runShoppingNudges,
+} from './inference/secondBrain.js';
 import type {
   DraftArtifactRequest,
+  EventRSVPRequest,
   ExtractTasksRequest,
+  FamilyChecklistRequest,
   InferenceRequest,
   KAppsExtractTasksRequest,
   PrefillApprovalRequest,
   RouteDecision,
+  ShoppingNudgesRequest,
   SmartReplyRequest,
   ThreadSummaryRequest,
   TranslateRequest,
@@ -134,6 +142,21 @@ export function registerIPCHandlers(): void {
 
   ipcMain.handle('ai:unread-summary', async (_e, req: UnreadSummaryRequest) => {
     return buildUnreadSummary(req);
+  });
+
+  ipcMain.handle('ai:family-checklist', async (_e, req: FamilyChecklistRequest) => {
+    const { router } = await getStack();
+    return runFamilyChecklist(router, req);
+  });
+
+  ipcMain.handle('ai:shopping-nudges', async (_e, req: ShoppingNudgesRequest) => {
+    const { router } = await getStack();
+    return runShoppingNudges(router, req);
+  });
+
+  ipcMain.handle('ai:event-rsvp', async (_e, req: EventRSVPRequest) => {
+    const { router } = await getStack();
+    return runEventRSVP(router, req);
   });
 
   ipcMain.handle('model:status', async () => {

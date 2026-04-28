@@ -8,8 +8,11 @@ import type {
   ArtifactKind,
   ArtifactSection,
   DraftArtifactResponse,
+  EventRSVPResponse,
   ExtractTasksResponse,
+  FamilyChecklistResponse,
   PrefillApprovalResponse,
+  ShoppingNudgesResponse,
   SmartReplyResponse,
   ThreadSummaryResponse,
   TranslateResponse,
@@ -79,6 +82,20 @@ interface ElectronAIBridge {
       messages: { id: string; channelId: string; senderId: string; content: string }[];
     }[];
   }): Promise<UnreadSummaryResponse>;
+  familyChecklist(req: {
+    channelId: string;
+    messages: { id: string; channelId: string; senderId: string; content: string }[];
+    eventHint?: string;
+  }): Promise<FamilyChecklistResponse>;
+  shoppingNudges(req: {
+    channelId: string;
+    messages: { id: string; channelId: string; senderId: string; content: string }[];
+    existingItems: string[];
+  }): Promise<ShoppingNudgesResponse>;
+  eventRSVP(req: {
+    channelId: string;
+    messages: { id: string; channelId: string; senderId: string; content: string }[];
+  }): Promise<EventRSVPResponse>;
   modelStatus(): Promise<ModelStatus>;
   loadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
   unloadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
