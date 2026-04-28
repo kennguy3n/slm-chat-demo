@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchShoppingNudges } from '../../api/aiApi';
 import type { ShoppingNudgesResponse } from '../../types/ai';
 import { PrivacyStrip } from './PrivacyStrip';
@@ -20,6 +20,15 @@ export function ShoppingNudgesPanel({ channelId, channelName }: Props) {
   const [data, setData] = useState<ShoppingNudgesResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // The user's hand-curated `items` list intentionally survives a chat
+  // switch (it isn't tied to a specific channel) but the AI nudges are.
+  // Clear them so we never show suggestions generated from one chat
+  // labeled as originating from another.
+  useEffect(() => {
+    setData(null);
+    setErr(null);
+  }, [channelId]);
 
   function addItem() {
     const v = draft.trim();

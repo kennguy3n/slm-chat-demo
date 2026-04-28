@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -62,6 +63,30 @@ describe('EventRSVPCard', () => {
     await userEvent.click(screen.getByTestId('event-rsvp-yes-0'));
     expect(screen.getByTestId('event-rsvp-yes-0')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('event-rsvp-no-0')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('clears extracted events and RSVP picks when the channel changes', async () => {
+    function Harness() {
+      const [id, setId] = React.useState<string>('ch_comm');
+      return (
+        <>
+          <button data-testid="harness-switch" onClick={() => setId('ch_other')}>
+            switch
+          </button>
+          <EventRSVPCard channelId={id} channelName={id} />
+        </>
+      );
+    }
+    renderWithProviders(<Harness />);
+    await userEvent.click(screen.getByTestId('event-rsvp-run'));
+    await waitFor(() => expect(screen.getByTestId('event-rsvp-list')).toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('event-rsvp-yes-0'));
+
+    await userEvent.click(screen.getByTestId('harness-switch'));
+    // Old events + RSVP selections must be gone — anything still on screen
+    // would be mislabeled as belonging to the new channel.
+    expect(screen.queryByTestId('event-rsvp-list')).toBeNull();
+    expect(screen.queryByText('PTA potluck')).toBeNull();
   });
 
   it('shows an error alert when the IPC call fails', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { B2CLayout } from '../B2CLayout';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
@@ -52,7 +52,7 @@ describe('B2CLayout', () => {
   });
   afterEach(() => fetchSpy.mockReset());
 
-  it('renders sidebar sections for personal, family, and community chats', () => {
+  it('renders sidebar sections for personal, family, and community chats', async () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
     expect(screen.getByRole('heading', { name: /personal chats/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /family groups/i })).toBeInTheDocument();
@@ -60,16 +60,26 @@ describe('B2CLayout', () => {
     expect(screen.getByRole('button', { name: /bob martinez/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /family group/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /neighborhood community/i })).toBeInTheDocument();
+    // Wait for the (always-mounted) AIMemoryPage to finish its initial
+    // async load so we don't trigger React's act() warning.
+    await waitFor(() => expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument());
   });
 
-  it('mounts the morning digest panel in the right rail', () => {
+  it('mounts the morning digest panel in the right rail', async () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
     expect(screen.getByTestId('morning-digest-panel')).toBeInTheDocument();
     expect(screen.getByTestId('morning-digest-empty')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument(),
+    );
   });
 
   it('preserves the local shopping list across right-rail tab switches', async () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
+    // Let AIMemoryPage finish its initial load before driving the UI.
+    await waitFor(() =>
+      expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument(),
+    );
     await userEvent.click(screen.getByTestId('b2c-right-tab-shopping'));
     await userEvent.type(screen.getByTestId('shopping-nudges-draft'), 'Bananas');
     await userEvent.click(screen.getByTestId('shopping-nudges-add'));

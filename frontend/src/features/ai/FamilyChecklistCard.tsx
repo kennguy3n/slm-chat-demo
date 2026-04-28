@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchFamilyChecklist } from '../../api/aiApi';
 import type { FamilyChecklistResponse } from '../../types/ai';
 import { PrivacyStrip } from './PrivacyStrip';
@@ -17,6 +17,15 @@ export function FamilyChecklistCard({ channelId, channelName }: Props) {
   const [data, setData] = useState<FamilyChecklistResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Clear any previously generated checklist when the user picks a different
+  // chat in the sidebar — otherwise the subtitle and PrivacyStrip origin would
+  // mislabel the old checklist as belonging to the new channel.
+  useEffect(() => {
+    setData(null);
+    setErr(null);
+    setEventHint('');
+  }, [channelId]);
 
   function run() {
     if (!channelId) return;

@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -87,6 +88,34 @@ describe('ShoppingNudgesPanel', () => {
     const matches = list.querySelectorAll('li');
     expect(matches).toHaveLength(1);
     expect(list).toHaveTextContent('sunscreen');
+  });
+
+  it('clears AI nudges (but keeps the local list) when the channel changes', async () => {
+    function Harness() {
+      const [id, setId] = React.useState<string>('ch_family');
+      return (
+        <>
+          <button data-testid="harness-switch" onClick={() => setId('ch_other')}>
+            switch
+          </button>
+          <ShoppingNudgesPanel channelId={id} channelName={id} />
+        </>
+      );
+    }
+    renderWithProviders(<Harness />);
+    // Add a hand-curated item — this list is intentionally cross-channel.
+    await userEvent.type(screen.getByTestId('shopping-nudges-draft'), 'Bananas');
+    await userEvent.click(screen.getByTestId('shopping-nudges-add'));
+    await userEvent.click(screen.getByTestId('shopping-nudges-run'));
+    await waitFor(() =>
+      expect(screen.getByTestId('shopping-nudges-nudges')).toBeInTheDocument(),
+    );
+
+    await userEvent.click(screen.getByTestId('harness-switch'));
+    // AI nudges are gone (they were generated from ch_family) ...
+    expect(screen.queryByTestId('shopping-nudges-nudges')).toBeNull();
+    // ... but the user's manually curated list survives the channel switch.
+    expect(screen.getByTestId('shopping-nudges-list')).toHaveTextContent('Bananas');
   });
 
   it('renders the privacy strip with on-device routing details', async () => {

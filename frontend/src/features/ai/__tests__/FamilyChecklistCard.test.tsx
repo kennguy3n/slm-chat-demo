@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -53,6 +54,34 @@ describe('FamilyChecklistCard', () => {
       channelId: 'ch_family',
       eventHint: 'Soccer practice tomorrow',
     });
+  });
+
+  it('clears prior results when the active channel changes', async () => {
+    function Harness() {
+      const [id, setId] = React.useState<string>('ch_family');
+      return (
+        <>
+          <button data-testid="harness-switch" onClick={() => setId('ch_other')}>
+            switch
+          </button>
+          <FamilyChecklistCard
+            channelId={id}
+            channelName={id === 'ch_family' ? 'Family group' : 'Other group'}
+          />
+        </>
+      );
+    }
+    renderWithProviders(<Harness />);
+    await userEvent.click(screen.getByTestId('family-checklist-run'));
+    await waitFor(() =>
+      expect(screen.getByTestId('family-checklist-list')).toBeInTheDocument(),
+    );
+    // Switch to a different channel — the previously generated checklist
+    // (which was about ch_family) must NOT remain visible mislabeled with
+    // the new channel name.
+    await userEvent.click(screen.getByTestId('harness-switch'));
+    expect(screen.queryByTestId('family-checklist-list')).toBeNull();
+    expect(screen.queryByText('Bring water bottles')).toBeNull();
   });
 
   it('shows an error alert when the IPC call fails', async () => {

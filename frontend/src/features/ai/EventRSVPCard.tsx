@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchEventRSVP } from '../../api/aiApi';
 import type { EventRSVPResponse, RSVPEvent } from '../../types/ai';
 import { PrivacyStrip } from './PrivacyStrip';
@@ -20,6 +20,15 @@ export function EventRSVPCard({ channelId, channelName }: Props) {
   const [status, setStatus] = useState<Record<string, RSVPStatus>>({});
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Reset extracted events + RSVP picks when the active community chat
+  // changes — keeping them around would mislabel the previous chat's events
+  // as originating from the newly selected channel.
+  useEffect(() => {
+    setData(null);
+    setErr(null);
+    setStatus({});
+  }, [channelId]);
 
   function run() {
     if (!channelId) return;
