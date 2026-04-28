@@ -1,6 +1,6 @@
 # KChat SLM Demo — Progress Tracker
 
-Last updated: 2026-04-28
+Last updated: 2026-04-28 (Phase 1 status row)
 
 ---
 
@@ -9,7 +9,7 @@ Last updated: 2026-04-28
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 0: Consolidated prototype foundation | Complete | 100% |
-| Phase 1: Local LLM MVP | In progress | ~30% |
+| Phase 1: Local LLM MVP | In progress | ~40% |
 | Phase 2: B2C second-brain demo | Not started | 0% |
 | Phase 3: B2B KApps MVP | Not started | 0% |
 | Phase 4: AI Employees and recipe engine | Not started | 0% |
@@ -146,6 +146,13 @@ Last updated: 2026-04-28
 | Date | Change |
 |------|--------|
 | 2026-04-28 | Initial progress tracker created. Project kickoff. |
+| 2026-04-28 | Phase 1: Go inference proxy adapter interface landed (`backend/internal/inference/adapter.go`). |
+| 2026-04-28 | Phase 1: Ollama HTTP adapter landed (`backend/internal/inference/ollama.go`) — `Run`, `Stream`, `Ping`, `Status` (via `/api/ps`), `Load`, `Unload` (via `keep_alive=0`, never `DELETE /api/delete`). |
+| 2026-04-28 | Phase 1: E2B/E4B router landed (`backend/internal/inference/router.go`) — short/private tasks → E2B; `draft_artifact`/`prefill_approval` → E4B with E2B fallback. `POST /api/ai/route` now uses the router. |
+| 2026-04-28 | Phase 1: SSE streaming wired on `POST /api/ai/stream` and consumed by the frontend via `frontend/src/api/streamAI.ts`. |
+| 2026-04-28 | Phase 1: Local model status panel (`DeviceCapabilityPanel`) and TopBar `ModelStatusBadge` polling `/api/model/status` every 5s. |
+| 2026-04-28 | Phase 1: B2C "Catch me up" digest end-to-end — `GET /api/chats/unread-summary` returns prompt + sources (no inference) and the frontend streams via `/api/ai/stream` so we never double-infer. Rune-aware truncation prevents broken UTF-8 in excerpts. |
+| 2026-04-28 | Phase 1: Status row bumped to ~40%; `frontend/src/features/ai/index.ts` now re-exports the AI feature components. |
 | 2026-04-28 | Phase 0: Added React app shell with B2C/B2B switching, Go backend with mock auth, seeded demo data, and three-column web layout. |
 | 2026-04-28 | Phase 0 complete: Added shared card system, privacy strip, AI action launcher, mocked inference adapter, and mobile-responsive layout. |
 | 2026-04-28 | Phase 1 in progress: Ollama HTTP adapter (`backend/internal/inference/ollama.go`), inference router with E2B/E4B decision tree (`router.go`), SSE streaming on `/api/ai/stream` plus a `streamAITask` browser client, real model status / load / unload endpoints, `DeviceCapabilityPanel` component (ARCHITECTURE.md module #10), and the first end-to-end AI feature: `GET /api/chats/unread-summary` wired through the SSE stream into a `DigestCard` with sources and an AI-route-driven privacy strip. |
