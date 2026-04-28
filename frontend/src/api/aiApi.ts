@@ -5,12 +5,39 @@ import type {
   AIRunResponse,
   EgressPreview,
   ModelStatus,
+  UnreadSummaryResponse,
 } from '../types/ai';
 
-// Phase 0: model/status returns a stubbed "unloaded" state. Phase 1 wires this
-// to the real local sidecar.
+// model/status returns the current local-model state. When the backend has
+// an Ollama adapter wired in this is live data; otherwise it's the static
+// "unstarted" stub.
 export async function fetchModelStatus(): Promise<ModelStatus> {
   return apiFetch<ModelStatus>('/api/model/status');
+}
+
+// loadModel asks the backend to preload a specific local model. Optional
+// model name; backend defaults to its configured default.
+export async function loadModel(model?: string): Promise<{ loaded: boolean; model: string }> {
+  return apiFetch('/api/model/load', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(model ? { model } : {}),
+  });
+}
+
+// unloadModel asks the backend to free a model from memory.
+export async function unloadModel(model?: string): Promise<{ loaded: boolean; model: string }> {
+  return apiFetch('/api/model/unload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(model ? { model } : {}),
+  });
+}
+
+// fetchUnreadSummary calls the AI digest endpoint that summarises the
+// authenticated user's recent B2C messages.
+export async function fetchUnreadSummary(): Promise<UnreadSummaryResponse> {
+  return apiFetch<UnreadSummaryResponse>('/api/chats/unread-summary');
 }
 
 // Phase 0: privacy/egress-preview returns the hardcoded zero-egress preview.

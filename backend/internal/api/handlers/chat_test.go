@@ -16,12 +16,14 @@ import (
 func newTestServer() http.Handler {
 	mem := store.NewMemory()
 	store.Seed(mem)
+	mock := inference.NewMockAdapter()
+	router := inference.NewInferenceRouter(mock, mock, mock)
 	return api.NewRouter(api.Deps{
 		Identity:   services.NewIdentity(mem, "user_alice"),
 		Workspaces: services.NewWorkspace(mem),
 		Chat:       services.NewChat(mem),
 		KApps:      services.NewKApps(mem),
-		Inference:  inference.NewMockAdapter(),
+		Inference:  router,
 	})
 }
 
