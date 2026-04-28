@@ -8,25 +8,22 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/api/handlers"
-	"github.com/kennguy3n/slm-chat-demo/backend/internal/inference"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/services"
 )
 
-// Deps bundles the services every handler needs.
+// Deps bundles the services every handler needs. The Phase 0 backend is
+// intentionally data-only: AI inference now lives in the Electron main
+// process (frontend/electron/inference/) and reaches Ollama directly.
 type Deps struct {
-	Identity     *services.Identity
-	Workspaces   *services.Workspace
-	Chat         *services.Chat
-	KApps        *services.KApps
-	Inference    inference.Adapter
-	ModelStatus  inference.StatusProvider // optional; nil → static stub status
-	ModelLoader  inference.Loader         // optional; nil → /load, /unload return 503
-	DefaultModel string
-	DefaultQuant string
+	Identity   *services.Identity
+	Workspaces *services.Workspace
+	Chat       *services.Chat
+	KApps      *services.KApps
 }
 
 // NewRouter wires the chi router with CORS, JSON content-type, mock auth, and
-// every Phase 0 endpoint group.
+// every Phase 0 data endpoint. Inference / model-control / artifact routes
+// are no longer served here — the Electron main process owns them.
 func NewRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
 
@@ -44,15 +41,7 @@ func NewRouter(d Deps) http.Handler {
 
 	chatH := handlers.NewChat(d.Chat)
 	wsH := handlers.NewWorkspace(d.Workspaces, d.Identity)
-	aiH := handlers.NewAI(d.Inference)
-	aiSummary := handlers.NewAISummary(d.Chat, d.Inference, d.Identity)
-	aiSmartReply := handlers.NewAISmartReply(d.Chat, d.Inference)
-	aiTranslate := handlers.NewAITranslate(d.Chat, d.Inference)
-	aiExtract := handlers.NewAIExtractTasks(d.Chat, d.Inference)
-	aiThreadSummary := handlers.NewAIThreadSummary(d.Chat, d.Inference)
-	kH := handlers.NewKApps(d.KApps).WithInference(d.Chat, d.Inference)
-	artH := handlers.NewArtifacts()
-	mH := handlers.NewModel(d.ModelStatus, d.ModelLoader, d.DefaultModel, d.DefaultQuant)
+	kH := handlers.NewKApps(d.KApps)
 	pH := handlers.NewPrivacy()
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -71,35 +60,14 @@ func NewRouter(d Deps) http.Handler {
 		// Chats / messages / threads.
 		r.Get("/chats", chatH.List)
 		r.Get("/chats/{chatId}/messages", chatH.Messages)
-		r.Get("/chats/unread-summary", aiSummary.UnreadSummary)
 		r.Get("/threads/{threadId}/messages", chatH.ThreadMessages)
 
-		// AI surface — Phase 0 ships mocked /run and a hardcoded /route
-		// decision. /stream returns the same shape as /run for now.
-		r.Post("/ai/route", aiH.Route)
-		r.Post("/ai/run", aiH.Run)
-		r.Post("/ai/stream", aiH.Stream)
-		r.Post("/ai/smart-reply", aiSmartReply.SmartReply)
-		r.Post("/ai/translate", aiTranslate.Translate)
-		r.Post("/ai/extract-tasks", aiExtract.ExtractTasks)
-		r.Post("/ai/summarize-thread", aiThreadSummary.SummarizeThread)
-
-		// KApps — Phase 0 ships GET /api/kapps/cards (seeded sample
-		// cards); Phase 1 wires POST /api/kapps/tasks/extract for the
-		// B2B "Plan → Extract tasks" flow. Approval prefill remains a
-		// Phase-3 stub.
+		// KApps — seed cards only. Inference-driven flows (extract tasks,
+		// approval prefill) moved to the Electron main process.
 		r.Get("/kapps/cards", kH.Cards)
-		r.Post("/kapps/tasks/extract", kH.ExtractTasks)
-		r.Post("/kapps/approvals/prefill", kH.NotImplemented)
 
-		// Artifacts — Phase 3 stubs.
-		r.Post("/artifacts/draft", artH.NotImplemented)
-		r.Post("/artifacts/publish", artH.NotImplemented)
-
-		// Local model / privacy.
-		r.Get("/model/status", mH.Status)
-		r.Post("/model/load", mH.Load)
-		r.Post("/model/unload", mH.Unload)
+		// Privacy preview is still hosted here since it's a static
+		// declaration about the on-device guarantee.
 		r.Get("/privacy/egress-preview", pH.EgressPreview)
 	})
 
