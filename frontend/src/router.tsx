@@ -24,24 +24,23 @@ const indexRoute = createRoute({
 const b2cRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/b2c',
-  component: () => {
-    // Sync route -> store on mount so deep links pick the right context.
+  beforeLoad: () => {
     if (useWorkspaceStore.getState().context !== 'b2c') {
       useWorkspaceStore.getState().setContext('b2c');
     }
-    return <AppShell />;
   },
+  component: () => <AppShell />,
 });
 
 const b2bRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/b2b',
-  component: () => {
+  beforeLoad: () => {
     if (useWorkspaceStore.getState().context !== 'b2b') {
       useWorkspaceStore.getState().setContext('b2b');
     }
-    return <AppShell />;
   },
+  component: () => <AppShell />,
 });
 
 const routeTree = rootRoute.addChildren([indexRoute, b2cRoute, b2bRoute]);
