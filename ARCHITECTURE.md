@@ -125,7 +125,7 @@ frontend/
     ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
     ├── features/
     │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces)
-    │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), and ThreadSummaryCard for the B2B thread summary; ModelStatusBadge / OutputReview land in later phases
+    │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), ThreadSummaryCard for the B2B thread summary, ApprovalPrefillCard for B2B approval prefill, and ArtifactDraftCard for the B2B PRD / RFC / Proposal / SOP / QBR drafting flow; Phase 2 adds TaskCreatedPill (inline AI badges below messages) and MorningDigestPanel (B2C right-rail catch-up); PrivacyStrip itself gained an expandable `whyDetails[]` list in Phase 2
     │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard) — Phase 0; FormCard lands in Phase 3
     │   ├── artifacts/ (ArtifactWorkspace)                                    — Phase 3
     │   ├── ai-employees/ (AIEmployeePanel)                                   — Phase 4
@@ -259,6 +259,8 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:summarize-thread`  | `summarizeThread(req)`                    | `buildThreadSummary` (E2B for short threads, E4B for long) |
 | `ai:unread-summary`    | `unreadSummary(req)`                      | `buildUnreadSummary` (`taskType: summarize`, E2B) |
 | `ai:kapps-extract`     | `extractKAppTasks(req)`                   | `runKAppsExtractTasks` (B2B thread → tasks with provenance) |
+| `ai:prefill-approval`  | `prefillApproval(req)`                    | `runPrefillApproval` (B2B thread → vendor / amount / risk / justification fields, prefers E4B) |
+| `ai:draft-artifact`    | `draftArtifact(req)`                      | `buildDraftArtifact` (B2B thread → prompt + sources for streaming a PRD / RFC / Proposal / SOP / QBR section, prefers E4B) |
 | `model:status`         | `modelStatus()`                           | `OllamaAdapter.status()` (or stub when Ollama is offline) |
 | `model:load`           | `loadModel(name)`                         | `OllamaAdapter.load()` |
 | `model:unload`         | `unloadModel(name)`                       | `OllamaAdapter.unload()` |
@@ -288,6 +290,17 @@ The preload script exposes `window.electronAI` to the renderer via
   with the prompt). Tier hint included.
 - `ai:kapps-extract` extracts task candidates from a B2B thread with
   owner / due-date / status / source-message provenance.
+- `ai:prefill-approval` runs inference end-to-end against a thread and
+  returns the parsed `{ vendor, amount, risk, justification, extra? }`
+  fields plus the source-message ids the parser found supporting
+  evidence in. The Electron main process owns this single inference;
+  the renderer only renders the result.
+- `ai:draft-artifact` follows the same prompt-then-stream pattern as
+  `ai:summarize-thread`: it returns a deterministic prompt plus
+  `sources[]` so the renderer can stream the body via `ai:stream`
+  exactly once. Supports artifact types `PRD | RFC | Proposal | SOP |
+  QBR` and an optional `section: 'goal' | 'requirements' | 'risks' |
+  'all'`.
 - `model:status` / `model:load` / `model:unload` mirror the Phase-1
   Ollama lifecycle (`/api/ps`, warm-up generate, `keep_alive=0`
   eviction).

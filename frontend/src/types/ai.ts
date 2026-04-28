@@ -26,6 +26,15 @@ export interface PrivacyStripSource {
 //
 // Phase 0 callers populate this with mocked values; Phase 1 replaces the
 // mock with the real policy-engine + adapter outputs.
+export interface PrivacyStripWhyDetail {
+  // The signal name (e.g. "Detected deadline", "Owner mentioned").
+  signal: string;
+  // Optional source pin so the user can jump to the message that
+  // produced this signal.
+  sourceId?: string;
+  sourceLabel?: string;
+}
+
 export interface PrivacyStripData {
   computeLocation: ComputeLocation;
   modelName: string;
@@ -34,6 +43,10 @@ export interface PrivacyStripData {
   confidence?: number;
   missingInfo?: string[];
   whySuggested: string;
+  // Optional structured details rendered when the user expands the
+  // "Why" row. Each detail describes one signal that contributed to
+  // the suggestion.
+  whyDetails?: PrivacyStripWhyDetail[];
   origin: {
     kind: 'message' | 'thread';
     id: string;
@@ -192,6 +205,54 @@ export interface KAppsExtractTasksResponse {
   threadId: string;
   channelId: string;
   model: string;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+}
+
+// PrefillApproval — B2B Phase 1 surface. Reads a thread, fills an
+// approval template, and returns the structured fields plus the
+// source-message provenance.
+export type ApprovalTemplate = 'vendor' | 'budget' | 'access';
+
+export interface PrefilledApprovalFields {
+  vendor?: string;
+  amount?: string;
+  justification?: string;
+  risk?: string;
+  extra?: Record<string, string>;
+}
+
+export interface PrefillApprovalResponse {
+  threadId: string;
+  channelId: string;
+  templateId: ApprovalTemplate;
+  title: string;
+  fields: PrefilledApprovalFields;
+  sourceMessageIds: string[];
+  model: string;
+  tier: 'e2b' | 'e4b';
+  reason: string;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+}
+
+// DraftArtifact — B2B Phase 1 surface. Same prompt-then-stream contract
+// as ThreadSummaryResponse.
+export type ArtifactKind = 'PRD' | 'RFC' | 'Proposal' | 'SOP' | 'QBR';
+export type ArtifactSection = 'goal' | 'requirements' | 'risks' | 'all';
+
+export interface DraftArtifactResponse {
+  prompt: string;
+  sources: UnreadSummarySource[];
+  threadId: string;
+  channelId: string;
+  artifactType: ArtifactKind;
+  section: ArtifactSection;
+  title: string;
+  model: string;
+  tier: 'e2b' | 'e4b';
+  reason: string;
+  messageCount: number;
   computeLocation: ComputeLocation;
   dataEgressBytes: number;
 }

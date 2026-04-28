@@ -31,7 +31,7 @@ For the full product thesis, architecture, phasing, and progress, see:
 | Shell       | Electron 31 (main + preload + renderer), TypeScript                            |
 | Renderer    | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL      |
 | Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` and an `InferenceRouter` that picks E2B / E4B per task. |
-| IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `modelStatus`, `loadModel`, `unloadModel`, `route`. |
+| IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `modelStatus`, `loadModel`, `unloadModel`, `route`. |
 | Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
 | Persistence | (Phase 0) in-memory; (Phase 6+) PostgreSQL + NATS JetStream + MinIO/S3         |
 
@@ -151,7 +151,7 @@ slm-chat-demo/
 │   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
 │   │   ├── features/
 │   │   │   ├── chat/            (ChatSurface, ThreadPanel, MessageList, MessageBubble, Composer)
-│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard)
+│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel)
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer)
 │   │   │   ├── artifacts/       (placeholder)
 │   │   │   ├── ai-employees/    (placeholder)
@@ -224,8 +224,10 @@ go test ./...
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
   plus four seeded KApp cards (family task, neighborhood event, vendor
   approval, engineering PRD draft)
-- 112 frontend tests (89 renderer + 23 Electron main-process inference)
-  plus full Go test coverage of the data endpoints
+- 146 frontend tests (renderer components + Electron main-process
+  inference, including the new `tasks.test.ts` covering `parsePrefilledApprovalFields`,
+  `runPrefillApproval`, and `buildDraftArtifact`) plus full Go test
+  coverage of the data endpoints
 
 ## Phase 1 — what's in progress
 
@@ -268,6 +270,33 @@ go test ./...
   thread messages from `GET /api/threads/{threadId}/messages` and
   forwards them to `window.electronAI.summarizeThread` /
   `window.electronAI.extractKAppTasks`.
+- **B2B Approval prefill** — `window.electronAI.prefillApproval` runs a
+  single E4B inference over the thread, parses the result into
+  `{ vendor, amount, risk, justification }`, attaches the source
+  message ids it found supporting evidence in, and the renderer
+  shows them in `ApprovalPrefillCard` with editable fields, a
+  missing-info hint, and a privacy strip with per-source provenance.
+- **B2B Draft artifact section** — `window.electronAI.draftArtifact`
+  returns the prompt + sources for a PRD / RFC / Proposal / SOP / QBR
+  (optionally scoped to `goal | requirements | risks`); the renderer
+  streams the body via `ai:stream` exactly once, exactly like the
+  thread summary flow, into `ArtifactDraftCard`.
+
+## Phase 2 — what's in progress
+
+- **AI task-created pills** — `TaskCreatedPill` renders an inline AI
+  badge below the originating message after the user accepts items
+  from a `TaskExtractionCard` ("2 tasks created from …"). Keeps the
+  conversation surface compact rather than letting accepted-task
+  cards balloon vertically.
+- **"Why suggested" expandable explanations** — `PrivacyStrip`'s `Why`
+  row now toggles open into a `whyDetails[]` list with per-signal
+  source links, fully accessible (`aria-expanded`, keyboardable
+  toggle).
+- **Morning digest panel** — `MorningDigestPanel` mounted in the B2C
+  right rail. One button generates an on-device catch-up across all
+  seeded B2C chats and renders chats / messages / egress / compute
+  metrics next to the streamed digest body.
 
 ## What's deferred to later phases
 

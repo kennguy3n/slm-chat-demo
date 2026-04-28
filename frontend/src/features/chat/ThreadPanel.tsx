@@ -2,13 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchChannelMessages, fetchThreadMessages } from '../../api/chatApi';
 import { fetchThreadSummary } from '../../api/aiApi';
-import { extractKAppTasks } from '../../api/kappsApi';
+import { draftArtifact, extractKAppTasks, prefillApproval } from '../../api/kappsApi';
 import { streamAITask } from '../../api/streamAI';
 import type { Channel } from '../../types/workspace';
 import type {
+  ArtifactKind,
+  ApprovalTemplate,
+  DraftArtifactResponse,
   KAppsExtractTasksResponse,
+  PrefillApprovalResponse,
   ThreadSummaryResponse,
 } from '../../types/ai';
+import { ApprovalPrefillCard } from '../ai/ApprovalPrefillCard';
+import { ArtifactDraftCard } from '../ai/ArtifactDraftCard';
 import { ThreadSummaryCard } from '../ai/ThreadSummaryCard';
 import { TaskExtractionCard, type TaskItem } from '../ai/TaskExtractionCard';
 
@@ -75,6 +81,14 @@ export function ThreadPanel({ channel }: Props) {
   const [extracted, setExtracted] = useState<KAppsExtractTasksResponse | null>(null);
   const [extractErr, setExtractErr] = useState<string | null>(null);
 
+  const [prefill, setPrefill] = useState<PrefillApprovalResponse | null>(null);
+  const [prefillErr, setPrefillErr] = useState<string | null>(null);
+
+  const [artifact, setArtifact] = useState<DraftArtifactResponse | null>(null);
+  const [artifactStreamingText, setArtifactStreamingText] = useState('');
+  const [isArtifactStreaming, setIsArtifactStreaming] = useState(false);
+  const [artifactErr, setArtifactErr] = useState<string | null>(null);
+
   function summarizeThread() {
     if (!selectedThreadId) return;
     setSummaryErr(null);
@@ -113,6 +127,42 @@ export function ThreadPanel({ channel }: Props) {
     void extractKAppTasks({ threadId: selectedThreadId })
       .then(setExtracted)
       .catch((err: Error) => setExtractErr(err.message));
+  }
+
+  function runPrefillApproval(templateId: ApprovalTemplate = 'vendor') {
+    if (!selectedThreadId) return;
+    setPrefillErr(null);
+    setPrefill(null);
+    void prefillApproval({ threadId: selectedThreadId, templateId })
+      .then(setPrefill)
+      .catch((err: Error) => setPrefillErr(err.message));
+  }
+
+  function runDraftArtifact(artifactType: ArtifactKind = 'PRD') {
+    if (!selectedThreadId) return;
+    setArtifactErr(null);
+    setArtifact(null);
+    setArtifactStreamingText('');
+    setIsArtifactStreaming(true);
+    void draftArtifact({ threadId: selectedThreadId, artifactType })
+      .then((d) => {
+        setArtifact(d);
+        streamAITask(
+          { taskType: 'draft_artifact', prompt: d.prompt, channelId: d.channelId },
+          {
+            onChunk: (delta) => setArtifactStreamingText((t) => t + delta),
+            onDone: () => setIsArtifactStreaming(false),
+            onError: (err) => {
+              setArtifactErr(err.message);
+              setIsArtifactStreaming(false);
+            },
+          },
+        );
+      })
+      .catch((err: Error) => {
+        setArtifactErr(err.message);
+        setIsArtifactStreaming(false);
+      });
   }
 
   if (!channel) {
@@ -169,6 +219,22 @@ export function ThreadPanel({ channel }: Props) {
           >
             Extract tasks
           </button>
+          <button
+            type="button"
+            className="thread-panel__action"
+            data-testid="thread-prefill-approval"
+            onClick={() => runPrefillApproval('vendor')}
+          >
+            Prefill approval
+          </button>
+          <button
+            type="button"
+            className="thread-panel__action"
+            data-testid="thread-draft-artifact"
+            onClick={() => runDraftArtifact('PRD')}
+          >
+            Draft PRD
+          </button>
         </div>
       )}
       {summaryErr && (
@@ -196,6 +262,34 @@ export function ThreadPanel({ channel }: Props) {
           computeLocation={extracted.computeLocation}
           dataEgressBytes={extracted.dataEgressBytes}
           acceptLabel="Add to plan"
+        />
+      )}
+      {prefillErr && (
+        <div role="alert" className="thread-panel__error">
+          Approval prefill failed: {prefillErr}
+        </div>
+      )}
+      {prefill && (
+        <ApprovalPrefillCard
+          prefill={prefill}
+          sourceExcerpts={Object.fromEntries(
+            (threadMsgsQ.data ?? []).map((m) => [
+              m.id,
+              `${m.senderId}: ${m.content.slice(0, 80)}`,
+            ]),
+          )}
+        />
+      )}
+      {artifactErr && (
+        <div role="alert" className="thread-panel__error">
+          Draft failed: {artifactErr}
+        </div>
+      )}
+      {artifact && (
+        <ArtifactDraftCard
+          draft={artifact}
+          streamingText={artifactStreamingText}
+          isStreaming={isArtifactStreaming}
         />
       )}
       {threadMsgsQ.data && threadMsgsQ.data.length > 0 && (

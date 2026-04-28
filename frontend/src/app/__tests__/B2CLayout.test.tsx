@@ -61,8 +61,9 @@ describe('B2CLayout', () => {
     expect(screen.getByRole('button', { name: /neighborhood community/i })).toBeInTheDocument();
   });
 
-  it('shows the right-panel placeholder', () => {
+  it('mounts the morning digest panel in the right rail', () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
-    expect(screen.getByText(/select a thread/i)).toBeInTheDocument();
+    expect(screen.getByTestId('morning-digest-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('morning-digest-empty')).toBeInTheDocument();
   });
 });

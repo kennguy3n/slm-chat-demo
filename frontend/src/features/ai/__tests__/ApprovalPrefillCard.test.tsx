@@ -1,0 +1,84 @@
+import { describe, expect, it, vi } from 'vitest';
+import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { ApprovalPrefillCard } from '../ApprovalPrefillCard';
+import { renderWithProviders } from '../../../test/renderWithProviders';
+import type { PrefillApprovalResponse } from '../../../types/ai';
+
+const sample: PrefillApprovalResponse = {
+  threadId: 'thr_vendor',
+  channelId: 'ch_vendor',
+  templateId: 'vendor',
+  title: 'Vendor approval — Acme Logs',
+  fields: {
+    vendor: 'Acme Logs',
+    amount: '$42,000 / yr',
+    justification: 'Lowest-cost SOC 2-cleared bidder.',
+    risk: 'medium',
+  },
+  sourceMessageIds: ['msg_vendor_1', 'msg_vendor_2'],
+  model: 'gemma-4-e4b',
+  tier: 'e4b',
+  reason: 'Routed prefill_approval to E4B for stronger reasoning.',
+  computeLocation: 'on_device',
+  dataEgressBytes: 0,
+};
+
+describe('ApprovalPrefillCard', () => {
+  it('renders the title, tier, and AI badge', () => {
+    renderWithProviders(<ApprovalPrefillCard prefill={sample} />);
+    expect(screen.getByTestId('approval-prefill-title')).toHaveTextContent(
+      'Vendor approval — Acme Logs',
+    );
+    expect(screen.getByTestId('approval-prefill-tier')).toHaveTextContent('E4B');
+  });
+
+  it('renders the prefilled fields in editable inputs', () => {
+    renderWithProviders(<ApprovalPrefillCard prefill={sample} />);
+    expect(screen.getByTestId('approval-prefill-vendor')).toHaveValue('Acme Logs');
+    expect(screen.getByTestId('approval-prefill-amount')).toHaveValue('$42,000 / yr');
+    expect(screen.getByTestId('approval-prefill-risk')).toHaveValue('medium');
+    expect(screen.getByTestId('approval-prefill-justification')).toHaveValue(
+      'Lowest-cost SOC 2-cleared bidder.',
+    );
+  });
+
+  it('lets the user edit a field and accepts the merged values', async () => {
+    const onAccept = vi.fn();
+    renderWithProviders(<ApprovalPrefillCard prefill={sample} onAccept={onAccept} />);
+    const amount = screen.getByTestId('approval-prefill-amount');
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '$50,000 / yr');
+    await userEvent.click(screen.getByTestId('approval-prefill-accept'));
+    expect(onAccept).toHaveBeenCalledOnce();
+    const fields = onAccept.mock.calls[0][0];
+    expect(fields.amount).toBe('$50,000 / yr');
+    expect(fields.vendor).toBe('Acme Logs');
+  });
+
+  it('disables actions after accept', async () => {
+    renderWithProviders(<ApprovalPrefillCard prefill={sample} />);
+    const accept = screen.getByTestId('approval-prefill-accept');
+    await userEvent.click(accept);
+    expect(accept).toBeDisabled();
+    expect(accept).toHaveTextContent(/submitted/i);
+  });
+
+  it('surfaces missing fields in the missing list', () => {
+    const incomplete: PrefillApprovalResponse = {
+      ...sample,
+      fields: { vendor: 'Acme Logs' },
+    };
+    renderWithProviders(<ApprovalPrefillCard prefill={incomplete} />);
+    const missing = screen.getByTestId('approval-prefill-missing');
+    expect(missing).toHaveTextContent('amount');
+    expect(missing).toHaveTextContent('justification');
+    expect(missing).toHaveTextContent('risk');
+  });
+
+  it('renders the privacy strip with the model and on-device compute', () => {
+    renderWithProviders(<ApprovalPrefillCard prefill={sample} />);
+    expect(screen.getByTestId('privacy-model')).toHaveTextContent('gemma-4-e4b');
+    expect(screen.getByTestId('privacy-compute')).toHaveTextContent('On-device');
+  });
+});

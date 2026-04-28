@@ -74,4 +74,30 @@ describe('PrivacyStrip', () => {
     renderWithProviders(<PrivacyStrip data={{ ...data, dataEgressBytes: 2048 }} />);
     expect(screen.getByTestId('privacy-egress')).toHaveTextContent('2.0 KB');
   });
+
+  it('expands "Why?" details on click and renders source links', async () => {
+    const withDetails: PrivacyStripData = {
+      ...data,
+      whyDetails: [
+        { signal: 'Owner mentioned: Mei' },
+        { signal: 'Source message', sourceId: 'msg_eng_2', sourceLabel: 'Reply from Bob' },
+      ],
+    };
+    renderWithProviders(<PrivacyStrip data={withDetails} />);
+    expect(screen.queryByTestId('privacy-why-details')).toBeNull();
+    const toggle = screen.getByTestId('privacy-why-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const details = screen.getByTestId('privacy-why-details');
+    expect(details).toHaveTextContent('Owner mentioned: Mei');
+    expect(details).toHaveTextContent('Reply from Bob');
+    const link = details.querySelector('a');
+    expect(link).toHaveAttribute('href', '#message-msg_eng_2');
+  });
+
+  it('hides the why-details toggle when no details are supplied', () => {
+    renderWithProviders(<PrivacyStrip data={data} />);
+    expect(screen.queryByTestId('privacy-why-toggle')).toBeNull();
+  });
 });

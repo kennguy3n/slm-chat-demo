@@ -6,16 +6,25 @@
 
 import type {
   Adapter,
+  ApprovalTemplate,
+  ArtifactKind,
+  ArtifactSection,
+  DraftArtifactRequest,
+  DraftArtifactResponse,
   ExtractTasksRequest,
   ExtractTasksResponse,
   ExtractedTask,
   KAppsExtractTasksRequest,
   KAppsExtractTasksResponse,
   KAppsExtractedTask,
+  PrefillApprovalRequest,
+  PrefillApprovalResponse,
+  PrefilledApprovalFields,
   SmartReplyRequest,
   SmartReplyResponse,
   ThreadSummaryRequest,
   ThreadSummaryResponse,
+  Tier,
   TranslateRequest,
   TranslateResponse,
   UnreadSummaryRequest,
@@ -356,6 +365,221 @@ export function matchSourceMessage(
     }
   }
   return msgs[0].id;
+}
+
+// ---------- B2B prefill approval ----------
+
+const PREFILL_APPROVAL_MAX_MESSAGES = 30;
+
+const APPROVAL_TEMPLATE_TITLES: Record<ApprovalTemplate, string> = {
+  vendor: 'Vendor approval',
+  budget: 'Budget request',
+  access: 'Access request',
+};
+
+const APPROVAL_TEMPLATE_FIELDS: Record<ApprovalTemplate, string[]> = {
+  vendor: ['vendor', 'amount', 'justification', 'risk'],
+  budget: ['vendor', 'amount', 'justification', 'risk'],
+  access: ['vendor', 'amount', 'justification', 'risk'],
+};
+
+export async function runPrefillApproval(
+  router: InferenceRouter,
+  req: PrefillApprovalRequest,
+): Promise<PrefillApprovalResponse> {
+  if (req.messages.length === 0) {
+    throw new Error('thread not found');
+  }
+  const template: ApprovalTemplate = req.templateId ?? 'vendor';
+  const limited = req.messages.slice(0, PREFILL_APPROVAL_MAX_MESSAGES);
+  const expectedFields = APPROVAL_TEMPLATE_FIELDS[template];
+
+  let prompt = '';
+  prompt += `Prefill an ${template} approval card from the following work thread. `;
+  prompt += `Output one ${expectedFields.join(' / ')} pair per line as: `;
+  prompt += '<field>: <value>. ';
+  prompt += 'Keep each value short. Leave a value blank if the thread does not mention it.\n\n';
+  for (const m of limited) {
+    prompt += `- ${m.senderId}: ${truncateForPrompt(m.content, 200)}\n`;
+  }
+
+  const resp = await router.run({
+    taskType: 'prefill_approval',
+    prompt,
+    channelId: limited[0].channelId,
+  });
+  const decision = router.lastDecision();
+
+  const fields = parsePrefilledApprovalFields(resp.output);
+  const title = fields.vendor
+    ? `${APPROVAL_TEMPLATE_TITLES[template]} — ${fields.vendor}`
+    : APPROVAL_TEMPLATE_TITLES[template];
+
+  const sourceMessageIds = collectApprovalSources(fields, limited);
+
+  const tier: Tier = decision.tier ?? 'e4b';
+  const reason = decision.reason || `Routed prefill_approval to ${tier.toUpperCase()}.`;
+
+  return {
+    threadId: req.threadId,
+    channelId: limited[0].channelId,
+    templateId: template,
+    title,
+    fields,
+    sourceMessageIds,
+    model: resp.model,
+    tier,
+    reason,
+    computeLocation: 'on_device',
+    dataEgressBytes: 0,
+  };
+}
+
+export function parsePrefilledApprovalFields(out: string): PrefilledApprovalFields {
+  const fields: PrefilledApprovalFields = {};
+  const extra: Record<string, string> = {};
+  for (const raw of out.split('\n')) {
+    let line = raw.trim();
+    if (!line) continue;
+    line = line.replace(/^[-*•·\s\t]+/, '');
+    const colon = line.indexOf(':');
+    if (colon <= 0) continue;
+    const key = line.slice(0, colon).trim().toLowerCase();
+    let value = line.slice(colon + 1).trim();
+    value = value.replace(/^["']|["']$/g, '');
+    if (!value) continue;
+    if (key === 'vendor' || key === 'requester' || key === 'subject') {
+      fields.vendor = value;
+    } else if (key === 'amount' || key === 'cost' || key === 'price') {
+      fields.amount = value;
+    } else if (key === 'justification' || key === 'reason' || key === 'why') {
+      fields.justification = value;
+    } else if (key === 'risk' || key === 'risk level' || key === 'severity') {
+      fields.risk = value;
+    } else if (key.length > 0) {
+      extra[key] = value;
+    }
+  }
+  if (Object.keys(extra).length > 0) fields.extra = extra;
+  return fields;
+}
+
+function collectApprovalSources(
+  fields: PrefilledApprovalFields,
+  messages: { id: string; content: string }[],
+): string[] {
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const v of [fields.vendor, fields.amount, fields.justification, fields.risk]) {
+    if (v) values.push(v.toLowerCase());
+  }
+  if (values.length === 0) {
+    return messages.length > 0 ? [messages[0].id] : [];
+  }
+  for (const m of messages) {
+    const c = m.content.toLowerCase();
+    for (const v of values) {
+      const words = v.split(/[^a-z0-9]+/).filter((w) => w.length >= 4);
+      if (words.length === 0) continue;
+      if (words.some((w) => c.includes(w)) && !seen.has(m.id)) {
+        seen.add(m.id);
+        break;
+      }
+    }
+  }
+  if (seen.size === 0 && messages.length > 0) seen.add(messages[0].id);
+  return Array.from(seen);
+}
+
+// ---------- B2B draft artifact section ----------
+
+const DRAFT_ARTIFACT_SHORT = 6;
+const DRAFT_ARTIFACT_MAX_MESSAGES = 30;
+
+const ARTIFACT_TYPE_HINT: Record<ArtifactKind, string> = {
+  PRD: 'product requirements doc with goal, requirements, success metrics, risks',
+  RFC: 'request-for-comments doc with motivation, proposal, alternatives',
+  Proposal: 'proposal with summary, scope, cost, risks, ask',
+  SOP: 'standard operating procedure with goal, steps, owner, exceptions',
+  QBR: 'quarterly business review with wins, gaps, asks, next-quarter plan',
+};
+
+const ARTIFACT_SECTION_HINT: Record<ArtifactSection, string> = {
+  goal: 'just the goal section (1–2 short paragraphs)',
+  requirements: 'just the requirements section (bulleted list)',
+  risks: 'just the risks / mitigations section (bulleted list)',
+  all: 'a short top-level draft covering the main sections (under 200 words total)',
+};
+
+export function buildDraftArtifact(
+  router: InferenceRouter,
+  req: DraftArtifactRequest,
+): DraftArtifactResponse {
+  if (req.messages.length === 0) {
+    throw new Error('thread not found');
+  }
+  const limited = req.messages.slice(0, DRAFT_ARTIFACT_MAX_MESSAGES);
+  const section: ArtifactSection = req.section ?? 'all';
+  const typeHint = ARTIFACT_TYPE_HINT[req.artifactType];
+  const sectionHint = ARTIFACT_SECTION_HINT[section];
+
+  let prompt = '';
+  prompt += `Draft a ${req.artifactType} (${typeHint}) — ${sectionHint}. `;
+  prompt += 'Use the following thread as the only source. ';
+  prompt += 'Cite owners, decisions, and deadlines where the thread mentions them. ';
+  prompt += 'Output Markdown.\n\n';
+  const sources = limited.map((m) => {
+    prompt += `- ${m.senderId}: ${m.content}\n`;
+    return {
+      id: m.id,
+      channelId: m.channelId,
+      sender: m.senderId,
+      excerpt: truncateForPrompt(m.content, 160),
+    };
+  });
+
+  // Default tier follows length AND artifact type. Long threads (or PRDs/
+  // QBRs that always benefit from reasoning) prefer E4B; the router's
+  // decision still wins when a real adapter is wired in.
+  const reasoningHeavy = req.artifactType === 'PRD' || req.artifactType === 'QBR';
+  let tier: Tier = reasoningHeavy || req.messages.length > DRAFT_ARTIFACT_SHORT ? 'e4b' : 'e2b';
+  let model = tier === 'e4b' ? 'gemma-4-e4b' : 'gemma-4-e2b';
+  let reason =
+    tier === 'e4b'
+      ? `Drafting a ${req.artifactType} benefits from E4B reasoning.`
+      : `Short ${req.artifactType} draft routed to E2B.`;
+
+  const decision = router.decide({
+    taskType: 'draft_artifact',
+    prompt,
+    channelId: limited[0].channelId,
+  });
+  if (decision.allow) {
+    model = decision.model;
+    if (decision.tier) tier = decision.tier;
+    reason = decision.reason;
+  }
+
+  const root = limited[0].content.trim().split('\n')[0];
+  const title = root
+    ? `${req.artifactType}: ${truncateForPrompt(root, 60)}`
+    : `${req.artifactType} draft`;
+
+  return {
+    prompt,
+    sources,
+    threadId: req.threadId,
+    channelId: limited[0].channelId,
+    artifactType: req.artifactType,
+    section,
+    title,
+    model,
+    tier,
+    reason,
+    messageCount: req.messages.length,
+    computeLocation: 'on_device',
+    dataEgressBytes: 0,
+  };
 }
 
 // ---------- B2C unread summary ----------
