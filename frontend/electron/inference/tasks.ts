@@ -316,6 +316,7 @@ export function parseKAppsExtractedTasks(
   out: string,
   sources: { id: string; content: string }[],
 ): KAppsExtractedTask[] {
+  if (detectInsufficient(out)) return [];
   const tasks: KAppsExtractedTask[] = [];
   for (const raw of out.split('\n')) {
     let line = raw.trim();

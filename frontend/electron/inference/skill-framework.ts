@@ -285,7 +285,7 @@ export function detectInsufficient(output: string): string | null {
   const trimmed = (output ?? '').trim();
   // Match at the very start of the response, case-insensitive, with an
   // optional bullet/quote prefix the model sometimes adds.
-  const m = trimmed.match(/^[\s>"']*INSUFFICIENT\s*:\s*(.+)$/i);
+  const m = trimmed.match(/^[\s>"']*INSUFFICIENT\s*:\s*(.+)/i);
   if (!m) return null;
   // Stop at the first newline so we never echo a multi-line refusal back
   // verbatim into the privacy strip.

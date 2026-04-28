@@ -220,6 +220,14 @@ describe('detectInsufficient', () => {
       detectInsufficient('Day 1: Visit\nNote: INSUFFICIENT data for day 2'),
     ).toBeNull();
   });
+
+  it('still detects INSUFFICIENT when the model adds extra explanatory lines', () => {
+    expect(
+      detectInsufficient(
+        'INSUFFICIENT: no destination supplied\nThe user did not provide a city or trip dates.',
+      ),
+    ).toBe('no destination supplied');
+  });
 });
 
 describe('runPostInferenceGuardrails', () => {
