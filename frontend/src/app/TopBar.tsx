@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { Workspace } from '../types/workspace';
+import { ModelStatusBadge } from '../features/ai/ModelStatusBadge';
 
 interface Props {
   workspaces: Workspace[];
@@ -57,6 +58,7 @@ export function TopBar({ workspaces }: Props) {
         <span className="topbar__badge" title="AI compute mode">
           AI: On-device
         </span>
+        <ModelStatusBadge />
         <span className="topbar__badge topbar__badge--secure" title="End-to-end encrypted">
           E2EE
         </span>

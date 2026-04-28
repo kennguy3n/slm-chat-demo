@@ -95,6 +95,26 @@ button {
   border-color: var(--color-secure);
 }
 
+.model-status-badge {
+  display: inline-flex;
+  gap: 2px;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.model-status-badge--loaded {
+  color: var(--color-secure);
+  border-color: var(--color-secure);
+}
+
+.model-status-badge--idle {
+  color: var(--color-muted);
+}
+
+.model-status-badge--loading {
+  opacity: 0.7;
+}
+
 .topbar__mode {
   padding: 4px 10px;
   border: 1px solid var(--color-accent);
