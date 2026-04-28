@@ -106,3 +106,101 @@ describe('createMemoryStore', () => {
     await store.clear();
   });
 });
+
+describe('IndexedDB-backed MemoryStore connection caching', () => {
+  // Mirrors the IDB shape closely enough that createIndexedDBStore's
+  // caching path runs end-to-end against an injected fake. We assert
+  // sequential operations only open the database once.
+  it('reuses the cached IDBDatabase across sequential ops', async () => {
+    let openCount = 0;
+    const rows = new Map<string, unknown>();
+
+    const fakeIndexedDB = {
+      open(): IDBOpenDBRequest {
+        openCount++;
+        const db: Partial<IDBDatabase> & {
+          onversionchange: ((this: IDBDatabase, ev: Event) => unknown) | null;
+          onclose: ((this: IDBDatabase, ev: Event) => unknown) | null;
+        } = {
+          onversionchange: null,
+          onclose: null,
+          objectStoreNames: { contains: () => true } as unknown as DOMStringList,
+          createObjectStore: () => ({}) as IDBObjectStore,
+          close: () => {},
+          transaction: (_n: string | string[], _m?: IDBTransactionMode): IDBTransaction => {
+            const tx = {
+              oncomplete: null as ((this: IDBTransaction, ev: Event) => unknown) | null,
+              onerror: null as ((this: IDBTransaction, ev: Event) => unknown) | null,
+              onabort: null as ((this: IDBTransaction, ev: Event) => unknown) | null,
+              objectStore: () => ({
+                getAll: () => makeReq(Array.from(rows.values())),
+                put: (v: { id: string }) => {
+                  rows.set(v.id, v);
+                  return makeReq(undefined);
+                },
+                delete: (id: string) => {
+                  rows.delete(id);
+                  return makeReq(undefined);
+                },
+                clear: () => {
+                  rows.clear();
+                  return makeReq(undefined);
+                },
+              }) as unknown as IDBObjectStore,
+            } as unknown as IDBTransaction & {
+              oncomplete: ((this: IDBTransaction, ev: Event) => unknown) | null;
+              onerror: ((this: IDBTransaction, ev: Event) => unknown) | null;
+              onabort: ((this: IDBTransaction, ev: Event) => unknown) | null;
+            };
+            // Fire after a macrotask so the wrap()-then chain in
+            // memoryStore has time to attach `tx.oncomplete`. Pure
+            // microtasks would run before the chained `.then` settles.
+            setTimeout(
+              () => tx.oncomplete?.call(tx as IDBTransaction, new Event('complete')),
+              0,
+            );
+            return tx;
+          },
+        };
+        const req = {
+          onsuccess: null as ((this: IDBRequest, ev: Event) => unknown) | null,
+          onerror: null as ((this: IDBRequest, ev: Event) => unknown) | null,
+          onupgradeneeded: null as ((this: IDBRequest, ev: Event) => unknown) | null,
+          result: db,
+          error: null,
+        } as unknown as IDBOpenDBRequest;
+        queueMicrotask(() => req.onsuccess?.call(req, new Event('success')));
+        return req;
+      },
+    } as unknown as IDBFactory;
+
+    const original = (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+    (globalThis as { indexedDB?: IDBFactory }).indexedDB = fakeIndexedDB;
+    try {
+      // Re-import via dynamic import so the fact that jsdom-time setup
+      // already evaluated the module does not lock us into the
+      // `indexedDB === undefined` branch.
+      const mod = await import('../memoryStore');
+      const store = mod.createMemoryStore();
+      await store.put(buildFact({ id: 'a', kind: 'note', text: 'A' }));
+      await store.put(buildFact({ id: 'b', kind: 'note', text: 'B' }));
+      await store.list();
+      await store.remove('a');
+      await store.list();
+      expect(openCount).toBe(1);
+    } finally {
+      (globalThis as { indexedDB?: IDBFactory }).indexedDB = original;
+    }
+  });
+});
+
+function makeReq(result: unknown): IDBRequest {
+  const req = {
+    onsuccess: null as ((this: IDBRequest, ev: Event) => unknown) | null,
+    onerror: null as ((this: IDBRequest, ev: Event) => unknown) | null,
+    result,
+    error: null,
+  } as unknown as IDBRequest;
+  queueMicrotask(() => req.onsuccess?.call(req, new Event('success')));
+  return req;
+}

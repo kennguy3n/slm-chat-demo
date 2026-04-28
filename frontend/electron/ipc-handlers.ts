@@ -24,6 +24,14 @@ import {
   runFamilyChecklist,
   runShoppingNudges,
 } from './inference/secondBrain.js';
+import {
+  runTripPlanner,
+  type RunTripPlannerArgs,
+} from './inference/skills/trip-planner.js';
+import {
+  runGuardrailRewrite,
+  type RunGuardrailArgs,
+} from './inference/skills/guardrail-rewrite.js';
 import type {
   DraftArtifactRequest,
   EventRSVPRequest,
@@ -157,6 +165,16 @@ export function registerIPCHandlers(): void {
   ipcMain.handle('ai:event-rsvp', async (_e, req: EventRSVPRequest) => {
     const { router } = await getStack();
     return runEventRSVP(router, req);
+  });
+
+  ipcMain.handle('ai:trip-plan', async (_e, req: RunTripPlannerArgs) => {
+    const { router, search } = await getStack();
+    return runTripPlanner(router, search, req);
+  });
+
+  ipcMain.handle('ai:guardrail-check', async (_e, req: RunGuardrailArgs) => {
+    const { router } = await getStack();
+    return runGuardrailRewrite(router, req);
   });
 
   ipcMain.handle('model:status', async () => {

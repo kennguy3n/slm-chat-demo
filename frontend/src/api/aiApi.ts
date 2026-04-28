@@ -13,6 +13,12 @@ import type {
   TranslateResponse,
   UnreadSummaryResponse,
 } from '../types/ai';
+import type {
+  TripPlannerExecution,
+  TripPlannerInputArgs,
+  GuardrailSkillResult,
+} from '../types/electron';
+import { logActivity } from '../features/ai/activityLog';
 
 // Each helper below first checks for the Electron preload bridge
 // (`window.electronAI`) and dispatches inference there. When the bridge
@@ -219,7 +225,8 @@ export async function fetchFamilyChecklist(req: {
     throw new Error('family checklist requires the Electron preload bridge');
   }
   const messages = await fetchChannelMessages(req.channelId);
-  return ipc.familyChecklist({
+  const start = performance.now();
+  const data = await ipc.familyChecklist({
     channelId: req.channelId,
     messages: messages.map((m) => ({
       id: m.id,
@@ -229,6 +236,15 @@ export async function fetchFamilyChecklist(req: {
     })),
     eventHint: req.eventHint,
   });
+  logActivity({
+    skillId: 'family-checklist',
+    model: data.model,
+    tier: data.tier,
+    itemsProduced: data.items.length,
+    egressBytes: data.dataEgressBytes,
+    latencyMs: Math.round(performance.now() - start),
+  });
+  return data;
 }
 
 export async function fetchShoppingNudges(req: {
@@ -240,7 +256,8 @@ export async function fetchShoppingNudges(req: {
     throw new Error('shopping nudges requires the Electron preload bridge');
   }
   const messages = await fetchChannelMessages(req.channelId);
-  return ipc.shoppingNudges({
+  const start = performance.now();
+  const data = await ipc.shoppingNudges({
     channelId: req.channelId,
     messages: messages.map((m) => ({
       id: m.id,
@@ -250,6 +267,15 @@ export async function fetchShoppingNudges(req: {
     })),
     existingItems: req.existingItems,
   });
+  logActivity({
+    skillId: 'shopping-nudges',
+    model: data.model,
+    tier: data.tier,
+    itemsProduced: data.nudges.length,
+    egressBytes: data.dataEgressBytes,
+    latencyMs: Math.round(performance.now() - start),
+  });
+  return data;
 }
 
 export async function fetchEventRSVP(req: {
@@ -260,7 +286,8 @@ export async function fetchEventRSVP(req: {
     throw new Error('event RSVP requires the Electron preload bridge');
   }
   const messages = await fetchChannelMessages(req.channelId);
-  return ipc.eventRSVP({
+  const start = performance.now();
+  const data = await ipc.eventRSVP({
     channelId: req.channelId,
     messages: messages.map((m) => ({
       id: m.id,
@@ -269,4 +296,61 @@ export async function fetchEventRSVP(req: {
       content: m.content,
     })),
   });
+  logActivity({
+    skillId: 'event-rsvp',
+    model: data.model,
+    tier: data.tier,
+    itemsProduced: data.events.length,
+    egressBytes: data.dataEgressBytes,
+    latencyMs: Math.round(performance.now() - start),
+  });
+  return data;
+}
+
+export async function fetchTripPlan(req: {
+  input: TripPlannerInputArgs;
+  channelId?: string;
+}): Promise<TripPlannerExecution> {
+  const ipc = getElectronAI();
+  if (!ipc) {
+    throw new Error('trip planner requires the Electron preload bridge');
+  }
+  const start = performance.now();
+  const exec = await ipc.tripPlan(req);
+  const latency = Math.round(performance.now() - start);
+  if (exec.result.status === 'ok') {
+    logActivity({
+      skillId: exec.result.skillId,
+      model: exec.result.privacy.modelName,
+      tier: exec.result.privacy.tier,
+      itemsProduced: exec.result.result.days.reduce((n, d) => n + d.items.length, 0),
+      egressBytes: exec.result.privacy.dataEgressBytes,
+      latencyMs: latency,
+    });
+  }
+  return exec;
+}
+
+export async function runGuardrailCheck(req: {
+  text: string;
+  channelId?: string;
+}): Promise<GuardrailSkillResult> {
+  const ipc = getElectronAI();
+  if (!ipc) {
+    throw new Error('guardrail rewrite requires the Electron preload bridge');
+  }
+  const start = performance.now();
+  const result = await ipc.guardrailCheck({ input: { text: req.text, channelId: req.channelId } });
+  const latency = Math.round(performance.now() - start);
+  if (result.status === 'ok') {
+    logActivity({
+      skillId: result.skillId,
+      model: result.privacy.modelName,
+      tier: result.privacy.tier,
+      itemsProduced: result.result.findings.length,
+      egressBytes: result.privacy.dataEgressBytes,
+      latencyMs: latency,
+    });
+  }
+  return result;
 }

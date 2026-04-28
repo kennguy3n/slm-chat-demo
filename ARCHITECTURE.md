@@ -118,15 +118,21 @@ frontend/
 │       ├── adapter.ts                (Adapter / Loader / StatusProvider interfaces)
 │       ├── mock.ts                   (MockAdapter; canned outputs per TaskType)
 │       ├── ollama.ts                 (HTTP client for the local daemon, NDJSON streaming)
+│       ├── llamacpp.ts               (LlamaCppAdapter stub; throws "not yet implemented")
 │       ├── router.ts                 (PROPOSAL.md §2 scheduler — E2B / E4B / fallback)
 │       ├── tasks.ts                  (smart-reply / translate / extract-tasks helpers)
 │       ├── secondBrain.ts            (Phase 2: family checklist, shopping nudges, RSVP extraction)
-│       └── bootstrap.ts              (pings Ollama; chooses real vs. mock adapter set)
+│       ├── skill-framework.ts        (declarative SkillDefinition + runSkill executor + INSUFFICIENT refusal contract)
+│       ├── search-service.ts         (SearchService interface + MockSearchService for trip planner)
+│       ├── skills/
+│       │   ├── trip-planner.ts       (Phase 2: B2C trip / event planning skill)
+│       │   └── guardrail-rewrite.ts  (Phase 2: PII / tone / unverified-claim review + rewrite)
+│       └── bootstrap.ts              (pings Ollama; chooses real vs. mock adapter set; instantiates SearchService)
 └── src/
     ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
     ├── features/
     │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces)
-    │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), ThreadSummaryCard for the B2B thread summary, ApprovalPrefillCard for B2B approval prefill, and ArtifactDraftCard for the B2B PRD / RFC / Proposal / SOP / QBR drafting flow; Phase 2 adds TaskCreatedPill (inline AI badges below messages), MorningDigestPanel (B2C right-rail catch-up), FamilyChecklistCard, ShoppingNudgesPanel, and EventRSVPCard (the second-brain surfaces in the tabbed B2C right rail); PrivacyStrip itself gained an expandable `whyDetails[]` list in Phase 2
+    │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, activityLog) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), ThreadSummaryCard for the B2B thread summary, ApprovalPrefillCard for B2B approval prefill, and ArtifactDraftCard for the B2B PRD / RFC / Proposal / SOP / QBR drafting flow; Phase 2 adds TaskCreatedPill (inline AI badges below messages), MorningDigestPanel (B2C right-rail catch-up), FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard (B2C trip / event planning skill), GuardrailRewriteCard (pre-send PII / tone / unverified-claim review), and MetricsDashboard backed by the new `activityLog` module which records every AI run; PrivacyStrip itself gained an expandable `whyDetails[]` list in Phase 2
     │   ├── memory/ (AIMemoryPage, memoryStore) — Phase 2: local-only IndexedDB-backed second brain (DB `kchat-slm-memory`, store `facts`) with an in-memory fallback for jsdom / SSR; the AI never auto-writes — every fact passes through the AIMemoryPage UI
     │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard) — Phase 0; FormCard lands in Phase 3
     │   ├── artifacts/ (ArtifactWorkspace)                                    — Phase 3
@@ -151,6 +157,63 @@ Every API helper under `src/api/` checks for `window.electronAI` first
 (via the `electronBridge.ts` helper); when absent (e.g. `npm run dev`,
 Vitest, a static web build) it falls back to the legacy HTTP path so
 the same code keeps working in a plain browser.
+
+### 2.4 AI Skills Framework
+
+The Electron main process exposes a declarative skills layer at
+`frontend/electron/inference/skill-framework.ts`. A `SkillDefinition`
+captures everything a skill needs to run safely on a small language
+model:
+
+- `metaPrompt` and an optional `userContextSlot` (filled at runtime
+  from AI Memory) describing the persona and the per-user context.
+- An ordered `steps[]` list (`read_memory`, `build_prompt`,
+  `run_inference`, `parse_output`, `validate`) that documents what
+  the skill does — the executor itself is generic.
+- A `tools[]` list flagging which IPC / external tools the skill is
+  allowed to call (e.g. `local:memory-read`,
+  `remote:weather-search`).
+- A `guardrails` policy: `requireFields`, `requireMinMessages`,
+  `confidenceThreshold`, `requireSourceAttribution`,
+  `prohibitedPatterns`, plus a `refusalTemplate` used when the
+  skill refuses.
+- A `responseTemplate` (`format`, `requiredFields`, `maxItems`)
+  that the parser must satisfy.
+- A `preferredTier` (`e2b` | `e4b`) and a `taskType` so the
+  router can pick the right adapter.
+
+`runSkill(router, def, ctx)` is the executor. It:
+
+1. Runs `runPreInferenceGuardrails` (missing required fields, empty
+   message arrays).
+2. Assembles the prompt from `metaPrompt` + injected user context +
+   `INSUFFICIENT_RULE` (`If you do not have enough information or
+   are not confident in your answer, respond ONLY with
+   'INSUFFICIENT: <reason>' and do not attempt to guess or
+   fabricate information.`).
+3. Calls the router with the skill's `taskType` and `preferredTier`.
+4. Detects `INSUFFICIENT: <reason>` in the model output and converts
+   it to a structured `SkillRefusalResult`.
+5. Runs the skill's `parser`, then `runPostInferenceGuardrails`
+   (parse-failed / missing sources / confidence below threshold /
+   prohibited patterns).
+6. Returns a discriminated `SkillResult<O>` with privacy metadata
+   (`computeLocation`, `modelName`, `tier`, `dataEgressBytes`,
+   `sources`).
+
+Phase 2 ships two skills on top of the framework:
+`skills/trip-planner.ts` (memory + `MockSearchService` →
+day-by-day itinerary, E4B preferred) and `skills/guardrail-rewrite.ts`
+(deterministic PII regex + SLM tone / unverified-claim review →
+optional rewrite, E2B). The existing `tasks.ts` and `secondBrain.ts`
+helpers honour the same `INSUFFICIENT` contract so the renderer can
+treat refusals uniformly.
+
+A session-scoped `frontend/src/features/ai/activityLog.ts` records
+`{ id, timestamp, skillId, model, tier, itemsProduced, egressBytes,
+latencyMs }` for every successful AI call. `MetricsDashboard`
+subscribes to it and surfaces the per-day summary on the B2C
+right-rail "Stats" tab.
 
 ---
 
@@ -266,6 +329,8 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:family-checklist`  | `familyChecklist(req)`                    | `runFamilyChecklist` in `secondBrain.ts` (B2C family chat → titled checklist with optional event focus, E2B) |
 | `ai:shopping-nudges`   | `shoppingNudges(req)`                     | `runShoppingNudges` (B2C family chat + local shopping list → grounded item / reason pairs that dedupe against the existing list, E2B) |
 | `ai:event-rsvp`        | `eventRSVP(req)`                          | `runEventRSVP` (B2C community chat → up to 4 events with title / when / location / RSVP-by, E2B) |
+| `ai:trip-plan`         | `tripPlan(req)`                           | `runTripPlanner` in `skills/trip-planner.ts` — pulls weather / events / attractions from `MockSearchService`, reads `location` / `member` / `community-detail` AI Memory facts, and returns a structured day-by-day itinerary with per-item source attribution (E4B preferred). |
+| `ai:guardrail-check`   | `guardrailCheck(req)`                     | `runGuardrailRewrite` in `skills/guardrail-rewrite.ts` — combines a deterministic PII regex pre-pass with an SLM tone / unverified-claim review and returns `{ safe, findings, rewrite?, rationale }` (E2B). |
 | `model:status`         | `modelStatus()`                           | `OllamaAdapter.status()` (or stub when Ollama is offline) |
 | `model:load`           | `loadModel(name)`                         | `OllamaAdapter.load()` |
 | `model:unload`         | `unloadModel(name)`                       | `OllamaAdapter.unload()` |

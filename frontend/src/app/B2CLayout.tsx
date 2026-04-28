@@ -7,6 +7,8 @@ import { MorningDigestPanel } from '../features/ai/MorningDigestPanel';
 import { FamilyChecklistCard } from '../features/ai/FamilyChecklistCard';
 import { ShoppingNudgesPanel } from '../features/ai/ShoppingNudgesPanel';
 import { EventRSVPCard } from '../features/ai/EventRSVPCard';
+import { TripPlannerCard } from '../features/ai/TripPlannerCard';
+import { MetricsDashboard } from '../features/ai/MetricsDashboard';
 import { AIMemoryPage } from '../features/memory/AIMemoryPage';
 
 interface Props {
@@ -17,14 +19,23 @@ interface Props {
   currentUserId?: string;
 }
 
-type RightPanelTab = 'digest' | 'family' | 'shopping' | 'events' | 'memory';
+type RightPanelTab =
+  | 'digest'
+  | 'family'
+  | 'shopping'
+  | 'events'
+  | 'trip'
+  | 'memory'
+  | 'stats';
 
 const RIGHT_TABS: { id: RightPanelTab; label: string }[] = [
   { id: 'digest', label: 'Digest' },
   { id: 'family', label: 'Family' },
   { id: 'shopping', label: 'Shopping' },
   { id: 'events', label: 'Events' },
+  { id: 'trip', label: 'Trip' },
   { id: 'memory', label: 'Memory' },
+  { id: 'stats', label: 'Stats' },
 ];
 
 // B2CLayout is the messaging-first consumer layout: a simpler sidebar showing
@@ -129,8 +140,14 @@ export function B2CLayout({ chats, users, currentUserId }: Props) {
               channelName={selected?.name}
             />
           </div>
+          <div role="tabpanel" hidden={rightTab !== 'trip'}>
+            <TripPlannerCard />
+          </div>
           <div role="tabpanel" hidden={rightTab !== 'memory'}>
             <AIMemoryPage />
+          </div>
+          <div role="tabpanel" hidden={rightTab !== 'stats'}>
+            <MetricsDashboard />
           </div>
         </div>
       </aside>

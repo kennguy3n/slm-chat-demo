@@ -7,6 +7,7 @@ import type { Adapter, Loader, StatusProvider } from './adapter.js';
 import { MockAdapter } from './mock.js';
 import { DefaultOllamaBaseURL, OllamaAdapter } from './ollama.js';
 import { InferenceRouter } from './router.js';
+import { MockSearchService, type SearchService } from './search-service.js';
 
 export interface InferenceStack {
   router: InferenceRouter;
@@ -15,6 +16,9 @@ export interface InferenceStack {
   defaultModel: string;
   defaultQuant: string;
   source: 'ollama' | 'mock';
+  // The search service is used by the trip-planner skill. Phase 2 ships
+  // a mock implementation; Phase 6 swaps in a server-backed one.
+  search: SearchService;
 }
 
 export async function bootstrapInference(
@@ -47,6 +51,7 @@ export async function bootstrapInference(
   }
 
   const router = new InferenceRouter(e2b, e4b, mock);
+  const search = new MockSearchService();
   return {
     router,
     status,
@@ -54,5 +59,6 @@ export async function bootstrapInference(
     defaultModel: 'gemma-4-e2b',
     defaultQuant: 'q4_k_m',
     source,
+    search,
   };
 }

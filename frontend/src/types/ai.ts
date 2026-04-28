@@ -317,7 +317,19 @@ export interface EventRSVPResponse {
 // store (PROPOSAL.md §3.2, PHASES.md Phase 2). Stored entirely on-device
 // (IndexedDB). The AI never auto-writes memory; users accept or edit
 // suggestions from the chat into the memory page.
-export type MemoryFactKind = 'person' | 'preference' | 'routine' | 'note';
+// MemoryFactKind extensions ('location', 'member', 'community-detail') back
+// the trip-planner skill: the user adds where they live, who is in their
+// family/community, and any group-level details (e.g. neighborhood name).
+// All facts remain on-device in IndexedDB; the trip-planner reads them at
+// inference time and never echoes them outside the prompt.
+export type MemoryFactKind =
+  | 'person'
+  | 'preference'
+  | 'routine'
+  | 'note'
+  | 'location'
+  | 'member'
+  | 'community-detail';
 
 export interface MemoryFact {
   id: string;

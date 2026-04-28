@@ -7,9 +7,20 @@ const KIND_LABELS: Record<MemoryFactKind, string> = {
   preference: 'Preference',
   routine: 'Routine',
   note: 'Note',
+  location: 'Location',
+  member: 'Member',
+  'community-detail': 'Community detail',
 };
 
-const KIND_ORDER: MemoryFactKind[] = ['person', 'preference', 'routine', 'note'];
+const KIND_ORDER: MemoryFactKind[] = [
+  'person',
+  'member',
+  'location',
+  'community-detail',
+  'preference',
+  'routine',
+  'note',
+];
 
 interface Props {
   // Tests inject a deterministic store; production callers omit this so

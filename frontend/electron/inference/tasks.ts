@@ -31,6 +31,7 @@ import type {
   UnreadSummaryResponse,
 } from './adapter.js';
 import type { InferenceRouter } from './router.js';
+import { INSUFFICIENT_RULE, detectInsufficient } from './skill-framework.js';
 
 // truncateForPrompt caps a string at `max` runes (not bytes) so multi-
 // byte characters (emoji, CJK) are never split mid-codepoint.
@@ -56,7 +57,7 @@ export async function runSmartReply(
   req: SmartReplyRequest,
 ): Promise<SmartReplyResponse> {
   const ctx = req.context.slice(-SMART_REPLY_CONTEXT_SIZE);
-  let prompt = '';
+  let prompt = `${INSUFFICIENT_RULE}\n\n`;
   prompt += 'You are drafting short, friendly reply suggestions for a chat user. ';
   prompt += 'Read the recent messages and propose 2–3 short reply options. ';
   prompt += 'Each option must be a single sentence. Return one option per line.\n\n';
@@ -84,6 +85,7 @@ export async function runSmartReply(
 }
 
 export function parseSmartReplies(out: string): string[] {
+  if (detectInsufficient(out)) return [];
   const replies: string[] = [];
   for (const raw of out.split('\n')) {
     let line = raw.trim();
@@ -135,7 +137,7 @@ export async function runExtractTasks(
   adapter: Adapter,
   req: ExtractTasksRequest,
 ): Promise<ExtractTasksResponse> {
-  let prompt = '';
+  let prompt = `${INSUFFICIENT_RULE}\n\n`;
   prompt += 'Extract actionable items from the focused chat message. ';
   prompt += 'For each item, pick a type: task, reminder, or shopping. ';
   prompt += 'Return one item per line as: <type> | <title> | <due if any>.\n\n';
@@ -167,6 +169,7 @@ export async function runExtractTasks(
 }
 
 export function parseExtractedTasks(out: string): ExtractedTask[] {
+  if (detectInsufficient(out)) return [];
   const tasks: ExtractedTask[] = [];
   for (const raw of out.split('\n')) {
     let line = raw.trim();
@@ -306,6 +309,9 @@ export async function runKAppsExtractTasks(
   };
 }
 
+// parseKAppsExtractedTasks honours the SLM refusal contract by
+// returning an empty list when the model output starts with
+// `INSUFFICIENT:` (see skill-framework.ts).
 export function parseKAppsExtractedTasks(
   out: string,
   sources: { id: string; content: string }[],
@@ -436,6 +442,7 @@ export async function runPrefillApproval(
 }
 
 export function parsePrefilledApprovalFields(out: string): PrefilledApprovalFields {
+  if (detectInsufficient(out)) return {};
   const fields: PrefilledApprovalFields = {};
   const extra: Record<string, string> = {};
   for (const raw of out.split('\n')) {

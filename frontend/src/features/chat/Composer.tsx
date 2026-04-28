@@ -1,6 +1,10 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { ActionLauncher } from '../ai/ActionLauncher';
+import { GuardrailRewriteCard } from '../ai/GuardrailRewriteCard';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { runGuardrailCheck } from '../../api/aiApi';
+import { getElectronAI } from '../../api/electronBridge';
+import type { GuardrailSkillResult } from '../../types/electron';
 
 interface Props {
   placeholder?: string;
@@ -19,6 +23,9 @@ interface Props {
   // calling onChange directly. Falls back to internal state when omitted.
   value?: string;
   onChange?: (text: string) => void;
+  channelId?: string;
+  // Tests inject a stub so they don't need a live preload bridge.
+  guardrailCheck?: (req: { text: string; channelId?: string }) => Promise<GuardrailSkillResult>;
 }
 
 // Composer is the chat input row at the bottom of MainChat. It renders the
@@ -34,6 +41,8 @@ export function Composer({
   children,
   value: valueProp,
   onChange,
+  channelId,
+  guardrailCheck = runGuardrailCheck,
 }: Props) {
   const [internal, setInternal] = useState('');
   const isControlled = valueProp !== undefined;
@@ -44,16 +53,68 @@ export function Composer({
   };
   const context = useWorkspaceStore((s) => s.context);
 
+  const [guardrail, setGuardrail] = useState<{
+    text: string;
+    result: GuardrailSkillResult;
+  } | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+
+  function clearGuardrail() {
+    setGuardrail(null);
+  }
+
+  function send(text: string) {
+    onSend?.(text);
+    setValue('');
+    clearGuardrail();
+  }
+
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = value.trim();
     if (!trimmed) return;
-    onSend?.(trimmed);
-    setValue('');
+    // Skip guardrail when the bridge is unavailable (web demo) — the
+    // skill needs the on-device router.
+    if (!getElectronAI()) {
+      send(trimmed);
+      return;
+    }
+    setReviewing(true);
+    guardrailCheck({ text: trimmed, channelId })
+      .then((result) => {
+        setReviewing(false);
+        if (result.status !== 'ok') {
+          // Refusal: send as-is, the user already typed it.
+          send(trimmed);
+          return;
+        }
+        if (result.result.safe) {
+          send(trimmed);
+          return;
+        }
+        setGuardrail({ text: trimmed, result });
+      })
+      .catch(() => {
+        setReviewing(false);
+        send(trimmed);
+      });
   }
 
   return (
     <div className="composer-wrap">
+      {guardrail && guardrail.result.status === 'ok' && (
+        <GuardrailRewriteCard
+          original={guardrail.text}
+          result={guardrail.result.result}
+          privacy={guardrail.result.privacy}
+          onAccept={(rewrite) => send(rewrite)}
+          onKeep={() => send(guardrail.text)}
+          onEdit={() => {
+            setValue(guardrail.text);
+            clearGuardrail();
+          }}
+        />
+      )}
       {children}
       <form className="composer" onSubmit={handleSubmit}>
         <ActionLauncher context={context} onAction={onAIAction} />
@@ -63,12 +124,16 @@ export function Composer({
           className="composer__input"
           placeholder={placeholder}
           value={value}
-          disabled={disabled}
+          disabled={disabled || reviewing}
           onChange={(e) => setValue(e.target.value)}
           aria-label="Message"
         />
-        <button type="submit" className="composer__send" disabled={disabled || !value.trim()}>
-          Send
+        <button
+          type="submit"
+          className="composer__send"
+          disabled={disabled || reviewing || !value.trim()}
+        >
+          {reviewing ? 'Reviewing…' : 'Send'}
         </button>
       </form>
     </div>
