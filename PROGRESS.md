@@ -8,7 +8,7 @@ Last updated: 2026-04-28
 
 | Phase | Status | Progress |
 |-------|--------|----------|
-| Phase 0: Consolidated prototype foundation | In progress | ~50% |
+| Phase 0: Consolidated prototype foundation | Complete | 100% |
 | Phase 1: Local LLM MVP | Not started | 0% |
 | Phase 2: B2C second-brain demo | Not started | 0% |
 | Phase 3: B2B KApps MVP | Not started | 0% |
@@ -24,11 +24,11 @@ Last updated: 2026-04-28
 - [x] Go backend skeleton with mock auth
 - [x] Mock users and workspaces
 - [x] Seeded demo data (B2C: personal/family/community chats; B2B: workspace/domain/channel with threads)
-- [ ] Shared card system (TaskCard, ApprovalCard, ArtifactCard, EventCard)
-- [ ] Privacy strip component
-- [ ] AI action launcher (B2C: Catch me up, Translate, Remind; B2B: Create, Analyze, Plan, Approve)
-- [ ] Local inference adapter interface (mocked responses)
-- [ ] Mobile-responsive layout (bottom tabs: Message, Notification, Tasks, Settings, More)
+- [x] Shared card system (TaskCard, ApprovalCard, ArtifactCard, EventCard)
+- [x] Privacy strip component
+- [x] AI action launcher (B2C: Catch me up, Translate, Remind; B2B: Create, Analyze, Plan, Approve)
+- [x] Local inference adapter interface (mocked responses)
+- [x] Mobile-responsive layout (bottom tabs: Message, Notification, Tasks, Settings, More)
 - [x] Web layout (sidebar + main chat + right panel)
 
 ---
@@ -147,3 +147,4 @@ Last updated: 2026-04-28
 |------|--------|
 | 2026-04-28 | Initial progress tracker created. Project kickoff. |
 | 2026-04-28 | Phase 0: Added React app shell with B2C/B2B switching, Go backend with mock auth, seeded demo data, and three-column web layout. |
+| 2026-04-28 | Phase 0 complete: Added shared card system, privacy strip, AI action launcher, mocked inference adapter, and mobile-responsive layout. |

@@ -109,6 +109,9 @@ func Seed(m *Memory) {
 
 	// Messages.
 	seedMessages(m, now)
+
+	// KApp cards (Phase 0 demo dataset for GET /api/kapps/cards).
+	seedCards(m, now)
 }
 
 func seedMessages(m *Memory, base time.Time) {
@@ -143,6 +146,104 @@ func seedMessages(m *Memory, base time.Time) {
 	// B2B — #general (a couple of casual messages so the channel is not empty).
 	addMsg(m, "msg_gen_1", "ch_general", "", "user_eve", "morning everyone — standup in 10", base.Add(-20*time.Minute))
 	addMsg(m, "msg_gen_2", "ch_general", "", "user_dave", "joining", base.Add(-19*time.Minute))
+}
+
+// seedCards loads four sample KApp cards covering each card kind so the
+// frontend's KAppCardRenderer demo has realistic data:
+//
+//   - a Task extracted from the family-group "field trip / sunscreen"
+//     message (PROPOSAL.md 5.2);
+//   - an Approval drafted from the vendor-management thread (PROPOSAL.md 5.3);
+//   - an Artifact drafted from the engineering inline-translation thread
+//     (PROPOSAL.md 5.4);
+//   - an Event from the neighborhood block-party message.
+func seedCards(m *Memory, base time.Time) {
+	dueFriday := base.Add(72 * time.Hour)
+	startsSat := time.Date(2026, 5, 16, 16, 0, 0, 0, time.UTC)
+
+	m.PutCard(models.Card{
+		Kind: models.CardKindTask,
+		Task: &models.Task{
+			ID:              "task_sunscreen",
+			ChannelID:       "ch_family",
+			SourceMessageID: "msg_fam_1",
+			Title:           "Buy sunscreen for field trip",
+			Owner:           "user_alice",
+			DueDate:         &dueFriday,
+			Status:          models.TaskStatusOpen,
+			AIGenerated:     true,
+			History: []models.TaskHistoryEntry{
+				{
+					At:     base.Add(-2 * time.Hour).Add(2 * time.Minute),
+					Actor:  "ai",
+					Action: "extracted",
+					Note:   "extracted from message msg_fam_1",
+				},
+			},
+		},
+	})
+
+	m.PutCard(models.Card{
+		Kind: models.CardKindApproval,
+		Approval: &models.Approval{
+			ID:             "appr_vendor_q3_logging",
+			ChannelID:      "ch_vendor_management",
+			TemplateID:     "vendor_contract_v1",
+			Title:          "Q3 logging vendor contract",
+			Requester:      "user_dave",
+			Approvers:      []string{"user_eve"},
+			Fields: models.ApprovalFields{
+				Vendor:        "Acme Logs",
+				Amount:        "$42,000 / yr",
+				Justification: "Lowest-cost SOC 2-cleared bidder; CloudTrace failed last quarter's review.",
+				Risk:          "medium",
+			},
+			Status:         models.ApprovalStatusPending,
+			DecisionLog:    []models.ApprovalDecisionEntry{},
+			SourceThreadID: "msg_vend_root",
+			AIGenerated:    true,
+		},
+	})
+
+	m.PutCard(models.Card{
+		Kind: models.CardKindArtifact,
+		Artifact: &models.Artifact{
+			ID:        "art_inline_translation_prd",
+			ChannelID: "ch_engineering",
+			Type:      models.ArtifactTypePRD,
+			Title:     "Inline translation PRD",
+			TemplateID: "prd_v1",
+			SourceRefs: []models.ArtifactSourceRef{
+				{Kind: "thread", ID: "msg_eng_root", Note: "Engineering kickoff thread"},
+			},
+			Versions: []models.ArtifactVersion{
+				{
+					Version:   1,
+					CreatedAt: base.Add(-22 * time.Minute),
+					Author:    "user_alice",
+					Summary:   "Initial draft from engineering thread",
+				},
+			},
+			Status:      models.ArtifactStatusDraft,
+			AIGenerated: true,
+			URL:         "/artifacts/art_inline_translation_prd",
+		},
+	})
+
+	m.PutCard(models.Card{
+		Kind: models.CardKindEvent,
+		Event: &models.Event{
+			ID:              "evt_block_party",
+			ChannelID:       "ch_neighborhood",
+			SourceMessageID: "msg_comm_1",
+			Title:           "Neighborhood block party",
+			StartsAt:        startsSat,
+			Location:        "Maple Park",
+			RSVP:            models.EventRSVPAccepted,
+			AttendeeCount:   12,
+			AIGenerated:     true,
+		},
+	})
 }
 
 func addMsg(m *Memory, id, channelID, threadID, senderID, content string, t time.Time) {

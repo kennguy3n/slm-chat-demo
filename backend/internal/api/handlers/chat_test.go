@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/api"
+	"github.com/kennguy3n/slm-chat-demo/backend/internal/inference"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/models"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/services"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/store"
@@ -19,6 +20,8 @@ func newTestServer() http.Handler {
 		Identity:   services.NewIdentity(mem, "user_alice"),
 		Workspaces: services.NewWorkspace(mem),
 		Chat:       services.NewChat(mem),
+		KApps:      services.NewKApps(mem),
+		Inference:  inference.NewMockAdapter(),
 	})
 }
 

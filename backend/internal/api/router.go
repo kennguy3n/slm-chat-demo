@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/api/handlers"
+	"github.com/kennguy3n/slm-chat-demo/backend/internal/inference"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/services"
 )
 
@@ -16,6 +17,8 @@ type Deps struct {
 	Identity   *services.Identity
 	Workspaces *services.Workspace
 	Chat       *services.Chat
+	KApps      *services.KApps
+	Inference  inference.Adapter
 }
 
 // NewRouter wires the chi router with CORS, JSON content-type, mock auth, and
@@ -37,8 +40,8 @@ func NewRouter(d Deps) http.Handler {
 
 	chatH := handlers.NewChat(d.Chat)
 	wsH := handlers.NewWorkspace(d.Workspaces, d.Identity)
-	aiH := handlers.NewAI()
-	kH := handlers.NewKApps()
+	aiH := handlers.NewAI(d.Inference)
+	kH := handlers.NewKApps(d.KApps)
 	artH := handlers.NewArtifacts()
 	mH := handlers.NewModel()
 	pH := handlers.NewPrivacy()
@@ -61,14 +64,23 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/chats/{chatId}/messages", chatH.Messages)
 		r.Get("/threads/{threadId}/messages", chatH.ThreadMessages)
 
-		// Phase-1+ stubs (kept reachable so the frontend can probe them).
-		r.Post("/ai/route", aiH.NotImplemented)
-		r.Post("/ai/run", aiH.NotImplemented)
-		r.Post("/ai/stream", aiH.NotImplemented)
+		// AI surface — Phase 0 ships mocked /run and a hardcoded /route
+		// decision. /stream returns the same shape as /run for now.
+		r.Post("/ai/route", aiH.Route)
+		r.Post("/ai/run", aiH.Run)
+		r.Post("/ai/stream", aiH.Stream)
+
+		// KApps — Phase 0 ships GET /api/kapps/cards (seeded sample
+		// cards). Task / approval extraction stubs land in Phase 3.
+		r.Get("/kapps/cards", kH.Cards)
 		r.Post("/kapps/tasks/extract", kH.NotImplemented)
 		r.Post("/kapps/approvals/prefill", kH.NotImplemented)
+
+		// Artifacts — Phase 3 stubs.
 		r.Post("/artifacts/draft", artH.NotImplemented)
 		r.Post("/artifacts/publish", artH.NotImplemented)
+
+		// Local model / privacy.
 		r.Get("/model/status", mH.Status)
 		r.Post("/model/load", mH.Status)
 		r.Post("/model/unload", mH.Status)
