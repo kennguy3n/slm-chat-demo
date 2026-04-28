@@ -1,7 +1,12 @@
-// Package inference defines the local-inference adapter contract. Phase 0
-// ships a MockAdapter (mock.go) that satisfies the interface with realistic
-// canned responses; concrete adapters (Ollama, llama.cpp, server-large) land
-// in Phase 1 alongside the AI policy engine.
+// Package inference is deprecated and no longer wired into the Go HTTP
+// server. The canonical inference adapter, router and Ollama client now
+// live in frontend/electron/inference/ and run inside the Electron main
+// process so the React renderer can drive on-device inference directly.
+//
+// The package is kept here as a reference for the original Go shapes
+// the TypeScript port was based on, and because its tests still
+// exercise the routing rules. Do not import it from the production
+// HTTP server — the Phase 0 backend (cmd/server/main.go) is data-only.
 package inference
 
 import "context"

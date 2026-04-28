@@ -1,4 +1,6 @@
 import { apiFetch } from './client';
+import { fetchChannelMessages, fetchChats, fetchThreadMessages } from './chatApi';
+import { getElectronAI } from './electronBridge';
 import type {
   AIRouteResponse,
   AIRunRequest,
@@ -12,16 +14,20 @@ import type {
   UnreadSummaryResponse,
 } from '../types/ai';
 
-// model/status returns the current local-model state. When the backend has
-// an Ollama adapter wired in this is live data; otherwise it's the static
-// "unstarted" stub.
+// Each helper below first checks for the Electron preload bridge
+// (`window.electronAI`) and dispatches inference there. When the bridge
+// is not present (web demo, Vitest, hosted static build) it falls back
+// to the legacy HTTP path so existing tests continue to work.
+
 export async function fetchModelStatus(): Promise<ModelStatus> {
+  const ipc = getElectronAI();
+  if (ipc) return ipc.modelStatus();
   return apiFetch<ModelStatus>('/api/model/status');
 }
 
-// loadModel asks the backend to preload a specific local model. Optional
-// model name; backend defaults to its configured default.
 export async function loadModel(model?: string): Promise<{ loaded: boolean; model: string }> {
+  const ipc = getElectronAI();
+  if (ipc) return ipc.loadModel(model);
   return apiFetch('/api/model/load', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -29,8 +35,9 @@ export async function loadModel(model?: string): Promise<{ loaded: boolean; mode
   });
 }
 
-// unloadModel asks the backend to free a model from memory.
 export async function unloadModel(model?: string): Promise<{ loaded: boolean; model: string }> {
+  const ipc = getElectronAI();
+  if (ipc) return ipc.unloadModel(model);
   return apiFetch('/api/model/unload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -38,21 +45,41 @@ export async function unloadModel(model?: string): Promise<{ loaded: boolean; mo
   });
 }
 
-// fetchUnreadSummary calls the AI digest endpoint that summarises the
-// authenticated user's recent B2C messages.
+// fetchUnreadSummary: in Electron mode the renderer fetches the user's
+// recent B2C chats + recent messages and forwards them to the IPC
+// handler which builds the prompt. In HTTP mode the Go data API still
+// owns the prompt-building (it never ran inference for this endpoint).
 export async function fetchUnreadSummary(): Promise<UnreadSummaryResponse> {
+  const ipc = getElectronAI();
+  if (ipc) {
+    const chats = await fetchChats('b2c');
+    const enriched = await Promise.all(
+      chats.map(async (c) => {
+        const messages = await fetchChannelMessages(c.id);
+        return {
+          id: c.id,
+          name: c.name,
+          messages: messages.map((m) => ({
+            id: m.id,
+            channelId: m.channelId,
+            senderId: m.senderId,
+            content: m.content,
+          })),
+        };
+      }),
+    );
+    return ipc.unreadSummary({ chats: enriched });
+  }
   return apiFetch<UnreadSummaryResponse>('/api/chats/unread-summary');
 }
 
-// Phase 0: privacy/egress-preview returns the hardcoded zero-egress preview.
-// The privacy strip uses it to render the "data egress" element.
 export async function fetchEgressPreview(): Promise<EgressPreview> {
   return apiFetch<EgressPreview>('/api/privacy/egress-preview');
 }
 
-// Run the AI inference adapter. Phase 0 is wired to MockAdapter and returns
-// canned outputs for each task type.
 export async function runAITask(req: AIRunRequest): Promise<AIRunResponse> {
+  const ipc = getElectronAI();
+  if (ipc) return ipc.run(req);
   return apiFetch<AIRunResponse>('/api/ai/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -60,9 +87,9 @@ export async function runAITask(req: AIRunRequest): Promise<AIRunResponse> {
   });
 }
 
-// Ask the policy engine whether an inference call should be allowed. Phase 0
-// hardcodes the on-device, zero-egress decision.
 export async function fetchAIRoute(req: AIRunRequest): Promise<AIRouteResponse> {
+  const ipc = getElectronAI();
+  if (ipc) return ipc.route(req);
   return apiFetch<AIRouteResponse>('/api/ai/route', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -70,13 +97,19 @@ export async function fetchAIRoute(req: AIRunRequest): Promise<AIRouteResponse> 
   });
 }
 
-// fetchSmartReply asks the backend for 2–3 contextual reply suggestions
-// for the given channel + most-recent message. Used by the B2C
-// SmartReplyBar above the composer.
 export async function fetchSmartReply(req: {
   channelId: string;
   messageId?: string;
 }): Promise<SmartReplyResponse> {
+  const ipc = getElectronAI();
+  if (ipc) {
+    const messages = await fetchChannelMessages(req.channelId);
+    return ipc.smartReply({
+      channelId: req.channelId,
+      messageId: req.messageId,
+      context: messages.map((m) => ({ senderId: m.senderId, content: m.content })),
+    });
+  }
   return apiFetch<SmartReplyResponse>('/api/ai/smart-reply', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -84,27 +117,67 @@ export async function fetchSmartReply(req: {
   });
 }
 
-// fetchTranslate runs on-device translation for a single message. The
-// caller passes the message ID and target language; the response carries
-// both the original and the translated text so the bubble can toggle.
+// fetchTranslate: the renderer needs the source message text. We fetch
+// it from the Go data API by way of the message's channel; callers who
+// already have the message text can invoke window.electronAI.translate
+// directly to skip the round trip.
 export async function fetchTranslate(req: {
   messageId: string;
+  channelId?: string;
   targetLanguage?: string;
 }): Promise<TranslateResponse> {
+  const ipc = getElectronAI();
+  if (ipc) {
+    if (!req.channelId) {
+      throw new Error('translate requires channelId in Electron mode');
+    }
+    const messages = await fetchChannelMessages(req.channelId);
+    const msg = messages.find((m) => m.id === req.messageId);
+    if (!msg) throw new Error('message not found');
+    return ipc.translate({
+      messageId: msg.id,
+      channelId: msg.channelId,
+      text: msg.content,
+      targetLanguage: req.targetLanguage,
+    });
+  }
   return apiFetch<TranslateResponse>('/api/ai/translate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
+    body: JSON.stringify({ messageId: req.messageId, targetLanguage: req.targetLanguage }),
   });
 }
 
-// fetchExtractTasks runs B2C task extraction on a single message (with
-// surrounding context). When messageId is omitted the server defaults to
-// the latest message in the channel.
 export async function fetchExtractTasks(req: {
   channelId?: string;
   messageId?: string;
 }): Promise<ExtractTasksResponse> {
+  const ipc = getElectronAI();
+  if (ipc) {
+    if (!req.channelId) {
+      throw new Error('extract-tasks requires channelId in Electron mode');
+    }
+    const messages = await fetchChannelMessages(req.channelId);
+    const focused =
+      messages.find((m) => m.id === req.messageId) ?? messages[messages.length - 1];
+    if (!focused) throw new Error('channel has no messages');
+    const focusedIdx = messages.findIndex((m) => m.id === focused.id);
+    const start = Math.max(0, focusedIdx - 4);
+    const context = messages
+      .slice(start, focusedIdx)
+      .map((m) => ({ senderId: m.senderId, content: m.content }));
+    return ipc.extractTasks({
+      channelId: req.channelId,
+      messageId: focused.id,
+      focused: {
+        id: focused.id,
+        channelId: focused.channelId,
+        senderId: focused.senderId,
+        content: focused.content,
+      },
+      context,
+    });
+  }
   return apiFetch<ExtractTasksResponse>('/api/ai/extract-tasks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -112,12 +185,22 @@ export async function fetchExtractTasks(req: {
   });
 }
 
-// fetchThreadSummary returns the prompt + source list for a thread
-// summary. The frontend hands the same prompt to /api/ai/stream so the
-// model runs exactly once (mirrors the digest flow).
 export async function fetchThreadSummary(req: {
   threadId: string;
 }): Promise<ThreadSummaryResponse> {
+  const ipc = getElectronAI();
+  if (ipc) {
+    const messages = await fetchThreadMessages(req.threadId);
+    return ipc.summarizeThread({
+      threadId: req.threadId,
+      messages: messages.map((m) => ({
+        id: m.id,
+        channelId: m.channelId,
+        senderId: m.senderId,
+        content: m.content,
+      })),
+    });
+  }
   return apiFetch<ThreadSummaryResponse>('/api/ai/summarize-thread', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

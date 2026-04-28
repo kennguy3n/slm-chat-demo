@@ -1,9 +1,11 @@
 # KChat SLM Demo
 
-KChat SLM Demo is a **React + Go** chat demo that proves the AI features
+KChat SLM Demo is an **Electron desktop app** that proves the AI features
 inside KChat can run on-device using quantized local small language models
-(Gemma 4 E2B / E4B), falling back to a confidential server only when
-workspace policy explicitly allows it.
+(Gemma 4 E2B / E4B). The Electron **main process** owns all inference and
+talks directly to a local Ollama daemon (or `MockAdapter` when Ollama
+isn't running). A small Go **data API** provides chats, threads,
+workspaces and seeded KApp cards. No AI traffic ever leaves the device.
 
 The demo runs the **same product surface in two contexts**:
 
@@ -17,8 +19,8 @@ For the full product thesis, architecture, phasing, and progress, see:
 
 - [PROPOSAL.md](./PROPOSAL.md) — product vision and "one shell, two contexts"
   design
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — React frontend, Go services, AI
-  policy engine, KApps object model
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — Electron renderer, Electron main
+  process inference, Go data API, AI policy engine, KApps object model
 - [PHASES.md](./PHASES.md) — seven-phase delivery plan (Phase 0 → Phase 6)
 - [PROGRESS.md](./PROGRESS.md) — per-phase task tracker
 
@@ -26,71 +28,105 @@ For the full product thesis, architecture, phasing, and progress, see:
 
 | Layer       | Stack                                                                          |
 | ----------- | ------------------------------------------------------------------------------ |
-| Frontend    | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL      |
-| Backend     | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
-| Inference   | Go inference proxy with `MockAdapter` and `OllamaAdapter` (Phase 1); router selects E2B / E4B per task. llama.cpp / Unsloth Studio adapters land in later phases. |
+| Shell       | Electron 31 (main + preload + renderer), TypeScript                            |
+| Renderer    | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL      |
+| Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` and an `InferenceRouter` that picks E2B / E4B per task. |
+| IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `modelStatus`, `loadModel`, `unloadModel`, `route`. |
+| Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
 | Persistence | (Phase 0) in-memory; (Phase 6+) PostgreSQL + NATS JetStream + MinIO/S3         |
 
 ## Quick start
 
 ```bash
-# 1) Backend (Go API on :8080)
+# 1) Data API (Go on :8080, optional in dev — only needed for chat / thread data)
 cd backend
 go run ./cmd/server
 
-# 2) Frontend (Vite dev server on :5173, proxies /api -> :8080)
+# 2) Electron app (spawns Vite + Electron, talks IPC for AI, HTTP for data)
 cd frontend
 npm install
-npm run dev
+npm run electron:dev
 ```
 
-Open <http://localhost:5173>. Use the **B2C / B2B** button in the top bar to
-switch between the consumer and business shells. The sidebar lists seeded
-chats; click a chat to view its messages.
+`npm run electron:dev` starts the Vite renderer dev server on
+`http://localhost:5173` and launches Electron with `ELECTRON_DEV=1`.
+The renderer loads the dev server URL; the main process boots the
+inference router (`frontend/electron/inference/bootstrap.ts`) and
+registers all IPC handlers. Use the **B2C / B2B** button in the top bar
+to switch shells; the sidebar lists seeded chats.
+
+For a plain browser dev loop (no Electron, no IPC), `npm run dev` still
+works — every API helper falls back to the legacy HTTP endpoints when
+`window.electronAI` is undefined, which is also how the Vitest suite
+runs.
 
 ### Optional: run with a real local model (Ollama)
 
-The backend auto-detects an Ollama daemon on `http://localhost:11434` (or
-`OLLAMA_BASE_URL`). When it's reachable, the inference router wires Ollama
-as the E2B and E4B adapter; otherwise it falls back to the bundled
-`MockAdapter` so the demo always works.
+The Electron main process auto-detects an Ollama daemon on
+`http://localhost:11434` (or `OLLAMA_BASE_URL`). When it's reachable,
+the inference router wires Ollama as the E2B and E4B adapter; otherwise
+it falls back to the bundled `MockAdapter` so the demo always works
+without a model present.
 
 ```bash
-# Pull the demo model and start the daemon.
 ollama pull gemma-4-e2b
 ollama serve &
 
-# (Optional) point the backend at a non-default URL.
 export OLLAMA_BASE_URL=http://localhost:11434
 
-cd backend && go run ./cmd/server
+cd frontend && npm run electron:dev
 ```
 
 The **Local model** panel in the right sidebar (`DeviceCapabilityPanel`)
-polls `/api/model/status` (which queries Ollama's `/api/ps` for models
-*currently resident in memory*, not `/api/tags`) and exposes Load /
-Unload buttons. Load issues a small `/api/generate` request to warm the
-model; Unload posts `/api/generate` with `keep_alive=0` to evict it
-from memory without deleting the GGUF from disk.
+calls `window.electronAI.modelStatus()` over IPC; the main process
+queries Ollama's `/api/ps` for *currently resident* models. Load /
+Unload buttons issue the same IPC channels (`model:load`, `model:unload`)
+which the main process translates into a small `/api/generate` warm-up
+request and a `keep_alive=0` eviction respectively.
+
+### Production build
+
+```bash
+cd frontend
+npm run electron:build
+```
+
+Vite builds the renderer into `dist/`; `tsconfig.electron.json`
+compiles `electron/` to CommonJS in `dist-electron/`. A
+`scripts/finalize-electron-build.mjs` step copies the renderer into
+the main-process layout so `electron .` (or a future
+`electron-builder` packaging step) loads `dist/index.html` directly
+instead of the dev server.
 
 ## Project structure
 
 ```
 slm-chat-demo/
-├── backend/
+├── backend/                     # Go data API (no AI inference)
 │   ├── cmd/server/main.go
 │   ├── internal/
 │   │   ├── api/
-│   │   │   ├── router.go
+│   │   │   ├── router.go        (data-only routes)
 │   │   │   ├── middleware.go
-│   │   │   ├── handlers/        (chat, workspace, ai, ai_summary, ai_smart_reply, ai_translate, ai_extract_tasks, ai_thread_summary, kapps, artifacts*, model, privacy)
+│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts*)
 │   │   │   └── userctx/         (request-scoped user helpers)
 │   │   ├── services/            (identity, workspace, chat, kapps)
 │   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card)
-│   │   ├── inference/           (Adapter interface, MockAdapter, OllamaAdapter, InferenceRouter)
+│   │   ├── inference/           (DEPRECATED — kept as reference for the TS port)
 │   │   └── store/               (memory store + Phase-0 seed)
 │   └── go.mod
 ├── frontend/
+│   ├── electron/
+│   │   ├── main.ts              (BrowserWindow, lifecycle, dev/prod URL switch)
+│   │   ├── preload.ts           (contextBridge → window.electronAI)
+│   │   ├── ipc-handlers.ts      (ipcMain.handle for ai:* and model:*)
+│   │   └── inference/
+│   │       ├── adapter.ts       (Adapter / Loader / StatusProvider interfaces, types)
+│   │       ├── mock.ts          (canned MockAdapter; same outputs as the Go port)
+│   │       ├── ollama.ts        (HTTP client for the local daemon, NDJSON streaming)
+│   │       ├── router.ts        (PROPOSAL.md §2 scheduler — E2B / E4B / fallback)
+│   │       ├── tasks.ts         (smart-reply / translate / extract-tasks / summary helpers)
+│   │       └── bootstrap.ts     (pings Ollama; chooses real vs. mock adapter set)
 │   ├── src/
 │   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
 │   │   ├── features/
@@ -101,14 +137,15 @@ slm-chat-demo/
 │   │   │   ├── ai-employees/    (placeholder)
 │   │   │   └── knowledge/       (placeholder)
 │   │   ├── stores/              (workspaceStore, chatStore*, aiStore*)
-│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi*)
-│   │   ├── types/               (chat, ai, kapps, workspace)
+│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, electronBridge)
+│   │   ├── types/               (chat, ai, kapps, workspace, electron.d.ts)
 │   │   ├── router.tsx
 │   │   ├── styles.css
 │   │   └── main.tsx
 │   ├── index.html
 │   ├── package.json
 │   ├── tsconfig.json
+│   ├── tsconfig.electron.json
 │   └── vite.config.ts
 ├── PROPOSAL.md
 ├── ARCHITECTURE.md
@@ -122,11 +159,13 @@ phase.
 ## Running the tests
 
 ```bash
-# Frontend (Vitest + React Testing Library + jsdom)
+# Frontend (Vitest + React Testing Library + jsdom; covers the renderer
+# components AND the Electron main-process inference modules).
 cd frontend
 npm test
 
-# Backend (Go's standard `testing` + `net/http/httptest`)
+# Backend (Go's standard `testing` + `net/http/httptest` — data endpoints
+# and the legacy inference package's routing rules).
 cd backend
 go test ./...
 ```
@@ -150,86 +189,70 @@ go test ./...
 - **AI Action Launcher** in the composer: B2C quick actions (Catch me up,
   Translate, Remind me, Extract tasks) and B2B four-intent grid (Create,
   Analyze, Plan, Approve) with submenus
-- **Local inference adapter interface** + `MockAdapter` returning canned
-  responses for `summarize`, `translate`, `extract_tasks`, `smart_reply`,
-  `prefill_approval`, `draft_artifact` — wired into `POST /api/ai/run`
-  and `POST /api/ai/route` (the latter returns the hardcoded Phase-0
-  policy: allow / E2B / on-device / 0 egress)
-- Go HTTP API on `:8080` with chi router, chi/cors, JSON content-type, and
+- **Electron shell** — `frontend/electron/main.ts` opens a
+  BrowserWindow, registers IPC, picks dev URL vs. built `index.html`
+- **Local inference adapter interface in TypeScript** + `MockAdapter`
+  returning canned responses for `summarize`, `translate`,
+  `extract_tasks`, `smart_reply`, `prefill_approval`, `draft_artifact`
+  — wired into `window.electronAI.run` and `window.electronAI.route`
+  (the latter returns the Phase-0 policy: allow / E2B / on-device / 0
+  egress)
+- Go data API on `:8080` with chi router, chi/cors, JSON content-type, and
   a mock-auth middleware that injects a user from the `X-User-ID` header
 - Five seeded users (Alice, Bob, Carol, Dave, Eve) and two workspaces
   (Personal, Acme Corp with Engineering / Finance domains)
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
   plus four seeded KApp cards (family task, neighborhood event, vendor
   approval, engineering PRD draft)
-- 89 frontend tests, full backend test coverage of seed / store /
-  middleware / chat / kapps / inference / ai handlers / SSE streaming /
-  router decisions / unread-summary / model load / unload / smart-reply
-  / translate / extract-tasks / thread-summary / kapps task extraction
+- 112 frontend tests (89 renderer + 23 Electron main-process inference)
+  plus full Go test coverage of the data endpoints
 
 ## Phase 1 — what's in progress
 
-- **Ollama HTTP adapter** (`backend/internal/inference/ollama.go`) talking
-  to a local daemon at `http://localhost:11434` (configurable via
-  `OLLAMA_BASE_URL`); falls back to the `MockAdapter` when the daemon is
-  unreachable so `go run` always works.
-- **Inference router** (`backend/internal/inference/router.go`)
+- **Ollama HTTP adapter in TypeScript**
+  (`frontend/electron/inference/ollama.ts`) talking to a local daemon
+  at `http://localhost:11434` (configurable via `OLLAMA_BASE_URL`); the
+  Electron main process pings on startup and falls back to the
+  `MockAdapter` when the daemon is unreachable so `npm run electron:dev`
+  always works.
+- **Inference router** (`frontend/electron/inference/router.ts`)
   implementing PROPOSAL.md §2's scheduler rule: short / private /
   latency-sensitive tasks (`summarize`, `translate`, `extract_tasks`,
   `smart_reply`) route to E2B; reasoning-heavy tasks (`draft_artifact`,
   `prefill_approval`) prefer E4B with a fallback to E2B when no E4B
   adapter is available. The router exposes its decision (model, tier,
-  reason) so the privacy strip can show *why* a model was chosen.
-- **SSE streaming** on `POST /api/ai/stream` (`Content-Type:
-  text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`)
-  with a matching browser client (`frontend/src/api/streamAI.ts`) that
-  reads `data: {...}` frames out of the `fetch` `ReadableStream` and
-  exposes an `AbortController` for cancellation.
+  reason) over IPC so the privacy strip can show *why* a model was
+  chosen.
+- **IPC streaming** on the `ai:stream` channel — the main process pumps
+  per-chunk `ai:stream:chunk` events back to the renderer, where
+  `frontend/src/api/streamAI.ts` translates them into the same
+  `onDelta` / `onDone` callback shape the SSE client used to expose,
+  with an `AbortController` for cancellation.
 - **Live model status panel** (`DeviceCapabilityPanel`,
-  ARCHITECTURE.md module #10): polls `/api/model/status` every 10 s and
-  surfaces model name, loaded/unloaded badge, quant level, model RAM
-  usage, sidecar state, plus device RAM and WebGPU support; Load /
-  Unload buttons hit `/api/model/load` and `/api/model/unload`.
-- **B2C "Catch me up" digest** end-to-end:
-  `GET /api/chats/unread-summary` collects recent B2C messages, runs
-  them through the inference router with `taskType: summarize`, and
-  returns the AI digest plus source back-links. The frontend wires
-  `ActionLauncher` → `streamAITask` → `DigestCard` → `PrivacyStrip` so
-  the digest streams in token-by-token and renders source pins +
-  privacy metadata once complete.
-- **B2C smart reply generation** — `POST /api/ai/smart-reply` returns
-  2–3 short contextual reply suggestions for the last incoming message
-  in a chat. The `SmartReplyBar` component renders them as chips above
-  the composer; tapping a chip seeds the input text. E2B routing,
-  on-device / 0-byte egress privacy strip.
-- **B2C inline translation** — `POST /api/ai/translate` translates a
-  single message and returns *both* the original and the translated
-  text. The `TranslationCaption` component renders below the bubble
-  with a tap-to-toggle between original / translated. Wired into
-  `MessageBubble` as a per-message "Translate" affordance.
-- **B2C task extraction** — `POST /api/ai/extract-tasks` extracts
-  actionable items (tasks, reminders, shopping) from a message + its
-  surrounding context and classifies each by type. `TaskExtractionCard`
-  renders an inline AI badge expandable to per-item Accept / Edit /
-  Discard rows. Triggered from the `ActionLauncher`'s "Extract tasks"
-  quick action.
-- **B2B thread summarization** — `POST /api/ai/summarize-thread`
-  fetches every message in a thread and returns the summarize prompt +
-  source list (no double inference, same contract as the digest).
-  Tier hint included (E2B for ≤ 8 messages, E4B for longer threads).
-  `ThreadSummaryCard` renders in `ThreadPanel` with streamed body,
-  source back-links, and a privacy strip.
-- **B2B task extraction from threads** — `POST /api/kapps/tasks/extract`
-  replaces the Phase-3 stub with a real handler that returns task
-  title / owner / due-date / status / source-message provenance. The
-  same `TaskExtractionCard` is reused with B2B field rendering and an
-  "Add to plan" accept label.
+  ARCHITECTURE.md module #10): polls `window.electronAI.modelStatus()`
+  every 10 s and surfaces model name, loaded/unloaded badge, quant
+  level, model RAM usage, sidecar state, plus device RAM and WebGPU
+  support; Load / Unload buttons hit `model:load` / `model:unload`
+  IPC channels.
+- **B2C "Catch me up" digest** end-to-end: the renderer fetches B2C
+  message data from `GET /api/chats?context=b2c` and `GET
+  /api/chats/{id}/messages`, then calls `window.electronAI.unreadSummary`
+  (or streams via `window.electronAI.stream` with `taskType:
+  summarize`). The Go side stays data-only.
+- **B2C smart reply, inline translation, task extraction** — same
+  pattern: the renderer pulls message context from the Go data API
+  and forwards it to `window.electronAI.smartReply`,
+  `window.electronAI.translate`, `window.electronAI.extractTasks`.
+  E2B routing, on-device / 0-byte egress privacy strip on every output.
+- **B2B thread summarization + task extraction** — the renderer pulls
+  thread messages from `GET /api/threads/{threadId}/messages` and
+  forwards them to `window.electronAI.summarizeThread` /
+  `window.electronAI.extractKAppTasks`.
 
 ## What's deferred to later phases
 
 The architecture documents reference PostgreSQL, NATS JetStream, MinIO/S3,
 Meilisearch, additional local-model sidecars (llama.cpp / llama-server,
-Unsloth Studio), WebSocket streaming, the full policy engine, AI
-Employees, connectors, and the knowledge graph. See
-[PHASES.md](./PHASES.md) for the full plan and
+Unsloth Studio), the full policy engine, AI Employees, connectors, and
+the knowledge graph. See [PHASES.md](./PHASES.md) for the full plan and
 [PROGRESS.md](./PROGRESS.md) for the current per-task tracker.

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/api"
-	"github.com/kennguy3n/slm-chat-demo/backend/internal/inference"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/models"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/services"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/store"
@@ -16,14 +15,11 @@ import (
 func newTestServer() http.Handler {
 	mem := store.NewMemory()
 	store.Seed(mem)
-	mock := inference.NewMockAdapter()
-	router := inference.NewInferenceRouter(mock, mock, mock)
 	return api.NewRouter(api.Deps{
 		Identity:   services.NewIdentity(mem, "user_alice"),
 		Workspaces: services.NewWorkspace(mem),
 		Chat:       services.NewChat(mem),
 		KApps:      services.NewKApps(mem),
-		Inference:  router,
 	})
 }
 

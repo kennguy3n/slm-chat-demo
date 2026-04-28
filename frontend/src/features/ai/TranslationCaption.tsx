@@ -46,7 +46,7 @@ export function TranslationCaption({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchTranslate({ messageId, targetLanguage })
+    fetchTranslate({ messageId, channelId, targetLanguage })
       .then((d) => {
         if (cancelled) return;
         setData(d);
@@ -62,7 +62,7 @@ export function TranslationCaption({
     return () => {
       cancelled = true;
     };
-  }, [messageId, targetLanguage, requested]);
+  }, [messageId, channelId, targetLanguage, requested]);
 
   if (!requested) {
     return (

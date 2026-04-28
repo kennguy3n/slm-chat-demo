@@ -8,17 +8,20 @@ Each phase has a goal, a list of deliverables, and explicit exit criteria. The i
 
 ## Phase 0 — Consolidated prototype foundation
 
-**Goal:** Replace static click-throughs with one React/Go interactive demo.
+**Goal:** Replace static click-throughs with one Electron desktop demo
+(React renderer, Electron main-process inference, optional Go data API).
 
 **Deliverables:**
 
+- Electron shell hosting the React renderer (`frontend/electron/`)
 - React app shell for B2C and B2B modes
-- Go backend with mock auth, mock users, mock workspaces
+- Go data-only backend with mock auth, mock users, mock workspaces
 - Seeded demo data from current B2C/B2B prototypes
 - Shared card system (task, approval, artifact, event cards)
 - Privacy strip component
 - Basic AI action launcher
-- Local inference adapter interface (first runs mocked)
+- Local inference adapter interface in the Electron main process (first
+  runs mocked)
 
 **Exit criteria:** User can switch between B2C and B2B demo modes and trigger mocked AI flows with realistic cards.
 
@@ -31,9 +34,10 @@ Each phase has a goal, a list of deliverables, and explicit exit criteria. The i
 **Deliverables:**
 
 - Local model status panel (loaded/unloaded, model name, memory usage)
-- Go inference proxy to llama.cpp/Ollama/Unsloth
+- Electron main-process inference adapter to Ollama (TypeScript;
+  llama.cpp and Unsloth follow as additional adapters)
 - E2B and E4B routing based on task type and device capability
-- Streaming responses over SSE/WebSocket
+- Streaming responses over IPC (`ai:stream` + chunk events)
 - Privacy strip with real model name and compute location
 - B2C AI: summarize unread, smart reply, translate, extract task
 - B2B AI: summarize thread, extract tasks, prefill approval, draft short artifact section

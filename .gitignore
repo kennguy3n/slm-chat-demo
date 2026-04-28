@@ -1,6 +1,8 @@
 # Frontend
 frontend/node_modules
 frontend/dist
+frontend/dist-electron
+frontend/release
 frontend/coverage
 frontend/.vite
 frontend/*.tsbuildinfo
@@ -17,3 +19,4 @@ backend/coverage.out
 .idea
 .vscode
 *.log
+/package-lock.json

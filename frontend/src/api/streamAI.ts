@@ -1,4 +1,5 @@
 import { apiBase, DEMO_USER_ID } from './client';
+import { getElectronAI } from './electronBridge';
 import type { AIRunRequest } from '../types/ai';
 
 export interface StreamAIHandlers {
@@ -7,15 +8,19 @@ export interface StreamAIHandlers {
   onError?: (err: Error) => void;
 }
 
-// streamAITask POSTs to /api/ai/stream and parses SSE frames out of the
-// response body. Each `data: {...}` frame is decoded as JSON and dispatched
-// as either onChunk(delta) or onDone(). EventSource is not used because the
-// endpoint is a POST; instead we read the ReadableStream returned by fetch.
+// streamAITask streams an inference run.
 //
-// The returned AbortController lets callers cancel the in-flight stream
-// (e.g. when the user navigates away or hits "stop").
+// In Electron mode (window.electronAI present) it dispatches over IPC
+// and the main process pumps back chunk events.
+//
+// In web mode it POSTs to /api/ai/stream and parses SSE frames from
+// the response body.
+//
+// Both paths return an AbortController callers can use to cancel the
+// in-flight stream.
 export function streamAITask(req: AIRunRequest, handlers: StreamAIHandlers): AbortController {
   const controller = new AbortController();
+  const ipc = getElectronAI();
 
   let finished = false;
   const fireDone = () => {
@@ -23,6 +28,41 @@ export function streamAITask(req: AIRunRequest, handlers: StreamAIHandlers): Abo
     finished = true;
     handlers.onDone?.();
   };
+
+  if (ipc) {
+    let cancel: () => void = () => undefined;
+    let errored = false;
+    cancel = ipc.stream(
+      req,
+      (chunk) => {
+        if (controller.signal.aborted) return;
+        if (chunk.error) {
+          if (!errored) {
+            errored = true;
+            handlers.onError?.(new Error(chunk.error));
+          }
+          return;
+        }
+        if (typeof chunk.delta === 'string' && chunk.delta.length > 0) {
+          handlers.onChunk(chunk.delta);
+        }
+        if (chunk.done) fireDone();
+      },
+      () => {
+        if (controller.signal.aborted) return;
+        fireDone();
+      },
+      (err) => {
+        if (controller.signal.aborted) return;
+        if (!errored) {
+          errored = true;
+          handlers.onError?.(err);
+        }
+      },
+    );
+    controller.signal.addEventListener('abort', () => cancel());
+    return controller;
+  }
 
   const run = async () => {
     let res: Response;
@@ -53,15 +93,10 @@ export function streamAITask(req: AIRunRequest, handlers: StreamAIHandlers): Abo
     let buffer = '';
 
     try {
-      // Read frames until the server closes the stream.
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-
-        // SSE frames are separated by a blank line. Process every complete
-        // frame currently in the buffer; keep the partial tail for the next
-        // read.
         let sepIdx = buffer.indexOf('\n\n');
         while (sepIdx !== -1) {
           const frame = buffer.slice(0, sepIdx);
@@ -70,7 +105,6 @@ export function streamAITask(req: AIRunRequest, handlers: StreamAIHandlers): Abo
           sepIdx = buffer.indexOf('\n\n');
         }
       }
-      // Flush any final buffered frame that didn't end with a blank line.
       if (buffer.trim().length > 0) {
         handleFrame(buffer, handlers, fireDone);
       }
@@ -86,7 +120,6 @@ export function streamAITask(req: AIRunRequest, handlers: StreamAIHandlers): Abo
 }
 
 function handleFrame(frame: string, handlers: StreamAIHandlers, fireDone: () => void): void {
-  // A frame is a series of lines; we only care about `data:` lines.
   for (const rawLine of frame.split('\n')) {
     const line = rawLine.trimEnd();
     if (!line.startsWith('data:')) continue;
