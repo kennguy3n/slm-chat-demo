@@ -6,6 +6,11 @@ export async function fetchMe(): Promise<User> {
   return apiFetch<User>('/api/users/me');
 }
 
+export async function fetchUsers(): Promise<User[]> {
+  const data = await apiFetch<{ users: User[] }>('/api/users');
+  return data.users;
+}
+
 export async function fetchChats(context?: ContextMode): Promise<Channel[]> {
   const qs = context ? `?context=${context}` : '';
   const data = await apiFetch<{ chats: Channel[] }>(`/api/chats${qs}`);

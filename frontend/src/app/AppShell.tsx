@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   fetchChats,
   fetchMe,
+  fetchUsers,
   fetchWorkspaceChannels,
   fetchWorkspaces,
 } from '../api/chatApi';
@@ -19,6 +20,7 @@ export function AppShell() {
   const { context, workspaceId, setWorkspaceId } = useWorkspaceStore();
 
   const meQ = useQuery({ queryKey: ['me'], queryFn: fetchMe });
+  const usersQ = useQuery({ queryKey: ['users'], queryFn: fetchUsers });
   const wsQ = useQuery({ queryKey: ['workspaces'], queryFn: fetchWorkspaces });
   const chatsQ = useQuery({
     queryKey: ['chats', context],
@@ -48,9 +50,10 @@ export function AppShell() {
 
   const users: Record<string, User> = useMemo(() => {
     const map: Record<string, User> = {};
+    for (const u of usersQ.data ?? []) map[u.id] = u;
     if (meQ.data) map[meQ.data.id] = meQ.data;
     return map;
-  }, [meQ.data]);
+  }, [usersQ.data, meQ.data]);
 
   const activeWorkspace = visibleWorkspaces.find((w) => w.id === workspaceId);
 

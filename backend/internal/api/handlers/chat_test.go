@@ -126,6 +126,37 @@ func TestThreadMessagesIncludesRootAndReplies(t *testing.T) {
 	}
 }
 
+func TestUsersListReturnsFullDirectory(t *testing.T) {
+	h := newTestServer()
+	rec := doGet(t, h, "/api/users", "user_alice")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		Users []models.User `json:"users"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Users) != 5 {
+		t.Fatalf("expected 5 seeded users, got %d", len(body.Users))
+	}
+	wantIDs := map[string]bool{
+		"user_alice": false, "user_bob": false, "user_carol": false,
+		"user_dave": false, "user_eve": false,
+	}
+	for _, u := range body.Users {
+		if _, ok := wantIDs[u.ID]; ok {
+			wantIDs[u.ID] = true
+		}
+	}
+	for id, seen := range wantIDs {
+		if !seen {
+			t.Errorf("expected user %s in directory", id)
+		}
+	}
+}
+
 func TestUsersMeReturnsAuthenticatedUser(t *testing.T) {
 	h := newTestServer()
 	rec := doGet(t, h, "/api/users/me", "user_dave")

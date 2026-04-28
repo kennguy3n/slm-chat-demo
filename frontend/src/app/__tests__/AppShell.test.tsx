@@ -5,6 +5,17 @@ import { AppShell } from '../AppShell';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { renderWithProviders } from '../../test/renderWithProviders';
 
+// TopBar uses TanStack Router's useNavigate to keep the URL in sync with the
+// context toggle. In isolation tests we don't mount the real router; instead
+// we stub useNavigate to update the store directly so the click still flips
+// the visible layout.
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => (opts: { to: string }) => {
+    const ctx = opts.to === '/b2b' ? 'b2b' : 'b2c';
+    useWorkspaceStore.getState().setContext(ctx);
+  },
+}));
+
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -21,6 +32,14 @@ function setupFetch() {
         displayName: 'Alice Chen',
         email: 'a@x',
         avatarColor: '#7c3aed',
+      });
+    }
+    if (url.endsWith('/api/users')) {
+      return jsonResponse({
+        users: [
+          { id: 'user_alice', displayName: 'Alice Chen', email: 'a@x', avatarColor: '#7c3aed' },
+          { id: 'user_bob', displayName: 'Bob Martinez', email: 'b@x', avatarColor: '#0ea5e9' },
+        ],
       });
     }
     if (url.endsWith('/api/workspaces')) {

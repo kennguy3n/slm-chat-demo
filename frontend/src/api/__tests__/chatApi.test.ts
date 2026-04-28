@@ -4,6 +4,7 @@ import {
   fetchChats,
   fetchMe,
   fetchThreadMessages,
+  fetchUsers,
   fetchWorkspaceChannels,
   fetchWorkspaces,
 } from '../chatApi';
@@ -36,6 +37,20 @@ describe('chatApi', () => {
     const init = fetchSpy.mock.calls[0][1] as RequestInit;
     const headers = new Headers(init.headers);
     expect(headers.get('X-User-ID')).toBe('user_alice');
+  });
+
+  it('fetchUsers unwraps the user directory', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse({
+        users: [
+          { id: 'user_alice', displayName: 'Alice', email: 'a@x', avatarColor: '#000' },
+          { id: 'user_bob', displayName: 'Bob', email: 'b@x', avatarColor: '#111' },
+        ],
+      }),
+    );
+    const users = await fetchUsers();
+    expect(users.map((u) => u.id)).toEqual(['user_alice', 'user_bob']);
+    expect(fetchSpy).toHaveBeenCalledWith('/api/users', expect.any(Object));
   });
 
   it('fetchChats appends ?context when provided', async () => {

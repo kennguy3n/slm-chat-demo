@@ -36,7 +36,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(JSONContentType)
 
 	chatH := handlers.NewChat(d.Chat)
-	wsH := handlers.NewWorkspace(d.Workspaces)
+	wsH := handlers.NewWorkspace(d.Workspaces, d.Identity)
 	aiH := handlers.NewAI()
 	kH := handlers.NewKApps()
 	artH := handlers.NewArtifacts()
@@ -52,6 +52,7 @@ func NewRouter(d Deps) http.Handler {
 
 		// Identity / workspaces / channels.
 		r.Get("/users/me", wsH.Me)
+		r.Get("/users", wsH.Users)
 		r.Get("/workspaces", wsH.List)
 		r.Get("/workspaces/{id}/channels", wsH.Channels)
 

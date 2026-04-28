@@ -10,12 +10,15 @@ import (
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/services"
 )
 
-// Workspace exposes workspace + channel HTTP handlers.
+// Workspace exposes workspace + channel + user-directory HTTP handlers.
 type Workspace struct {
 	workspaces *services.Workspace
+	identity   *services.Identity
 }
 
-func NewWorkspace(w *services.Workspace) *Workspace { return &Workspace{workspaces: w} }
+func NewWorkspace(w *services.Workspace, id *services.Identity) *Workspace {
+	return &Workspace{workspaces: w, identity: id}
+}
 
 // Me returns the current authenticated user.
 func (h *Workspace) Me(w http.ResponseWriter, r *http.Request) {
@@ -25,6 +28,11 @@ func (h *Workspace) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
+}
+
+// Users returns the full user directory. Phase 0 has a small fixed roster.
+func (h *Workspace) Users(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"users": h.identity.List()})
 }
 
 // List returns all seeded workspaces.

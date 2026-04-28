@@ -39,3 +39,9 @@ func (i *Identity) Resolve(id string) (models.User, bool) {
 func (i *Identity) DefaultUserID() string {
 	return i.defaultUserID
 }
+
+// List returns every seeded user. Phase 0 has a small fixed roster; later
+// phases will replace this with a paginated directory query.
+func (i *Identity) List() []models.User {
+	return i.store.ListUsers()
+}

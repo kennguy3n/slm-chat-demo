@@ -1,3 +1,4 @@
+import { useNavigate } from '@tanstack/react-router';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { Workspace } from '../types/workspace';
 
@@ -10,7 +11,13 @@ interface Props {
 // egress counter. AI mode and egress are static in Phase 0 — Phase 1 wires them
 // to the policy engine.
 export function TopBar({ workspaces }: Props) {
-  const { context, toggleContext, workspaceId, setWorkspaceId } = useWorkspaceStore();
+  const { context, workspaceId, setWorkspaceId } = useWorkspaceStore();
+  const navigate = useNavigate();
+
+  const switchContext = () => {
+    const next = context === 'b2c' ? '/b2b' : '/b2c';
+    void navigate({ to: next });
+  };
 
   const visible = workspaces.filter((w) => w.context === context);
   const currentId = workspaceId ?? visible[0]?.id ?? '';
@@ -59,7 +66,7 @@ export function TopBar({ workspaces }: Props) {
         <button
           type="button"
           className="topbar__mode"
-          onClick={toggleContext}
+          onClick={switchContext}
           aria-label={`Switch to ${context === 'b2c' ? 'B2B' : 'B2C'} context`}
         >
           {context === 'b2c' ? 'B2C' : 'B2B'} mode
