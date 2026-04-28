@@ -71,6 +71,24 @@ describe('ShoppingNudgesPanel', () => {
     );
   });
 
+  it('dedupes accepted nudges against the local list case-insensitively', async () => {
+    renderWithProviders(<ShoppingNudgesPanel channelId="ch_family" />);
+    // User has already added "sunscreen" lowercase to the list.
+    await userEvent.type(screen.getByTestId('shopping-nudges-draft'), 'sunscreen');
+    await userEvent.click(screen.getByTestId('shopping-nudges-add'));
+    await userEvent.click(screen.getByTestId('shopping-nudges-run'));
+    await waitFor(() =>
+      expect(screen.getByTestId('shopping-nudges-nudges')).toBeInTheDocument(),
+    );
+    // The model returns "Sunscreen" (different casing) — accepting it must
+    // not produce a second list entry.
+    await userEvent.click(screen.getByTestId('shopping-nudges-accept-0'));
+    const list = screen.getByTestId('shopping-nudges-list');
+    const matches = list.querySelectorAll('li');
+    expect(matches).toHaveLength(1);
+    expect(list).toHaveTextContent('sunscreen');
+  });
+
   it('renders the privacy strip with on-device routing details', async () => {
     renderWithProviders(<ShoppingNudgesPanel channelId="ch_family" />);
     await userEvent.click(screen.getByTestId('shopping-nudges-run'));

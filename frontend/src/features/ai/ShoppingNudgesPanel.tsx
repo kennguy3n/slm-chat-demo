@@ -37,7 +37,11 @@ export function ShoppingNudgesPanel({ channelId, channelName }: Props) {
   }
 
   function acceptNudge(item: string) {
-    setItems((rows) => (rows.includes(item) ? rows : [...rows, item]));
+    // Match `addItem`'s case-insensitive dedup so adding "sunscreen" and then
+    // accepting a "Sunscreen" nudge doesn't end up with both spellings.
+    setItems((rows) =>
+      rows.some((i) => i.toLowerCase() === item.toLowerCase()) ? rows : [...rows, item],
+    );
     setData((d) =>
       d
         ? {

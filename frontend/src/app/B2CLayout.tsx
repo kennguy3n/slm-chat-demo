@@ -102,26 +102,36 @@ export function B2CLayout({ chats, users, currentUserId }: Props) {
           ))}
         </nav>
         <div className="rightpanel__body" data-testid={`b2c-right-body-${rightTab}`}>
-          {rightTab === 'digest' && <MorningDigestPanel />}
-          {rightTab === 'family' && (
+          {/*
+           * All panels stay mounted; we hide inactive ones with `hidden` so
+           * that user-curated state (the local shopping list, RSVP picks,
+           * generated checklist / digest) survives a tab switch instead of
+           * being thrown away by an unmount.
+           */}
+          <div role="tabpanel" hidden={rightTab !== 'digest'}>
+            <MorningDigestPanel />
+          </div>
+          <div role="tabpanel" hidden={rightTab !== 'family'}>
             <FamilyChecklistCard
               channelId={selected?.id ?? null}
               channelName={selected?.name}
             />
-          )}
-          {rightTab === 'shopping' && (
+          </div>
+          <div role="tabpanel" hidden={rightTab !== 'shopping'}>
             <ShoppingNudgesPanel
               channelId={selected?.id ?? null}
               channelName={selected?.name}
             />
-          )}
-          {rightTab === 'events' && (
+          </div>
+          <div role="tabpanel" hidden={rightTab !== 'events'}>
             <EventRSVPCard
               channelId={selected?.id ?? null}
               channelName={selected?.name}
             />
-          )}
-          {rightTab === 'memory' && <AIMemoryPage />}
+          </div>
+          <div role="tabpanel" hidden={rightTab !== 'memory'}>
+            <AIMemoryPage />
+          </div>
         </div>
       </aside>
     </div>

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { B2CLayout } from '../B2CLayout';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { renderWithProviders } from '../../test/renderWithProviders';
@@ -65,5 +66,19 @@ describe('B2CLayout', () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
     expect(screen.getByTestId('morning-digest-panel')).toBeInTheDocument();
     expect(screen.getByTestId('morning-digest-empty')).toBeInTheDocument();
+  });
+
+  it('preserves the local shopping list across right-rail tab switches', async () => {
+    renderWithProviders(<B2CLayout chats={chats} users={{}} />);
+    await userEvent.click(screen.getByTestId('b2c-right-tab-shopping'));
+    await userEvent.type(screen.getByTestId('shopping-nudges-draft'), 'Bananas');
+    await userEvent.click(screen.getByTestId('shopping-nudges-add'));
+    expect(screen.getByTestId('shopping-nudges-list')).toHaveTextContent('Bananas');
+
+    // Switch away to the memory tab, then back; the locally-curated list
+    // must still be there (panels stay mounted).
+    await userEvent.click(screen.getByTestId('b2c-right-tab-memory'));
+    await userEvent.click(screen.getByTestId('b2c-right-tab-shopping'));
+    expect(screen.getByTestId('shopping-nudges-list')).toHaveTextContent('Bananas');
   });
 });
