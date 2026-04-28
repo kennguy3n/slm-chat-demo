@@ -330,8 +330,13 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
 
 ## 6. MVP scope
 
-The MVP is a **React + Go local demo** that runs on a laptop and shows the
-four flows above end-to-end with real local models.
+The MVP is an **Electron desktop app** that runs on a laptop and shows
+the four flows above end-to-end with real local models. The Electron
+**main process** owns inference (TypeScript port of the original Go
+adapter contract; talks to a local Ollama daemon directly), the
+**renderer** is the same React UI, and a small Go data API provides
+chats, threads, workspaces and seeded KApp cards. No AI traffic ever
+leaves the device.
 
 ### Build first
 

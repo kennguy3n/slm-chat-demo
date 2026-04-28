@@ -21,7 +21,8 @@ Last updated: 2026-04-28 (Phase 1 status row)
 ## Phase 0 — Consolidated prototype foundation
 
 - [x] React app shell with B2C/B2B mode switching
-- [x] Go backend skeleton with mock auth
+- [x] Electron shell hosting the React renderer (`frontend/electron/main.ts`, `preload.ts`, IPC bridge)
+- [x] Go data-only backend skeleton with mock auth
 - [x] Mock users and workspaces
 - [x] Seeded demo data (B2C: personal/family/community chats; B2B: workspace/domain/channel with threads)
 - [x] Shared card system (TaskCard, ApprovalCard, ArtifactCard, EventCard)
@@ -36,14 +37,14 @@ Last updated: 2026-04-28 (Phase 1 status row)
 ## Phase 1 — Local LLM MVP
 
 - [x] Local model status panel (model name, loaded/unloaded, memory usage)
-- [x] Go inference proxy (adapter interface)
-- [x] Ollama adapter
+- [x] Electron main-process inference adapter contract (`frontend/electron/inference/adapter.ts`)
+- [x] Ollama adapter (TypeScript, in the Electron main process)
 - [ ] llama.cpp / llama-server adapter
 - [x] E2B routing (short/private/latency-sensitive tasks)
 - [ ] E4B routing (reasoning-heavy tasks) — partial: router prefers E4B for `draft_artifact`/`prefill_approval`, but real E4B adapter wiring lands with the second Ollama tier
-- [x] SSE streaming responses
-- [ ] WebSocket streaming responses
-- [x] Privacy strip with real compute location and model name (now driven by `/api/ai/route` decision)
+- [x] IPC streaming responses (`ai:stream` channel + `ai:stream:chunk` events)
+- [ ] WebSocket / native streaming for confidential server mode
+- [x] Privacy strip with real compute location and model name (driven by `window.electronAI.route` decision)
 - [x] B2C: Summarize unread chats
 - [x] B2C: Smart reply generation
 - [x] B2C: Inline translation
@@ -162,3 +163,8 @@ Last updated: 2026-04-28 (Phase 1 status row)
 | 2026-04-28 | Phase 1: B2B thread summarization (`POST /api/ai/summarize-thread`, `ThreadSummaryCard`) — same no-double-inference pattern as the digest; tier hint (E2B for short threads, E4B for long) included in the response so the privacy strip can show real routing. |
 | 2026-04-28 | Phase 1: B2B task extraction from threads (`POST /api/kapps/tasks/extract`, `ThreadPanel` + reusable `TaskExtractionCard`) — replaces the Phase-3 stub with a real handler that returns owner / due-date / status / source-message provenance. |
 | 2026-04-28 | Phase 1 status row bumped to ~75% (5 new B2C + B2B AI features end-to-end). New frontend types in `types/ai.ts`, new API clients in `api/aiApi.ts` and `api/kappsApi.ts`. |
+| 2026-04-28 | Architecture realignment: KChat SLM Demo became an **Electron desktop app**. Step 1 added the Electron shell (`frontend/electron/main.ts`, `preload.ts`, `electron:dev` / `electron:build` scripts, `tsconfig.electron.json`). Step 2 ported the Go inference layer to TypeScript under `frontend/electron/inference/` (`adapter.ts`, `mock.ts`, `ollama.ts`, `router.ts`, `tasks.ts`, `bootstrap.ts`) and wired all `ai:*` / `model:*` IPC channels in `electron/ipc-handlers.ts`. |
+| 2026-04-28 | Step 3: frontend API layer (`api/aiApi.ts`, `api/streamAI.ts`, `api/kappsApi.ts`) now routes through `window.electronAI.*` when present and falls back to HTTP when running in a plain browser (Vitest, `npm run dev`). New `api/electronBridge.ts` helper and `types/electron.d.ts` declaration; `TranslationCaption` carries `channelId` so the IPC path can resolve the message text. |
+| 2026-04-28 | Step 4: stripped AI inference from the Go backend. Removed `/api/ai/*`, `/api/model/*`, `/api/chats/unread-summary`, `/api/kapps/tasks/extract`, `/api/kapps/approvals/prefill`, `/api/artifacts/*`, plus their handlers and tests. Go `cmd/server` no longer bootstraps Ollama; `internal/inference/` is marked deprecated and kept only as reference for the TS port. The data API now exposes only `/api/users`, `/api/workspaces`, `/api/chats`, `/api/threads/*`, `/api/kapps/cards`, and `/api/privacy/egress-preview`. |
+| 2026-04-28 | Step 5: Vitest specs for the Electron main-process inference modules (`router.test.ts`, `mock.test.ts`, `ollama.test.ts`) covering taskPreference, the E2B/E4B/fallback decision tree, NDJSON streaming and `/api/ps` status parsing. Frontend test count: 89 → 112. |
+| 2026-04-28 | Step 6: docs realigned (this PROGRESS entry, README.md quick-start now `npm run electron:dev`, ARCHITECTURE.md system diagram + §3.3 IPC channels + §4.1 Electron-main-→-Ollama path, PROPOSAL.md §6 MVP scope, PHASES.md Phase 0 + Phase 1 deliverables). |

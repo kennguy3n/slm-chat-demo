@@ -19,3 +19,4 @@ backend/coverage.out
 .idea
 .vscode
 *.log
+/package-lock.json
