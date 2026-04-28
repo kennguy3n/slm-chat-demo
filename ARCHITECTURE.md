@@ -134,12 +134,12 @@ frontend/
     │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces)
     │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, activityLog) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), ThreadSummaryCard for the B2B thread summary, ApprovalPrefillCard for B2B approval prefill, and ArtifactDraftCard for the B2B PRD / RFC / Proposal / SOP / QBR drafting flow; Phase 2 adds TaskCreatedPill (inline AI badges below messages), MorningDigestPanel (B2C right-rail catch-up), FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard (B2C trip / event planning skill), GuardrailRewriteCard (pre-send PII / tone / unverified-claim review), and MetricsDashboard backed by the new `activityLog` module which records every AI run; PrivacyStrip itself gained an expandable `whyDetails[]` list in Phase 2
     │   ├── memory/ (AIMemoryPage, memoryStore) — Phase 2: local-only IndexedDB-backed second brain (DB `kchat-slm-memory`, store `facts`) with an in-memory fallback for jsdom / SSR; the AI never auto-writes — every fact passes through the AIMemoryPage UI
-    │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard) — Phase 0; FormCard lands in Phase 3
+    │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, TasksKApp, CreateTaskForm) — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, and the new `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle. FormCard lands later in Phase 3.
     │   ├── artifacts/ (ArtifactWorkspace)                                    — Phase 3
     │   ├── ai-employees/ (AIEmployeePanel)                                   — Phase 4
     │   └── knowledge/ (SourcePicker)                                         — Phase 5
-    ├── stores/ (chatStore, aiStore, workspaceStore)
-    ├── api/ (client, aiApi, chatApi, kappsApi, streamAI, electronBridge)
+    ├── stores/ (chatStore, aiStore, workspaceStore, kappsStore — Phase 3 task/approval CRUD with optimistic merge)
+    ├── api/ (client, aiApi, chatApi, kappsApi, workspaceApi — Phase 3 navigation, streamAI, electronBridge)
     ├── types/ (chat, ai, kapps, workspace, electron.d.ts)
     ├── router.tsx
     ├── styles.css
@@ -291,13 +291,22 @@ The data API runs over HTTP on `:8080`; AI calls run over Electron IPC.
 #### 3.3a Go data API (HTTP)
 
 ```
-GET  /healthz
-GET  /api/users/me, /api/users
-GET  /api/workspaces, /api/workspaces/{id}/channels
-GET  /api/chats, /api/chats/{chatId}/messages
-GET  /api/threads/{threadId}/messages
-GET  /api/kapps/cards (?channelId=…)
-GET  /api/privacy/egress-preview
+GET    /healthz
+GET    /api/users/me, /api/users
+GET    /api/workspaces, /api/workspaces/{id}/channels
+GET    /api/workspaces/{id}/domains                       (Phase 3)
+GET    /api/domains/{id}/channels                         (Phase 3)
+GET    /api/chats, /api/chats/{chatId}/messages
+GET    /api/threads/{threadId}/messages
+GET    /api/threads/{threadId}/linked-objects             (Phase 3)
+GET    /api/kapps/cards (?channelId=…)
+GET    /api/kapps/tasks (?channelId=…)                    (Phase 3)
+POST   /api/kapps/tasks                                   (Phase 3)
+PATCH  /api/kapps/tasks/{id}                              (Phase 3)
+PATCH  /api/kapps/tasks/{id}/status                       (Phase 3)
+DELETE /api/kapps/tasks/{id}                              (Phase 3)
+POST   /api/kapps/approvals/{id}/decide                   (Phase 3)
+GET    /api/privacy/egress-preview
 ```
 
 All endpoints honour the `MockAuth` middleware (Phase 0) which extracts
@@ -397,8 +406,17 @@ Phase 1 implements this diagram with `OllamaAdapter` (TypeScript)
 talking to a local Ollama daemon at `OLLAMA_BASE_URL` (default
 `http://localhost:11434`). The Electron main process boots the
 `InferenceRouter` in `bootstrap.ts`, which pings Ollama with a 500 ms
-timeout; if reachable it wires Ollama as both the E2B and E4B adapter,
-otherwise it falls back to `MockAdapter`.
+timeout; if reachable it instantiates **two distinct `OllamaAdapter`
+instances** — one bound to `E2B_MODEL` (default `gemma-4-e2b`) and one
+bound to `E4B_MODEL` (default `gemma-4-e4b`). Bootstrap pings each
+model independently; if the larger E4B model has not been pulled it
+aliases the E4B slot to the E2B adapter and the router's `hasE4B()`
+returns `false`, so reasoning-heavy tasks gracefully fall back to E2B
+without ever hitting an unloaded model. When the daemon itself is
+unreachable both adapters fall back to `MockAdapter`. The
+`model:status` IPC channel reports both tiers (`e2bModel`, `e2bLoaded`,
+`e4bModel`, `e4bLoaded`, `hasE4B`) so the renderer's
+`DeviceCapabilityPanel` can display them side-by-side.
 
 The router applies the PROPOSAL.md §2 scheduler rule: short / private /
 latency-sensitive tasks (`summarize`, `translate`, `extract_tasks`,

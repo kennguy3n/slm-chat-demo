@@ -123,4 +123,43 @@ describe('InferenceRouter', () => {
       /no inference adapter/,
     );
   });
+
+  // Phase 3 (E4B routing completion) — tests for the hasE4B() flag and
+  // for the aliased-E4B fallback path.
+
+  it('hasE4B is true when a real E4B adapter is wired', () => {
+    const e2b = new StubAdapter('e2b-stub');
+    const e4b = new StubAdapter('e4b-stub');
+    const router = new InferenceRouter(e2b, e4b, null, { hasRealE4B: true });
+    expect(router.hasE4B()).toBe(true);
+  });
+
+  it('hasE4B is false when the e4b slot is aliased to the e2b adapter', () => {
+    const e2b = new StubAdapter('e2b-stub');
+    const router = new InferenceRouter(e2b, e2b, null, { hasRealE4B: false });
+    expect(router.hasE4B()).toBe(false);
+  });
+
+  it('reports E2B fallback in decide() when E4B is aliased to E2B', async () => {
+    const e2b = new StubAdapter('e2b-stub');
+    const router = new InferenceRouter(e2b, e2b, null, { hasRealE4B: false });
+    const dec = router.decide({ taskType: 'draft_artifact', prompt: 'spec' });
+    expect(dec.allow).toBe(true);
+    expect(dec.tier).toBe('e2b');
+    expect(dec.model).toBe('gemma-4-e2b');
+    expect(dec.reason).toMatch(/fallback to E2B/i);
+  });
+
+  it('routes draft_artifact to the real E4B adapter when one is wired', async () => {
+    const e2b = new StubAdapter('e2b-stub');
+    const e4b = new StubAdapter('e4b-stub');
+    const router = new InferenceRouter(e2b, e4b, null, { hasRealE4B: true });
+    const resp = await router.run({ taskType: 'draft_artifact', prompt: 'spec' });
+    expect(e4b.lastReq?.prompt).toBe('spec');
+    expect(e2b.lastReq).toBeNull();
+    expect(resp.model).toBe('gemma-4-e4b');
+    const dec = router.lastDecision();
+    expect(dec.tier).toBe('e4b');
+    expect(dec.reason).toContain('E4B');
+  });
 });

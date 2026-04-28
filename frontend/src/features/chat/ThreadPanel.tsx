@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchChannelMessages, fetchThreadMessages } from '../../api/chatApi';
 import { fetchThreadSummary } from '../../api/aiApi';
-import { draftArtifact, extractKAppTasks, prefillApproval } from '../../api/kappsApi';
+import {
+  draftArtifact,
+  extractKAppTasks,
+  fetchLinkedObjects,
+  prefillApproval,
+} from '../../api/kappsApi';
+import { KAppCardRenderer } from '../kapps/KAppCardRenderer';
 import { streamAITask } from '../../api/streamAI';
 import type { Channel } from '../../types/workspace';
 import type {
@@ -70,6 +76,14 @@ export function ThreadPanel({ channel }: Props) {
   const threadMsgsQ = useQuery({
     queryKey: ['thread-messages', selectedThreadId],
     queryFn: () => fetchThreadMessages(selectedThreadId!),
+    enabled: !!selectedThreadId,
+  });
+
+  // Phase 3 — linked KApp cards (tasks, approvals, artifacts) for the
+  // selected thread. Renders below the thread actions in compact mode.
+  const linkedObjectsQ = useQuery({
+    queryKey: ['linked-objects', selectedThreadId],
+    queryFn: () => fetchLinkedObjects(selectedThreadId!),
     enabled: !!selectedThreadId,
   });
 
@@ -291,6 +305,35 @@ export function ThreadPanel({ channel }: Props) {
           streamingText={artifactStreamingText}
           isStreaming={isArtifactStreaming}
         />
+      )}
+      {selectedThreadId && (
+        <details
+          className="thread-panel__linked"
+          data-testid="thread-panel-linked"
+          open={(linkedObjectsQ.data?.length ?? 0) > 0}
+        >
+          <summary>
+            Linked objects ({linkedObjectsQ.data?.length ?? 0})
+          </summary>
+          {linkedObjectsQ.isLoading && <p>Loading…</p>}
+          {linkedObjectsQ.error && (
+            <p role="alert" className="thread-panel__error">
+              Linked objects failed: {(linkedObjectsQ.error as Error).message}
+            </p>
+          )}
+          {linkedObjectsQ.data && linkedObjectsQ.data.length === 0 && (
+            <p className="thread-panel__empty">No linked KApp objects yet.</p>
+          )}
+          {linkedObjectsQ.data && linkedObjectsQ.data.length > 0 && (
+            <ul className="thread-panel__linked-list">
+              {linkedObjectsQ.data.map((card, idx) => (
+                <li key={idx} data-testid={`thread-panel-linked-${idx}`}>
+                  <KAppCardRenderer card={card} mode="compact" />
+                </li>
+              ))}
+            </ul>
+          )}
+        </details>
       )}
       {threadMsgsQ.data && threadMsgsQ.data.length > 0 && (
         <details className="thread-panel__messages">

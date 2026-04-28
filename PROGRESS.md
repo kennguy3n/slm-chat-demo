@@ -1,6 +1,6 @@
 # KChat SLM Demo — Progress Tracker
 
-Last updated: 2026-04-28 (Skills framework + trip planner + guardrail rewrite + metrics dashboard)
+Last updated: 2026-04-28 (Phase 1 close — E4B routing; Phase 3 kickoff — workspace navigation, thread linked objects, KApp card lifecycle, Tasks KApp)
 
 ---
 
@@ -9,9 +9,9 @@ Last updated: 2026-04-28 (Skills framework + trip planner + guardrail rewrite + 
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 0: Consolidated prototype foundation | Complete | 100% |
-| Phase 1: Local LLM MVP | In progress | ~95% |
+| Phase 1: Local LLM MVP | Complete | 100% |
 | Phase 2: B2C second-brain demo | Complete | 100% |
-| Phase 3: B2B KApps MVP | Not started | 0% |
+| Phase 3: B2B KApps MVP | In progress | ~35% |
 | Phase 4: AI Employees and recipe engine | Not started | 0% |
 | Phase 5: Connectors and knowledge graph | Not started | 0% |
 | Phase 6: Confidential server mode | Not started | 0% |
@@ -41,7 +41,7 @@ Last updated: 2026-04-28 (Skills framework + trip planner + guardrail rewrite + 
 - [x] Ollama adapter (TypeScript, in the Electron main process)
 - [x] llama.cpp / llama-server adapter — stub `LlamaCppAdapter` (`frontend/electron/inference/llamacpp.ts`) implementing the `Adapter` contract; `run` / `stream` throw `not yet implemented` until the GGUF runtime lands.
 - [x] E2B routing (short/private/latency-sensitive tasks)
-- [ ] E4B routing (reasoning-heavy tasks) — partial: router prefers E4B for `draft_artifact`/`prefill_approval`, but real E4B adapter wiring lands with the second Ollama tier
+- [x] E4B routing (reasoning-heavy tasks) — bootstrap now spins up two distinct `OllamaAdapter` instances (`E2B_MODEL`/`E4B_MODEL`); router exposes `hasE4B()` and reports `e4bModel`/`e4bLoaded` via `model:status`; `DeviceCapabilityPanel` shows both tiers.
 - [x] IPC streaming responses (`ai:stream` channel + `ai:stream:chunk` events)
 - [ ] WebSocket / native streaming for confidential server mode
 - [x] Privacy strip with real compute location and model name (driven by `window.electronAI.route` decision)
@@ -76,11 +76,11 @@ Last updated: 2026-04-28 (Skills framework + trip planner + guardrail rewrite + 
 
 ## Phase 3 — B2B KApps MVP
 
-- [ ] Workspace → Domain → Channel navigation
-- [ ] Thread view with linked objects
-- [ ] KApp card renderer
-- [ ] Tasks KApp (create, assign, track, close)
-- [ ] Approvals KApp (submit, review, approve/reject, decision log)
+- [x] Workspace → Domain → Channel navigation — `GET /api/workspaces/{id}/domains` and `GET /api/domains/{id}/channels` plus a collapsible `B2BLayout` sidebar; `workspaceStore` tracks `selectedDomainId` / `expandedDomainIds`.
+- [x] Thread view with linked objects — `GET /api/threads/{id}/linked-objects` plus a `Linked objects (n)` section in `ThreadPanel` rendering compact KApp cards.
+- [x] KApp card renderer — `KAppCardRenderer` now takes an `onAction` callback union and a `mode` prop; `TaskCard` ships status transitions + inline edit, `ApprovalCard` ships approve/reject/comment with a confirmation pane and decision-log timeline, `ArtifactCard` ships `View` + version history.
+- [x] Tasks KApp (create, assign, track, close) — `POST /api/kapps/tasks`, `GET /api/kapps/tasks?channelId=`, `PATCH /api/kapps/tasks/{id}`, `PATCH /api/kapps/tasks/{id}/status`, `DELETE /api/kapps/tasks/{id}` plus `TasksKApp` (filter / sort / counts), `CreateTaskForm`, and a `useKAppsStore` zustand store.
+- [ ] Approvals KApp (submit, review, approve/reject, decision log) — partial: `POST /api/kapps/approvals/{id}/decide` + `ApprovalCard` actions are live; full submit flow lands later in Phase 3.
 - [ ] Docs/Artifacts KApp (PRD, RFC, Proposal, SOP, QBR)
 - [ ] Forms intake (AI-prefilled from thread context)
 - [ ] Artifact versioning (v1, v2, ... with diffs)
@@ -148,6 +148,11 @@ Last updated: 2026-04-28 (Skills framework + trip planner + guardrail rewrite + 
 
 | Date | Change |
 |------|--------|
+| 2026-04-28 | Phase 1 close: real E4B routing — `bootstrap.ts` wires two `OllamaAdapter` instances (`E2B_MODEL`/`E4B_MODEL`); router exposes `hasE4B()` and falls back to E2B when only the smaller model is pulled; `model:status` returns `e4bModel`/`e4bLoaded` and the renderer surfaces both tiers in `DeviceCapabilityPanel`. |
+| 2026-04-28 | Phase 3: Workspace → Domain → Channel navigation — added `Domain.WorkspaceID`, `GET /api/workspaces/{id}/domains`, `GET /api/domains/{id}/channels`, `frontend/src/api/workspaceApi.ts`, and a collapsible domain tree in `B2BLayout`; `workspaceStore` now tracks `selectedDomainId` and `expandedDomainIds`. |
+| 2026-04-28 | Phase 3: Thread linked-objects — `Card.ThreadID`, `GET /api/threads/{id}/linked-objects`, `fetchLinkedObjects()`, and a `Linked objects (n)` `<details>` section in `ThreadPanel` rendering compact KApp cards. |
+| 2026-04-28 | Phase 3: KApp card lifecycle — `KAppCardRenderer` accepts `onAction` (typed union) and `mode` (`full`/`compact`); `TaskCard` ships transitions + inline edit, `ApprovalCard` ships approve/reject/comment with a confirmation pane and decision-log timeline, `ArtifactCard` ships `View` + version history. |
+| 2026-04-28 | Phase 3: Tasks KApp — `POST/GET/PATCH/DELETE /api/kapps/tasks*`, `POST /api/kapps/approvals/{id}/decide` plus `useKAppsStore`, `TasksKApp` (filter / sort / counts), and `CreateTaskForm`. Backend records every change in `Task.History` / `Approval.DecisionLog` (immutable audit trail). |
 | 2026-04-28 | Initial progress tracker created. Project kickoff. |
 | 2026-04-28 | Phase 1: Go inference proxy adapter interface landed (`backend/internal/inference/adapter.go`). |
 | 2026-04-28 | Phase 1: Ollama HTTP adapter landed (`backend/internal/inference/ollama.go`) — `Run`, `Stream`, `Ping`, `Status` (via `/api/ps`), `Load`, `Unload` (via `keep_alive=0`, never `DELETE /api/delete`). |

@@ -178,20 +178,39 @@ export function registerIPCHandlers(): void {
   });
 
   ipcMain.handle('model:status', async () => {
-    const { status, defaultModel, defaultQuant } = await getStack();
+    const stack = await getStack();
+    const { status, e4bStatus, defaultModel, defaultE4BModel, defaultQuant, hasE4B } = stack;
+    let base;
     if (!status) {
-      return {
+      base = {
         loaded: false,
         model: defaultModel,
         quant: defaultQuant,
         ramUsageMB: 0,
         sidecar: 'unstarted',
       };
+    } else {
+      base = await status.status();
+      if (!base.model) base.model = defaultModel;
+      if (!base.quant) base.quant = defaultQuant;
     }
-    const st = await status.status();
-    if (!st.model) st.model = defaultModel;
-    if (!st.quant) st.quant = defaultQuant;
-    return st;
+    let e4bLoaded = false;
+    let e4bModelName = defaultE4BModel;
+    if (hasE4B && e4bStatus) {
+      try {
+        const e4bSt = await e4bStatus.status();
+        e4bLoaded = e4bSt.loaded;
+        e4bModelName = e4bSt.model || defaultE4BModel;
+      } catch {
+        // tolerate transient e4b status errors — leave defaults
+      }
+    }
+    return {
+      ...base,
+      e4bModel: e4bModelName,
+      e4bLoaded,
+      hasE4B,
+    };
   });
 
   ipcMain.handle('model:load', async (_e, { model }: { model?: string }) => {

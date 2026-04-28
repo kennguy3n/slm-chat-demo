@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,7 +26,20 @@ func newTestServer() http.Handler {
 
 func doGet(t *testing.T, h http.Handler, target string, userID string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest("GET", target, nil)
+	return doRequest(t, h, "GET", target, userID, nil)
+}
+
+func doRequest(
+	t *testing.T,
+	h http.Handler,
+	method, target, userID string,
+	body io.Reader,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, target, body)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if userID != "" {
 		req.Header.Set("X-User-ID", userID)
 	}

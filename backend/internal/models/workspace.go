@@ -19,10 +19,13 @@ type Workspace struct {
 }
 
 // Domain groups channels inside a B2B workspace (e.g. Engineering, Finance).
-// B2C workspaces use a single implicit domain.
+// B2C workspaces use a single implicit domain. WorkspaceID back-links to the
+// owning workspace so the navigation API can resolve `GET /api/domains/{id}/
+// channels` without scanning every workspace.
 type Domain struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
 }
 
 // Channel kind covers DMs, family/community groups in B2C and channels/threads

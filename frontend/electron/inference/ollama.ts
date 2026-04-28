@@ -35,6 +35,10 @@ interface OllamaPsResponse {
   models?: { name?: string; model?: string; size?: number }[];
 }
 
+interface OllamaTagsResponse {
+  models?: { name?: string; model?: string }[];
+}
+
 export interface OllamaAdapterOptions {
   baseURL?: string;
   model?: string;
@@ -149,6 +153,17 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
   async ping(signal?: AbortSignal): Promise<void> {
     const res = await this.fetchImpl(`${this.baseURL}/api/tags`, { signal });
     if (!res.ok) throw new Error(`ollama: ping HTTP ${res.status}`);
+  }
+
+  // listModels returns the names of every locally pulled model. Used by
+  // the bootstrap to decide whether the E4B adapter should be wired
+  // separately or aliased to E2B.
+  async listModels(signal?: AbortSignal): Promise<string[]> {
+    const res = await this.fetchImpl(`${this.baseURL}/api/tags`, { signal });
+    if (!res.ok) throw new Error(`ollama: tags HTTP ${res.status}`);
+    const body = (await res.json()) as OllamaTagsResponse;
+    const models = body.models ?? [];
+    return models.map((m) => m.name || m.model || '').filter((n) => n.length > 0);
   }
 
   async status(signal?: AbortSignal): Promise<ModelStatus> {

@@ -210,6 +210,142 @@ func (m *Memory) ListCards() []models.Card {
 	return out
 }
 
+// FindTask returns a pointer to the embedded task in the card list (and its
+// index) so the caller can mutate it under the same lock.
+func (m *Memory) findTaskLocked(id string) (*models.Task, int) {
+	for i := range m.cards {
+		c := &m.cards[i]
+		if c.Kind == models.CardKindTask && c.Task != nil && c.Task.ID == id {
+			return c.Task, i
+		}
+	}
+	return nil, -1
+}
+
+func (m *Memory) findApprovalLocked(id string) (*models.Approval, int) {
+	for i := range m.cards {
+		c := &m.cards[i]
+		if c.Kind == models.CardKindApproval && c.Approval != nil && c.Approval.ID == id {
+			return c.Approval, i
+		}
+	}
+	return nil, -1
+}
+
+// GetTask looks up a task card by ID.
+func (m *Memory) GetTask(id string) (models.Task, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	t, _ := m.findTaskLocked(id)
+	if t == nil {
+		return models.Task{}, false
+	}
+	return *t, true
+}
+
+// ListTasks returns every task card. An empty channelID returns all tasks;
+// otherwise only tasks scoped to that channel are returned. Tasks are returned
+// in insertion order so the demo timeline stays deterministic.
+func (m *Memory) ListTasks(channelID string) []models.Task {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []models.Task{}
+	for _, c := range m.cards {
+		if c.Kind != models.CardKindTask || c.Task == nil {
+			continue
+		}
+		if channelID != "" && c.Task.ChannelID != channelID {
+			continue
+		}
+		out = append(out, *c.Task)
+	}
+	return out
+}
+
+// CreateTask appends a new task card and returns the persisted task.
+func (m *Memory) CreateTask(t models.Task) models.Task {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if t.Status == "" {
+		t.Status = models.TaskStatusOpen
+	}
+	if t.History == nil {
+		t.History = []models.TaskHistoryEntry{}
+	}
+	threadID := t.SourceThreadID
+	if threadID == "" {
+		threadID = t.SourceMessageID
+	}
+	m.cards = append(m.cards, models.Card{Kind: models.CardKindTask, ThreadID: threadID, Task: &t})
+	return t
+}
+
+// UpdateTask applies the supplied mutator to the stored task and records the
+// mutation as a history entry. Returns the updated task and a boolean
+// indicating whether the task existed.
+func (m *Memory) UpdateTask(id string, mutate func(*models.Task)) (models.Task, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, _ := m.findTaskLocked(id)
+	if t == nil {
+		return models.Task{}, false
+	}
+	mutate(t)
+	return *t, true
+}
+
+// DeleteTask removes a task card by ID. Returns true on success.
+func (m *Memory) DeleteTask(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, idx := m.findTaskLocked(id)
+	if idx < 0 {
+		return false
+	}
+	m.cards = append(m.cards[:idx], m.cards[idx+1:]...)
+	return true
+}
+
+// GetApproval returns an approval card by ID.
+func (m *Memory) GetApproval(id string) (models.Approval, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	a, _ := m.findApprovalLocked(id)
+	if a == nil {
+		return models.Approval{}, false
+	}
+	return *a, true
+}
+
+// UpdateApproval applies the supplied mutator to the stored approval. Returns
+// the updated approval and a boolean indicating whether it existed.
+func (m *Memory) UpdateApproval(id string, mutate func(*models.Approval)) (models.Approval, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, _ := m.findApprovalLocked(id)
+	if a == nil {
+		return models.Approval{}, false
+	}
+	mutate(a)
+	return *a, true
+}
+
+// CardsForThread returns every card whose ThreadID matches threadID.
+func (m *Memory) CardsForThread(threadID string) []models.Card {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []models.Card{}
+	if threadID == "" {
+		return out
+	}
+	for _, c := range m.cards {
+		if c.ThreadID == threadID {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 func contains(ss []string, s string) bool {
 	for _, v := range ss {
 		if v == s {

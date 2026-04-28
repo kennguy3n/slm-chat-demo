@@ -56,4 +56,47 @@ describe('ApprovalCard', () => {
     await userEvent.click(screen.getByRole('button', { name: /view source thread/i }));
     expect(onOpenSource).toHaveBeenCalledWith('msg_vend_root');
   });
+
+  it('shows approve/reject/comment buttons for pending approvals when onDecide is wired', () => {
+    render(<ApprovalCard approval={baseApproval} onDecide={() => {}} />);
+    expect(screen.getByTestId('approval-card-approve')).toBeInTheDocument();
+    expect(screen.getByTestId('approval-card-reject')).toBeInTheDocument();
+    expect(screen.getByTestId('approval-card-comment')).toBeInTheDocument();
+  });
+
+  it('confirms before calling onDecide and forwards the note', async () => {
+    const onDecide = vi.fn();
+    render(<ApprovalCard approval={baseApproval} onDecide={onDecide} />);
+    await userEvent.click(screen.getByTestId('approval-card-approve'));
+    expect(screen.getByTestId('approval-card-confirm')).toBeInTheDocument();
+    await userEvent.type(screen.getByTestId('approval-card-note'), 'LGTM');
+    await userEvent.click(screen.getByTestId('approval-card-confirm-commit'));
+    expect(onDecide).toHaveBeenCalledWith('approve', 'LGTM');
+  });
+
+  it('lets the user cancel the confirmation without calling onDecide', async () => {
+    const onDecide = vi.fn();
+    render(<ApprovalCard approval={baseApproval} onDecide={onDecide} />);
+    await userEvent.click(screen.getByTestId('approval-card-reject'));
+    await userEvent.click(screen.getByTestId('approval-card-confirm-cancel'));
+    expect(onDecide).not.toHaveBeenCalled();
+    // Buttons restored.
+    expect(screen.getByTestId('approval-card-approve')).toBeInTheDocument();
+  });
+
+  it('hides decision controls once the approval is no longer pending', () => {
+    render(
+      <ApprovalCard
+        approval={{ ...baseApproval, status: 'approved' }}
+        onDecide={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('approval-card-approve')).toBeNull();
+  });
+
+  it('hides controls and meta in compact mode', () => {
+    render(<ApprovalCard approval={baseApproval} mode="compact" onDecide={() => {}} />);
+    expect(screen.queryByTestId('approval-card-approve')).toBeNull();
+    expect(screen.queryByTestId('approval-card-log')).toBeNull();
+  });
 });

@@ -232,14 +232,55 @@ go test ./...
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
   plus four seeded KApp cards (family task, neighborhood event, vendor
   approval, engineering PRD draft)
-- 247 frontend tests (renderer components + Electron main-process
-  inference, including the new `skill-framework.test.ts`,
-  `trip-planner.test.ts`, `guardrail-rewrite.test.ts`,
-  `llamacpp.test.ts`, `activityLog.test.ts`, `MetricsDashboard.test.tsx`,
-  `GuardrailRewriteCard.test.tsx`, and `TripPlannerCard.test.tsx`) plus
-  full Go test coverage of the data endpoints
+- 285 frontend tests (renderer components + Electron main-process
+  inference) covering the Phase 2 skills framework, the new Phase 3
+  KApp lifecycle (`TaskCard`, `ApprovalCard`, `ArtifactCard`,
+  `KAppCardRenderer`, `TasksKApp`, `CreateTaskForm`, `workspaceApi`,
+  `B2BLayout`), the E4B routing tier (`bootstrap.test.ts`,
+  `router.test.ts`), and the full Phase 0 → Phase 2 baseline plus
+  full Go test coverage of the data endpoints, including the new
+  Phase 3 task lifecycle, approval-decision, linked-objects, and
+  workspace-domain endpoints.
 
-## Phase 1 — what's in progress
+## Phase 1 — complete
+
+- **E4B routing tier** — `bootstrap.ts` now creates two distinct
+  `OllamaAdapter` instances (`E2B_MODEL` / `E4B_MODEL`, defaulting to
+  `gemma-4-e2b` / `gemma-4-e4b`), pings each model independently, and
+  aliases the E4B slot to the E2B adapter when the larger model is not
+  pulled. The `InferenceRouter` exposes `hasE4B()`; `decide()` reports
+  the real tier so the privacy strip and `model:status` (`e4bModel`,
+  `e4bLoaded`, `hasE4B`) reflect what actually ran. The
+  `DeviceCapabilityPanel` shows both tiers side-by-side.
+
+## Phase 3 — what's in progress
+
+- **Workspace → Domain → Channel navigation** — backend exposes
+  `GET /api/workspaces/{id}/domains` and
+  `GET /api/domains/{id}/channels`; frontend's `B2BLayout` renders a
+  collapsible domain tree (auto-expanded on first mount), and
+  `workspaceStore` tracks `selectedDomainId` / `expandedDomainIds`.
+- **Thread linked objects** — `Card.ThreadID` plus
+  `GET /api/threads/{id}/linked-objects` powers the new
+  *Linked objects (n)* `<details>` rail in `ThreadPanel` (compact
+  KApp cards rendered inline).
+- **KApp card lifecycle** — `KAppCardRenderer` accepts `onAction`
+  (typed union for status / decide / open-source / view) plus a
+  `mode` prop (`full` | `compact`). `TaskCard` ships status
+  transitions and inline edit; `ApprovalCard` ships
+  approve/reject/comment with a confirmation pane and a
+  decision-log timeline; `ArtifactCard` ships `View` + version
+  history.
+- **Tasks KApp** — `POST /api/kapps/tasks`,
+  `GET /api/kapps/tasks?channelId=`, `PATCH /api/kapps/tasks/{id}`,
+  `PATCH /api/kapps/tasks/{id}/status`,
+  `DELETE /api/kapps/tasks/{id}`, and
+  `POST /api/kapps/approvals/{id}/decide` (immutable history /
+  decision log) are wired through a zustand `useKAppsStore`,
+  `TasksKApp` (filter by status, sort by due date, counts), and
+  `CreateTaskForm`.
+
+## Earlier — what's already in place
 
 - **Ollama HTTP adapter in TypeScript**
   (`frontend/electron/inference/ollama.ts`) talking to a local daemon

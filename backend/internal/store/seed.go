@@ -30,15 +30,17 @@ func Seed(m *Memory) {
 		ID:      "ws_personal",
 		Name:    "Personal",
 		Context: models.ContextB2C,
-		Domains: []models.Domain{{ID: "dom_personal", Name: "Personal"}},
+		Domains: []models.Domain{
+			{ID: "dom_personal", Name: "Personal", WorkspaceID: "ws_personal"},
+		},
 	}
 	acme := models.Workspace{
 		ID:      "ws_acme",
 		Name:    "Acme Corp",
 		Context: models.ContextB2B,
 		Domains: []models.Domain{
-			{ID: "dom_eng", Name: "Engineering"},
-			{ID: "dom_fin", Name: "Finance"},
+			{ID: "dom_eng", Name: "Engineering", WorkspaceID: "ws_acme"},
+			{ID: "dom_fin", Name: "Finance", WorkspaceID: "ws_acme"},
 		},
 	}
 	m.PutWorkspace(personal)
@@ -162,10 +164,12 @@ func seedCards(m *Memory, base time.Time) {
 	startsSat := time.Date(2026, 5, 16, 16, 0, 0, 0, time.UTC)
 
 	m.PutCard(models.Card{
-		Kind: models.CardKindTask,
+		Kind:     models.CardKindTask,
+		ThreadID: "msg_fam_1",
 		Task: &models.Task{
 			ID:              "task_sunscreen",
 			ChannelID:       "ch_family",
+			SourceThreadID:  "msg_fam_1",
 			SourceMessageID: "msg_fam_1",
 			Title:           "Buy sunscreen for field trip",
 			Owner:           "user_alice",
@@ -184,7 +188,8 @@ func seedCards(m *Memory, base time.Time) {
 	})
 
 	m.PutCard(models.Card{
-		Kind: models.CardKindApproval,
+		Kind:     models.CardKindApproval,
+		ThreadID: "msg_vend_root",
 		Approval: &models.Approval{
 			ID:             "appr_vendor_q3_logging",
 			ChannelID:      "ch_vendor_management",
@@ -206,7 +211,8 @@ func seedCards(m *Memory, base time.Time) {
 	})
 
 	m.PutCard(models.Card{
-		Kind: models.CardKindArtifact,
+		Kind:     models.CardKindArtifact,
+		ThreadID: "msg_eng_root",
 		Artifact: &models.Artifact{
 			ID:        "art_inline_translation_prd",
 			ChannelID: "ch_engineering",
