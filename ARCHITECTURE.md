@@ -86,11 +86,11 @@ frontend/
 ├── tsconfig.json
 ├── vite.config.ts
 └── src/
-    ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx)
+    ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
     ├── features/
     │   ├── chat/ (ChatSurface, MessageBubble, MessageList, Composer)        — Phase 0
-    │   ├── ai/ (ActionLauncher, PrivacyStrip, ModelStatusBadge, OutputReview, DeviceCapabilityPanel) — Phase 1+
-    │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, FormCard) — Phase 3
+    │   ├── ai/ (ActionLauncher, PrivacyStrip)                                — Phase 0; ModelStatusBadge, OutputReview, DeviceCapabilityPanel land in Phase 1+
+    │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard) — Phase 0; FormCard lands in Phase 3
     │   ├── artifacts/ (ArtifactWorkspace)                                    — Phase 3
     │   ├── ai-employees/ (AIEmployeePanel)                                   — Phase 4
     │   └── knowledge/ (SourcePicker)                                         — Phase 5
@@ -102,9 +102,10 @@ frontend/
     └── main.tsx
 ```
 
-Phase 0 ships the `app/` shell and the `features/chat/` chat surface; the
-remaining feature directories contain placeholder modules that get fleshed
-out in the phases noted above.
+Phase 0 ships the `app/` shell (with the mobile tab bar), the `features/chat/`
+chat surface, the `features/ai/` Privacy Strip + Action Launcher, and the
+`features/kapps/` card system. Feature directories tagged Phase 1+/3+/4/5
+contain placeholder modules that get fleshed out in the phases noted above.
 
 ---
 
@@ -136,17 +137,24 @@ backend/
 │   ├── api/
 │   │   ├── router.go
 │   │   ├── middleware.go
-│   │   ├── handlers/   (chat.go, workspace.go, ai.go, kapps.go, artifacts.go, model.go, privacy.go)
+│   │   ├── handlers/   (chat.go, workspace.go, ai.go, kapps.go, model.go, privacy.go; artifacts.go is a Phase 3 placeholder)
 │   │   └── userctx/    (request-scoped user helpers; avoids handlers ↔ api import cycle)
-│   ├── services/       (identity.go, workspace.go, chat.go; Phase 1+ adds ai_policy.go, ai_runtime.go, kapps.go, artifacts.go)
-│   ├── models/         (user.go, workspace.go, message.go; Phase 3 placeholders: task.go, approval.go, artifact.go)
-│   ├── inference/      (adapter.go interface; Phase 1+ adds ollama.go, llamacpp.go, router.go)
+│   ├── services/       (identity.go, workspace.go, chat.go, kapps.go; Phase 1+ adds ai_policy.go, ai_runtime.go; Phase 3 adds artifacts.go)
+│   ├── models/         (user.go, workspace.go, message.go, task.go, approval.go, artifact.go, event.go, card.go)
+│   ├── inference/      (adapter.go interface + mock.go; Phase 1+ adds ollama.go, llamacpp.go, router.go)
 │   └── store/          (memory.go + seed.go; Phase 6+ adds postgres.go and migrations/)
 └── go.mod
 ```
 
 > **Phase 0 status.** The Go backend currently uses an **in-memory store**
-> (`internal/store/memory.go`) seeded at startup by `internal/store/seed.go`.
+> (`internal/store/memory.go`) seeded at startup by `internal/store/seed.go`,
+> including four sample KApp cards (task, approval, artifact, event)
+> exposed via `GET /api/kapps/cards`. The `inference` package now ships an
+> `Adapter` interface plus a `MockAdapter` returning canned responses for
+> `summarize`, `translate`, `extract_tasks`, `smart_reply`,
+> `prefill_approval`, and `draft_artifact`; `POST /api/ai/run` and
+> `POST /api/ai/stream` are wired through the mock, and `POST /api/ai/route`
+> returns the hardcoded Phase-0 policy (allow / E2B / on-device / 0 egress).
 > **PostgreSQL is not yet integrated**, and **NATS JetStream**, **MinIO/S3**,
 > and **Meilisearch** are referenced in this document but do not yet exist
 > in the codebase. They land in later phases per [PHASES.md](./PHASES.md):

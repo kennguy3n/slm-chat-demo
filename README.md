@@ -58,20 +58,20 @@ slm-chat-demo/
 │   │   ├── api/
 │   │   │   ├── router.go
 │   │   │   ├── middleware.go
-│   │   │   ├── handlers/        (chat, workspace, ai*, kapps*, artifacts*, model, privacy)
+│   │   │   ├── handlers/        (chat, workspace, ai, kapps, artifacts*, model, privacy)
 │   │   │   └── userctx/         (request-scoped user helpers)
-│   │   ├── services/            (identity, workspace, chat)
-│   │   ├── models/              (user, workspace, message, task*, approval*, artifact*)
-│   │   ├── inference/adapter.go (Phase-1 interface stub)
+│   │   ├── services/            (identity, workspace, chat, kapps)
+│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card)
+│   │   ├── inference/           (Adapter interface + MockAdapter)
 │   │   └── store/               (memory store + Phase-0 seed)
 │   └── go.mod
 ├── frontend/
 │   ├── src/
-│   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar)
+│   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
 │   │   ├── features/
 │   │   │   ├── chat/            (ChatSurface, MessageList, MessageBubble, Composer)
-│   │   │   ├── ai/              (placeholder)
-│   │   │   ├── kapps/           (placeholder)
+│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher)
+│   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer)
 │   │   │   ├── artifacts/       (placeholder)
 │   │   │   ├── ai-employees/    (placeholder)
 │   │   │   └── knowledge/       (placeholder)
@@ -113,19 +113,38 @@ go test ./...
 - B2B layout: workspace → domain → channel hierarchy + DM section
 - Three-column shell (sidebar / main chat / right panel) per
   ARCHITECTURE.md section 2 and PROPOSAL.md section 4.1
+- **Mobile-responsive layout** that collapses to a single column with a
+  five-tab bottom navigation (Message / Notification / Tasks / Settings /
+  More) at ≤ 768 px; resize the browser or use device emulation to test
+- **Shared KApp card system** — `TaskCard`, `ApprovalCard`, `ArtifactCard`,
+  `EventCard`, plus a `KAppCardRenderer` dispatcher rendering wire-format
+  `Card` envelopes from `GET /api/kapps/cards`
+- **Privacy strip** rendered below every AI-generated card with all eight
+  PROPOSAL.md §4.3 elements (compute location, model name, sources,
+  egress, confidence, why-suggested, accept/edit/discard, linked origin)
+- **AI Action Launcher** in the composer: B2C quick actions (Catch me up,
+  Translate, Remind me, Extract tasks) and B2B four-intent grid (Create,
+  Analyze, Plan, Approve) with submenus
+- **Local inference adapter interface** + `MockAdapter` returning canned
+  responses for `summarize`, `translate`, `extract_tasks`, `smart_reply`,
+  `prefill_approval`, `draft_artifact` — wired into `POST /api/ai/run`
+  and `POST /api/ai/route` (the latter returns the hardcoded Phase-0
+  policy: allow / E2B / on-device / 0 egress)
 - Go HTTP API on `:8080` with chi router, chi/cors, JSON content-type, and
   a mock-auth middleware that injects a user from the `X-User-ID` header
 - Five seeded users (Alice, Bob, Carol, Dave, Eve) and two workspaces
   (Personal, Acme Corp with Engineering / Finance domains)
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
-  (family task extraction, neighborhood event card, vendor approval thread,
-  PRD-draft engineering thread)
-- 14 frontend tests, full backend test coverage of seed / store /
-  middleware / chat handlers
+  plus four seeded KApp cards (family task, neighborhood event, vendor
+  approval, engineering PRD draft)
+- 47 frontend tests, full backend test coverage of seed / store /
+  middleware / chat / kapps / inference / ai handlers
 
 ## What's deferred to later phases
 
 The architecture documents reference PostgreSQL, NATS JetStream, MinIO/S3,
-Meilisearch, the AI policy engine, KApps, AI Employees, and the local
-inference sidecar. Phase 0 is intentionally scoped to **the prototype shell
-and seeded data only** — see [PHASES.md](./PHASES.md) for the full plan.
+Meilisearch, real local-model sidecars (Ollama / llama.cpp), SSE / WebSocket
+streaming, the policy engine, AI Employees, connectors, and the knowledge
+graph. Phase 0 is intentionally scoped to **the prototype shell, seeded
+data, the shared card / privacy / launcher UI surfaces, and a mocked
+inference adapter** — see [PHASES.md](./PHASES.md) for the full plan.

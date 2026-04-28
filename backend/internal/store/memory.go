@@ -16,6 +16,7 @@ type Memory struct {
 	workspaces map[string]models.Workspace
 	channels   map[string]models.Channel
 	messages   map[string]models.Message
+	cards      []models.Card
 }
 
 // NewMemory returns an empty Memory store. Call Seed to populate it with the
@@ -26,6 +27,7 @@ func NewMemory() *Memory {
 		workspaces: map[string]models.Workspace{},
 		channels:   map[string]models.Channel{},
 		messages:   map[string]models.Message{},
+		cards:      []models.Card{},
 	}
 }
 
@@ -174,6 +176,27 @@ func (m *Memory) ListThreadMessages(threadID string) []models.Message {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out
+}
+
+// Card lookups.
+
+// PutCard appends a card to the in-memory card list. Cards are stored in
+// insertion order so seeded sample cards render with a stable ordering in
+// the demo.
+func (m *Memory) PutCard(c models.Card) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cards = append(m.cards, c)
+}
+
+// ListCards returns all seeded KApp cards. Phase 0 returns every card; later
+// phases will scope by channel and visibility.
+func (m *Memory) ListCards() []models.Card {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]models.Card, len(m.cards))
+	copy(out, m.cards)
 	return out
 }
 
