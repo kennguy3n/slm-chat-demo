@@ -10,17 +10,21 @@ import {
   type InferenceStack,
 } from './inference/bootstrap.js';
 import {
+  buildDraftArtifact,
   buildThreadSummary,
   buildUnreadSummary,
   runExtractTasks,
   runKAppsExtractTasks,
+  runPrefillApproval,
   runSmartReply,
   runTranslate,
 } from './inference/tasks.js';
 import type {
+  DraftArtifactRequest,
   ExtractTasksRequest,
   InferenceRequest,
   KAppsExtractTasksRequest,
+  PrefillApprovalRequest,
   RouteDecision,
   SmartReplyRequest,
   ThreadSummaryRequest,
@@ -116,6 +120,16 @@ export function registerIPCHandlers(): void {
   ipcMain.handle('ai:kapps-extract-tasks', async (_e, req: KAppsExtractTasksRequest) => {
     const { router } = await getStack();
     return runKAppsExtractTasks(router, req);
+  });
+
+  ipcMain.handle('ai:prefill-approval', async (_e, req: PrefillApprovalRequest) => {
+    const { router } = await getStack();
+    return runPrefillApproval(router, req);
+  });
+
+  ipcMain.handle('ai:draft-artifact', async (_e, req: DraftArtifactRequest) => {
+    const { router } = await getStack();
+    return buildDraftArtifact(router, req);
   });
 
   ipcMain.handle('ai:unread-summary', async (_e, req: UnreadSummaryRequest) => {

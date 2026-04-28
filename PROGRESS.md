@@ -9,8 +9,8 @@ Last updated: 2026-04-28 (Phase 1 status row)
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 0: Consolidated prototype foundation | Complete | 100% |
-| Phase 1: Local LLM MVP | In progress | ~75% |
-| Phase 2: B2C second-brain demo | Not started | 0% |
+| Phase 1: Local LLM MVP | In progress | ~90% |
+| Phase 2: B2C second-brain demo | In progress | ~25% |
 | Phase 3: B2B KApps MVP | Not started | 0% |
 | Phase 4: AI Employees and recipe engine | Not started | 0% |
 | Phase 5: Connectors and knowledge graph | Not started | 0% |
@@ -51,22 +51,22 @@ Last updated: 2026-04-28 (Phase 1 status row)
 - [x] B2C: Task extraction from messages
 - [x] B2B: Thread summarization
 - [x] B2B: Task extraction from threads
-- [ ] B2B: Approval prefill
-- [ ] B2B: Draft short artifact section
+- [x] B2B: Approval prefill (`window.electronAI.prefillApproval`, `ApprovalPrefillCard` with editable vendor / amount / risk / justification fields)
+- [x] B2B: Draft short artifact section (`window.electronAI.draftArtifact`, `ArtifactDraftCard` streaming via `ai:stream`, supports PRD / RFC / Proposal / SOP / QBR with optional goal/requirements/risks section)
 
 ---
 
 ## Phase 2 — B2C second-brain demo
 
-- [ ] Inline translation under message bubbles
-- [ ] AI task-created pills (inline badges)
-- [ ] "Why suggested" explanations
+- [x] Inline translation under message bubbles (delivered in Phase 1 — `TranslationCaption`)
+- [x] AI task-created pills (inline badges) — `TaskCreatedPill` rendered in `ChatSurface` after the user accepts items from a `TaskExtractionCard`
+- [x] "Why suggested" explanations — `PrivacyStrip` now renders an expandable `whyDetails[]` list with per-signal source links
 - [ ] AI Memory page (learned facts, preferences, routines)
 - [ ] Family checklist generation
 - [ ] Shopping list with nudges ("Add sunscreen because field trip is tomorrow")
 - [ ] Community event / RSVP card generation
 - [ ] Guardrail rewrite card (risky post detection)
-- [ ] Morning digest (multi-chat summary)
+- [x] Morning digest (multi-chat summary) — `MorningDigestPanel` mounted in the B2C right rail, reuses the unread-summary IPC + `ai:stream` pattern with chats / messages / egress / compute metrics
 - [ ] Local-only memory index (IndexedDB)
 - [ ] Metrics dashboard ("I handled 6 items this morning")
 
@@ -169,3 +169,7 @@ Last updated: 2026-04-28 (Phase 1 status row)
 | 2026-04-28 | Step 5: Vitest specs for the Electron main-process inference modules (`router.test.ts`, `mock.test.ts`, `ollama.test.ts`) covering taskPreference, the E2B/E4B/fallback decision tree, NDJSON streaming and `/api/ps` status parsing. Frontend test count: 89 → 112. |
 | 2026-04-28 | Step 6: docs realigned (this PROGRESS entry, README.md quick-start now `npm run electron:dev`, ARCHITECTURE.md system diagram + §3.3 IPC channels + §4.1 Electron-main-→-Ollama path, PROPOSAL.md §6 MVP scope, PHASES.md Phase 0 + Phase 1 deliverables). |
 | 2026-04-28 | Follow-up to the Electron realignment: wired `electron-builder` so `npm run electron:build` produces a real platform installer (Linux AppImage / macOS dmg / Windows nsis); Linux AppImage build verified end-to-end (~107 MB). Deleted the deprecated `backend/internal/inference/` package — the canonical inference code now lives only in `frontend/electron/inference/`. |
+| 2026-04-28 | Phase 1: B2B Approval prefill — new `ai:prefill-approval` IPC channel, `runPrefillApproval` task in `electron/inference/tasks.ts` with a colon-key parser (`parsePrefilledApprovalFields`) and source attribution (`collectApprovalSources`), `ApprovalPrefillCard` renders editable vendor / amount / risk / justification fields plus a missing-info hint and the privacy strip with per-source provenance. |
+| 2026-04-28 | Phase 1: B2B Draft artifact section — new `ai:draft-artifact` IPC channel, `buildDraftArtifact` returns prompt + sources for streaming via `ai:stream` (same single-inference pattern as ThreadSummary), `ArtifactDraftCard` renders the streamed body with a blinking cursor, sources expandable, accept / edit / discard controls, and supports PRD / RFC / Proposal / SOP / QBR plus optional goal / requirements / risks section. |
+| 2026-04-28 | Phase 1 status row bumped to ~90% (the two remaining B2B items shipped); preload bridge + `types/electron.d.ts` extended with `prefillApproval` / `draftArtifact`. |
+| 2026-04-28 | Phase 2 kicked off (~25%): `TaskCreatedPill` inline badge in `ChatSurface` records accepted items from a `TaskExtractionCard` keyed by source message id; `PrivacyStrip` gained an expandable `whyDetails[]` list with per-signal source links and `aria-expanded` on the toggle button; `MorningDigestPanel` mounted in `B2CLayout`'s right rail, reuses the unread-summary IPC pattern and renders chats / messages / egress / compute metrics next to the streamed digest. |

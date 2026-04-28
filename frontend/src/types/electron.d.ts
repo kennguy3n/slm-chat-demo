@@ -4,7 +4,12 @@
 // `electron/`.
 
 import type {
+  ApprovalTemplate,
+  ArtifactKind,
+  ArtifactSection,
+  DraftArtifactResponse,
   ExtractTasksResponse,
+  PrefillApprovalResponse,
   SmartReplyResponse,
   ThreadSummaryResponse,
   TranslateResponse,
@@ -56,6 +61,17 @@ interface ElectronAIBridge {
     threadId: string;
     messages: { id: string; channelId: string; senderId: string; content: string }[];
   }): Promise<KAppsExtractTasksResponse>;
+  prefillApproval(req: {
+    threadId: string;
+    templateId?: ApprovalTemplate;
+    messages: { id: string; channelId: string; senderId: string; content: string }[];
+  }): Promise<PrefillApprovalResponse>;
+  draftArtifact(req: {
+    threadId: string;
+    artifactType: ArtifactKind;
+    section?: ArtifactSection;
+    messages: { id: string; channelId: string; senderId: string; content: string }[];
+  }): Promise<DraftArtifactResponse>;
   unreadSummary(req: {
     chats: {
       id: string;

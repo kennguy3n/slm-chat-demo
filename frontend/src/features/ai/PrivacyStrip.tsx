@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { PrivacyStripCallbacks, PrivacyStripData } from '../../types/ai';
 import { fetchEgressPreview, fetchModelStatus } from '../../api/aiApi';
@@ -30,6 +31,7 @@ function formatBytes(n: number): string {
 // return on-device + zero-egress values so the strip always shows the
 // privacy-positive state.
 export function PrivacyStrip({ data, syncWithBackend = false, onAccept, onEdit, onDiscard }: Props) {
+  const [whyOpen, setWhyOpen] = useState(false);
   const modelStatus = useQuery({
     queryKey: ['model', 'status'],
     queryFn: fetchModelStatus,
@@ -104,11 +106,49 @@ export function PrivacyStrip({ data, syncWithBackend = false, onAccept, onEdit, 
           )}
         </span>
       </div>
-      <div className="privacy-strip__row">
+      <div className="privacy-strip__row privacy-strip__row--why">
         <span className="privacy-strip__label">Why</span>
-        <span className="privacy-strip__value" data-testid="privacy-why">
-          {data.whySuggested}
-        </span>
+        <div className="privacy-strip__why-wrap">
+          <span className="privacy-strip__value" data-testid="privacy-why">
+            {data.whySuggested}
+          </span>
+          {data.whyDetails && data.whyDetails.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="privacy-strip__why-toggle"
+                aria-expanded={whyOpen}
+                data-testid="privacy-why-toggle"
+                onClick={() => setWhyOpen((v) => !v)}
+              >
+                {whyOpen ? 'Hide details' : `Why? (${data.whyDetails.length})`}
+              </button>
+              {whyOpen && (
+                <ul
+                  className="privacy-strip__why-details"
+                  data-testid="privacy-why-details"
+                >
+                  {data.whyDetails.map((d, i) => (
+                    <li key={`${i}-${d.signal}`}>
+                      <span className="privacy-strip__why-signal">{d.signal}</span>
+                      {d.sourceId && (
+                        <>
+                          {' — '}
+                          <a
+                            href={`#message-${d.sourceId}`}
+                            className="privacy-strip__why-source"
+                          >
+                            {d.sourceLabel ?? d.sourceId}
+                          </a>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
       </div>
       <div className="privacy-strip__row privacy-strip__row--origin">
         <span className="privacy-strip__label">Origin</span>

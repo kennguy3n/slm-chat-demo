@@ -22,6 +22,7 @@ import { KAppCardRenderer } from '../kapps/KAppCardRenderer';
 import { PrivacyStrip } from '../ai/PrivacyStrip';
 import { DigestCard } from '../ai/DigestCard';
 import { SmartReplyBar } from '../ai/SmartReplyBar';
+import { TaskCreatedPill } from '../ai/TaskCreatedPill';
 import { TaskExtractionCard, type TaskItem } from '../ai/TaskExtractionCard';
 
 interface Props {
@@ -157,6 +158,21 @@ export function ChatSurface({ channel, users, currentUserId }: Props) {
   const [extracted, setExtracted] = useState<ExtractTasksResponse | null>(null);
   const [extractErr, setExtractErr] = useState<string | null>(null);
 
+  // Persistent inline pill state — once a user accepts items from the
+  // TaskExtractionCard above, we record the count keyed by the
+  // originating message id and surface a small pill below the
+  // extraction card. The card itself disappears when its tasks list is
+  // emptied; the pill stays until the user reloads the chat.
+  const [acceptedByMessage, setAcceptedByMessage] = useState<Record<string, number>>({});
+
+  function recordAccepted(sourceMessageId: string | undefined) {
+    if (!sourceMessageId) return;
+    setAcceptedByMessage((prev) => ({
+      ...prev,
+      [sourceMessageId]: (prev[sourceMessageId] ?? 0) + 1,
+    }));
+  }
+
   // handleAIAction returns true when it actually handled the action so the
   // composer / launcher knows to suppress its placeholder "queued" toast.
   // Actions that fall through (translate / remind / extract / all B2B
@@ -291,7 +307,26 @@ export function ChatSurface({ channel, users, currentUserId }: Props) {
               computeLocation={extracted.computeLocation}
               dataEgressBytes={extracted.dataEgressBytes}
               acceptLabel="Add to my list"
+              onAccept={() => recordAccepted(extracted.sourceMessageId)}
             />
+          </div>
+        )}
+        {Object.entries(acceptedByMessage).filter(([, n]) => n > 0).length > 0 && (
+          <div className="chat-surface__pills" data-testid="chat-surface-task-pills">
+            {Object.entries(acceptedByMessage)
+              .filter(([, n]) => n > 0)
+              .map(([id, count]) => {
+                const src = (data ?? []).find((m) => m.id === id);
+                const label = src ? src.content.slice(0, 60) : undefined;
+                return (
+                  <TaskCreatedPill
+                    key={id}
+                    count={count}
+                    label={label}
+                    testId={`task-created-pill-${id}`}
+                  />
+                );
+              })}
           </div>
         )}
         {cards.length > 0 && (

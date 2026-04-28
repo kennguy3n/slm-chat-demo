@@ -193,6 +193,73 @@ export interface KAppsExtractTasksResponse {
   dataEgressBytes: 0;
 }
 
+// PrefillApproval — B2B Phase 1 surface. Reads a thread, fills an
+// approval template's structured fields (vendor / amount /
+// justification / risk), and returns provenance per field. Always
+// proposes; the human confirms before any approval is written.
+
+export type ApprovalTemplate = 'vendor' | 'budget' | 'access';
+
+export interface PrefillApprovalRequest {
+  threadId: string;
+  templateId?: ApprovalTemplate;
+  messages: { id: string; channelId: string; senderId: string; content: string }[];
+}
+
+export interface PrefilledApprovalFields {
+  vendor?: string;
+  amount?: string;
+  justification?: string;
+  risk?: string;
+  extra?: Record<string, string>;
+}
+
+export interface PrefillApprovalResponse {
+  threadId: string;
+  channelId: string;
+  templateId: ApprovalTemplate;
+  title: string;
+  fields: PrefilledApprovalFields;
+  sourceMessageIds: string[];
+  model: string;
+  tier: Tier;
+  reason: string;
+  computeLocation: 'on_device';
+  dataEgressBytes: 0;
+}
+
+// DraftArtifact — B2B Phase 1 surface. Same prompt-then-stream
+// pattern as ThreadSummaryRequest: the helper builds a prompt + source
+// list deterministically and the renderer streams the actual body via
+// `ai:stream` with that prompt so the model runs exactly once. The
+// router prefers E4B for `draft_artifact`.
+
+export type ArtifactKind = 'PRD' | 'RFC' | 'Proposal' | 'SOP' | 'QBR';
+export type ArtifactSection = 'goal' | 'requirements' | 'risks' | 'all';
+
+export interface DraftArtifactRequest {
+  threadId: string;
+  artifactType: ArtifactKind;
+  section?: ArtifactSection;
+  messages: { id: string; channelId: string; senderId: string; content: string }[];
+}
+
+export interface DraftArtifactResponse {
+  prompt: string;
+  sources: { id: string; channelId: string; sender: string; excerpt: string }[];
+  threadId: string;
+  channelId: string;
+  artifactType: ArtifactKind;
+  section: ArtifactSection;
+  title: string;
+  model: string;
+  tier: Tier;
+  reason: string;
+  messageCount: number;
+  computeLocation: 'on_device';
+  dataEgressBytes: 0;
+}
+
 export interface UnreadSummaryRequest {
   // Recent messages the renderer has fetched from /api/chats. The main
   // process never reaches into the data store directly.
@@ -229,6 +296,8 @@ export interface ElectronAI {
   extractTasks(req: ExtractTasksRequest): Promise<ExtractTasksResponse>;
   summarizeThread(req: ThreadSummaryRequest): Promise<ThreadSummaryResponse>;
   extractKAppTasks(req: KAppsExtractTasksRequest): Promise<KAppsExtractTasksResponse>;
+  prefillApproval(req: PrefillApprovalRequest): Promise<PrefillApprovalResponse>;
+  draftArtifact(req: DraftArtifactRequest): Promise<DraftArtifactResponse>;
   unreadSummary(req: UnreadSummaryRequest): Promise<UnreadSummaryResponse>;
   modelStatus(): Promise<ModelStatus>;
   loadModel(model?: string): Promise<{ loaded: boolean; model: string }>;

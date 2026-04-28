@@ -3,6 +3,7 @@ import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { Channel, User } from '../types/workspace';
 import { ChatSurface } from '../features/chat/ChatSurface';
 import { DeviceCapabilityPanel } from '../features/ai/DeviceCapabilityPanel';
+import { MorningDigestPanel } from '../features/ai/MorningDigestPanel';
 
 interface Props {
   chats: Channel[];
@@ -61,7 +62,7 @@ export function B2CLayout({ chats, users, currentUserId }: Props) {
 
       <aside className="rightpanel" aria-label="Right panel">
         <DeviceCapabilityPanel />
-        <div className="rightpanel__placeholder">Select a thread to view details</div>
+        <MorningDigestPanel />
       </aside>
     </div>
   );
