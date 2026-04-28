@@ -96,7 +96,7 @@ function digestPrivacyData(
 ): PrivacyStripData {
   return {
     computeLocation: digest.computeLocation,
-    modelName: route?.model ?? digest.summary.model,
+    modelName: route?.model ?? digest.model,
     sources: digest.sources.map((s) => ({
       kind: 'message' as const,
       id: s.id,
@@ -138,7 +138,11 @@ export function ChatSurface({ channel, users }: Props) {
   const [route, setRoute] = useState<AIRouteResponse | null>(null);
   const [streamErr, setStreamErr] = useState<string | null>(null);
 
-  function handleAIAction(path: string[]) {
+  // handleAIAction returns true when it actually handled the action so the
+  // composer / launcher knows to suppress its placeholder "queued" toast.
+  // Actions that fall through (translate / remind / extract / all B2B
+  // intents in Phase 1) return false so the launcher's toast still fires.
+  function handleAIAction(path: string[]): boolean {
     if (path[0] === 'catch_me_up') {
       setStreamErr(null);
       setStreamingText('');
@@ -146,21 +150,40 @@ export function ChatSurface({ channel, users }: Props) {
       setDigest(null);
       setRoute(null);
 
-      // Fire the stream + the digest fetch + the route lookup in parallel.
-      streamAITask(
-        { taskType: 'summarize', channelId: channel?.id },
-        {
-          onChunk: (delta) => setStreamingText((t) => t + delta),
-          onDone: () => setIsStreaming(false),
-          onError: (err) => {
-            setStreamErr(err.message);
-            setIsStreaming(false);
-          },
-        },
-      );
-      void fetchUnreadSummary().then(setDigest).catch(() => undefined);
+      // Fetch the digest prompt + sources first (no inference yet), then
+      // hand the *same* prompt to the SSE stream so the model runs exactly
+      // once. Previously this kicked off the stream with no prompt while
+      // /unread-summary ran a second inference pass on its own — with the
+      // mock both produced identical text so it looked fine, but with real
+      // Ollama you'd see useless empty-prompt output stream in and then
+      // jarringly swap to the digest endpoint's text.
+      void fetchUnreadSummary()
+        .then((d) => {
+          setDigest(d);
+          streamAITask(
+            {
+              taskType: 'summarize',
+              prompt: d.prompt,
+              channelId: channel?.id,
+            },
+            {
+              onChunk: (delta) => setStreamingText((t) => t + delta),
+              onDone: () => setIsStreaming(false),
+              onError: (err) => {
+                setStreamErr(err.message);
+                setIsStreaming(false);
+              },
+            },
+          );
+        })
+        .catch((err: Error) => {
+          setStreamErr(err.message);
+          setIsStreaming(false);
+        });
       void fetchAIRoute({ taskType: 'summarize' }).then(setRoute).catch(() => undefined);
+      return true;
     }
+    return false;
   }
 
   if (!channel) {
@@ -201,14 +224,8 @@ export function ChatSurface({ channel, users }: Props) {
               <DigestCard
                 digest={
                   digest ?? {
-                    summary: {
-                      taskType: 'summarize',
-                      model: 'gemma-4-e2b',
-                      output: streamingText,
-                      tokensUsed: 0,
-                      latencyMs: 0,
-                      onDevice: true,
-                    },
+                    prompt: '',
+                    model: 'gemma-4-e2b',
                     sources: [],
                     computeLocation: 'on_device',
                     dataEgressBytes: 0,

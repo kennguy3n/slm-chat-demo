@@ -10,9 +10,10 @@ interface Props {
 }
 
 // DigestCard renders the AI-generated unread-chat digest plus accept/edit/
-// discard actions. While the SSE stream is in flight, the caller passes
-// `streamingText` so the user sees tokens flowing in real time; once done
-// the full `digest.summary.output` is shown.
+// discard actions. The digest text is always sourced from `streamingText`
+// — the caller (ChatSurface) accumulates streamed tokens there and keeps
+// the final value after the stream ends. `isStreaming` only toggles the
+// blinking cursor.
 export function DigestCard({
   digest,
   streamingText,
@@ -21,13 +22,13 @@ export function DigestCard({
   onEdit,
   onDiscard,
 }: Props) {
-  const text = isStreaming ? (streamingText ?? '') : digest.summary.output;
+  const text = streamingText ?? '';
   return (
     <article className="digest-card" data-testid="digest-card" aria-label="AI unread digest">
       <header className="digest-card__header">
         <h3 className="digest-card__title">Catch-up digest</h3>
         <span className="digest-card__model" data-testid="digest-card-model">
-          {digest.summary.model}
+          {digest.model}
         </span>
       </header>
       <div className="digest-card__body" data-testid="digest-card-body">

@@ -44,4 +44,25 @@ describe('ActionLauncher', () => {
     await userEvent.click(screen.getByTestId('action-launcher-item-translate'));
     expect(onAction).toHaveBeenCalledWith(['translate']);
   });
+
+  it('suppresses the placeholder toast only when onAction returns true', async () => {
+    // Handler claims it handled the action -> launcher must NOT show the
+    // "Queued …" toast (the caller is rendering its own progress UI).
+    const handled = vi.fn(() => true);
+    const { unmount } = render(<ActionLauncher context="b2c" onAction={handled} />);
+    await userEvent.click(screen.getByTestId('action-launcher-trigger'));
+    await userEvent.click(screen.getByTestId('action-launcher-item-catch_me_up'));
+    expect(handled).toHaveBeenCalledWith(['catch_me_up']);
+    expect(screen.queryByTestId('action-launcher-toast')).toBeNull();
+    unmount();
+
+    // Handler returns false (or undefined) -> launcher MUST still show the
+    // placeholder toast so unwired actions give the user feedback.
+    const unhandled = vi.fn(() => false);
+    render(<ActionLauncher context="b2c" onAction={unhandled} />);
+    await userEvent.click(screen.getByTestId('action-launcher-trigger'));
+    await userEvent.click(screen.getByTestId('action-launcher-item-translate'));
+    expect(unhandled).toHaveBeenCalledWith(['translate']);
+    expect(screen.getByTestId('action-launcher-toast')).toHaveTextContent(/queued translate/i);
+  });
 });

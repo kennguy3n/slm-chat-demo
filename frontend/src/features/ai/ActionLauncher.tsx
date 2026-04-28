@@ -10,14 +10,16 @@ export interface ActionLauncherAction {
 
 interface Props {
   context: ContextMode;
-  onAction?: (path: string[]) => void;
+  // onAction may return a boolean indicating whether the caller actually
+  // handled the action. When true, the launcher suppresses its built-in
+  // "queued" placeholder toast (the caller is rendering its own progress
+  // UI). When false / undefined, the placeholder toast still fires so the
+  // user gets feedback for unwired actions.
+  onAction?: (path: string[]) => boolean | void;
   // Render-prop hook so callers can mount the trigger button inside their
   // own composer toolbar. The launcher provides the popover; the caller
   // decides where the trigger lives.
   triggerLabel?: string;
-  // When true, skip the built-in "queued" toast (callers wiring a real
-  // streaming flow render their own progress UI instead).
-  suppressToast?: boolean;
 }
 
 // Phase 0 menu definitions. PROPOSAL.md section 4.2 describes the B2C quick
@@ -74,7 +76,7 @@ const B2B_ACTIONS: ActionLauncherAction[] = [
 // surfaces the four core intents with submenus. Phase 0 invokes onAction
 // with the path of action ids; full wiring (route + run + privacy strip)
 // lands in Phase 1.
-export function ActionLauncher({ context, onAction, triggerLabel = 'AI', suppressToast = false }: Props) {
+export function ActionLauncher({ context, onAction, triggerLabel = 'AI' }: Props) {
   const [open, setOpen] = useState(false);
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -101,8 +103,8 @@ export function ActionLauncher({ context, onAction, triggerLabel = 'AI', suppres
   }, [toast]);
 
   function trigger(path: string[], label: string) {
-    onAction?.(path);
-    if (!suppressToast) {
+    const handled = onAction?.(path) === true;
+    if (!handled) {
       setToast(`Queued ${label} (Phase 1 will wire this to the inference adapter)`);
     }
     setOpen(false);

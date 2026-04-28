@@ -6,14 +6,8 @@ import { renderWithProviders } from '../../../test/renderWithProviders';
 import type { UnreadSummaryResponse } from '../../../types/ai';
 
 const sampleDigest: UnreadSummaryResponse = {
-  summary: {
-    taskType: 'summarize',
-    model: 'gemma-4-e2b',
-    output: 'You have 2 messages.\nDeadline tomorrow.',
-    tokensUsed: 17,
-    latencyMs: 350,
-    onDevice: true,
-  },
+  prompt: 'Summarise these recent unread messages…',
+  model: 'gemma-4-e2b',
   sources: [
     { id: 'm1', channelId: 'c1', sender: 'Bob', excerpt: 'Hey, ping' },
     { id: 'm2', channelId: 'c2', sender: 'Carol', excerpt: 'Reminder' },
@@ -23,25 +17,29 @@ const sampleDigest: UnreadSummaryResponse = {
 };
 
 describe('DigestCard', () => {
-  it('renders the model name and the summary text when not streaming', () => {
-    renderWithProviders(<DigestCard digest={sampleDigest} />);
+  it('renders the model name and the streamed text after streaming finishes', () => {
+    renderWithProviders(
+      <DigestCard
+        digest={sampleDigest}
+        streamingText={'You have 2 messages.\nDeadline tomorrow.'}
+      />,
+    );
     expect(screen.getByTestId('digest-card-model')).toHaveTextContent('gemma-4-e2b');
     const body = screen.getByTestId('digest-card-body');
     expect(body).toHaveTextContent('You have 2 messages.');
     expect(body).toHaveTextContent('Deadline tomorrow.');
   });
 
-  it('shows streamingText (not the final output) while isStreaming=true', () => {
+  it('shows streamingText while isStreaming=true', () => {
     renderWithProviders(
       <DigestCard digest={sampleDigest} isStreaming streamingText="Stream so far…" />,
     );
     const body = screen.getByTestId('digest-card-body');
     expect(body).toHaveTextContent('Stream so far…');
-    expect(body).not.toHaveTextContent('You have 2 messages.');
   });
 
   it('renders source back-links inside the disclosure', () => {
-    renderWithProviders(<DigestCard digest={sampleDigest} />);
+    renderWithProviders(<DigestCard digest={sampleDigest} streamingText="ok" />);
     const sources = screen.getByTestId('digest-card-sources');
     expect(sources).toHaveTextContent('Bob');
     expect(sources).toHaveTextContent('Carol');
@@ -54,6 +52,7 @@ describe('DigestCard', () => {
     renderWithProviders(
       <DigestCard
         digest={sampleDigest}
+        streamingText="ok"
         onAccept={onAccept}
         onEdit={onEdit}
         onDiscard={onDiscard}
@@ -67,10 +66,9 @@ describe('DigestCard', () => {
     expect(onDiscard).toHaveBeenCalledOnce();
   });
 
-  it('renders a placeholder when there is nothing to show yet', () => {
+  it('renders a placeholder when there is no streaming text yet', () => {
     const empty: UnreadSummaryResponse = {
       ...sampleDigest,
-      summary: { ...sampleDigest.summary, output: '' },
       sources: [],
     };
     renderWithProviders(<DigestCard digest={empty} />);
