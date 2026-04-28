@@ -76,20 +76,35 @@ llama.cpp / Ollama / Unsloth Studio.
 
 ### 2.3 Component tree
 
+The frontend lives under a top-level `frontend/` directory (Vite + TypeScript)
+so it can be built and tested independently of the Go backend:
+
 ```
-src/
-├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx)
-├── features/
-│   ├── chat/ (ChatSurface, MessageBubble, InlineAIBadge, ThreadPanel)
-│   ├── ai/ (ActionLauncher, PrivacyStrip, ModelStatusBadge, OutputReview, DeviceCapabilityPanel)
-│   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, FormCard)
-│   ├── artifacts/ (ArtifactWorkspace)
-│   ├── ai-employees/ (AIEmployeePanel)
-│   └── knowledge/ (SourcePicker)
-├── stores/ (chatStore, aiStore, workspaceStore)
-├── api/ (aiApi, chatApi, kappsApi)
-└── types/ (chat, ai, kapps, workspace)
+frontend/
+├── index.html
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── src/
+    ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx)
+    ├── features/
+    │   ├── chat/ (ChatSurface, MessageBubble, MessageList, Composer)        — Phase 0
+    │   ├── ai/ (ActionLauncher, PrivacyStrip, ModelStatusBadge, OutputReview, DeviceCapabilityPanel) — Phase 1+
+    │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, FormCard) — Phase 3
+    │   ├── artifacts/ (ArtifactWorkspace)                                    — Phase 3
+    │   ├── ai-employees/ (AIEmployeePanel)                                   — Phase 4
+    │   └── knowledge/ (SourcePicker)                                         — Phase 5
+    ├── stores/ (chatStore, aiStore, workspaceStore)
+    ├── api/ (client, aiApi, chatApi, kappsApi)
+    ├── types/ (chat, ai, kapps, workspace)
+    ├── router.tsx
+    ├── styles.css
+    └── main.tsx
 ```
+
+Phase 0 ships the `app/` shell and the `features/chat/` chat surface; the
+remaining feature directories contain placeholder modules that get fleshed
+out in the phases noted above.
 
 ---
 
@@ -118,14 +133,25 @@ src/
 backend/
 ├── cmd/server/main.go
 ├── internal/
-│   ├── api/ (router.go, middleware.go, handlers/ with ai.go, chat.go, kapps.go, artifacts.go, model.go, privacy.go)
-│   ├── services/ (ai_policy.go, ai_runtime.go, chat.go, kapps.go, artifacts.go, workspace.go, identity.go)
-│   ├── models/ (message.go, task.go, approval.go, artifact.go, workspace.go)
-│   ├── inference/ (adapter.go, ollama.go, llamacpp.go, router.go)
-│   └── store/ (postgres.go, memory.go)
-├── migrations/
+│   ├── api/
+│   │   ├── router.go
+│   │   ├── middleware.go
+│   │   ├── handlers/   (chat.go, workspace.go, ai.go, kapps.go, artifacts.go, model.go, privacy.go)
+│   │   └── userctx/    (request-scoped user helpers; avoids handlers ↔ api import cycle)
+│   ├── services/       (identity.go, workspace.go, chat.go; Phase 1+ adds ai_policy.go, ai_runtime.go, kapps.go, artifacts.go)
+│   ├── models/         (user.go, workspace.go, message.go; Phase 3 placeholders: task.go, approval.go, artifact.go)
+│   ├── inference/      (adapter.go interface; Phase 1+ adds ollama.go, llamacpp.go, router.go)
+│   └── store/          (memory.go + seed.go; Phase 6+ adds postgres.go and migrations/)
 └── go.mod
 ```
+
+> **Phase 0 status.** The Go backend currently uses an **in-memory store**
+> (`internal/store/memory.go`) seeded at startup by `internal/store/seed.go`.
+> **PostgreSQL is not yet integrated**, and **NATS JetStream**, **MinIO/S3**,
+> and **Meilisearch** are referenced in this document but do not yet exist
+> in the codebase. They land in later phases per [PHASES.md](./PHASES.md):
+> persistent state in Phase 3+, NATS / artifact storage / search around
+> Phases 3–5, confidential server compute in Phase 6.
 
 ### 3.3 HTTP API
 
