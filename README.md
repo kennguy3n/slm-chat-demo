@@ -67,8 +67,11 @@ cd backend && go run ./cmd/server
 ```
 
 The **Local model** panel in the right sidebar (`DeviceCapabilityPanel`)
-polls `/api/model/status` and exposes Load / Unload buttons backed by
-Ollama's `/api/generate` keepalive and `/api/delete` endpoints.
+polls `/api/model/status` (which queries Ollama's `/api/ps` for models
+*currently resident in memory*, not `/api/tags`) and exposes Load /
+Unload buttons. Load issues a small `/api/generate` request to warm the
+model; Unload posts `/api/generate` with `keep_alive=0` to evict it
+from memory without deleting the GGUF from disk.
 
 ## Project structure
 

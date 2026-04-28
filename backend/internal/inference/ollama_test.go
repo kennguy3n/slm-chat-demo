@@ -283,9 +283,11 @@ func TestOllamaAdapterPingErrorsWhenDaemonDown(t *testing.T) {
 	}
 }
 
-func TestOllamaAdapterStatusReturnsLoadedWhenTagsPresent(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"models":[{"name":"gemma-4-e2b"}]}`))
+func TestOllamaAdapterStatusReturnsLoadedFromPS(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"models":[{"name":"gemma-4-e2b","model":"gemma-4-e2b:latest","size":4294967296}]}`))
 	}))
 	defer srv.Close()
 	a := inference.NewOllamaAdapter(srv.URL)
@@ -293,11 +295,35 @@ func TestOllamaAdapterStatusReturnsLoadedWhenTagsPresent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("status: %v", err)
 	}
+	if gotPath != "/api/ps" {
+		t.Errorf("expected status to hit /api/ps, got %q", gotPath)
+	}
 	if !st.Loaded {
 		t.Errorf("expected loaded=true")
 	}
 	if st.Model != "gemma-4-e2b" {
 		t.Errorf("expected model gemma-4-e2b, got %q", st.Model)
+	}
+	if st.Sidecar != "running" {
+		t.Errorf("expected sidecar=running, got %q", st.Sidecar)
+	}
+	if st.RAMUsageMB != 4096 {
+		t.Errorf("expected ramUsageMB=4096 (4 GiB), got %d", st.RAMUsageMB)
+	}
+}
+
+func TestOllamaAdapterStatusReportsUnloadedWhenPSEmpty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"models":[]}`))
+	}))
+	defer srv.Close()
+	a := inference.NewOllamaAdapter(srv.URL)
+	st, err := a.Status(context.Background())
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if st.Loaded {
+		t.Errorf("expected loaded=false when /api/ps reports no resident models")
 	}
 	if st.Sidecar != "running" {
 		t.Errorf("expected sidecar=running, got %q", st.Sidecar)
@@ -325,13 +351,29 @@ func TestOllamaAdapterUnloadRequiresModel(t *testing.T) {
 
 func TestOllamaAdapterLoadAndUnloadHitExpectedEndpoints(t *testing.T) {
 	var loadHit, unloadHit bool
+	var unloadKeepAlive *int
+	var unloadDeleteSeen bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/generate":
-			loadHit = true
+			var body struct {
+				Model     string `json:"model"`
+				Prompt    string `json:"prompt"`
+				Stream    bool   `json:"stream"`
+				KeepAlive *int   `json:"keep_alive"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body.KeepAlive != nil && *body.KeepAlive == 0 {
+				unloadHit = true
+				unloadKeepAlive = body.KeepAlive
+			} else {
+				loadHit = true
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"done": true})
 		case r.Method == http.MethodDelete && r.URL.Path == "/api/delete":
-			unloadHit = true
+			// Hitting /api/delete from Unload would be destructive (it removes
+			// the model from disk). The adapter MUST NOT call this endpoint.
+			unloadDeleteSeen = true
 			w.WriteHeader(http.StatusOK)
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
@@ -345,6 +387,12 @@ func TestOllamaAdapterLoadAndUnloadHitExpectedEndpoints(t *testing.T) {
 	}
 	if err := a.Unload(context.Background(), "gemma-4-e2b"); err != nil {
 		t.Fatalf("unload: %v", err)
+	}
+	if unloadDeleteSeen {
+		t.Fatal("Unload must NOT call DELETE /api/delete \u2014 that would permanently remove the model from disk")
+	}
+	if unloadKeepAlive == nil || *unloadKeepAlive != 0 {
+		t.Errorf("expected Unload to POST /api/generate with keep_alive=0, got %v", unloadKeepAlive)
 	}
 	if !loadHit || !unloadHit {
 		t.Errorf("expected load + unload to hit expected endpoints (load=%v, unload=%v)", loadHit, unloadHit)

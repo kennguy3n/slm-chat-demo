@@ -68,6 +68,29 @@ type ollamaTagsResponse struct {
 	} `json:"models"`
 }
 
+// ollamaPsResponse is the body of /api/ps. Unlike /api/tags (which lists
+// every model that has been pulled to disk), /api/ps lists only the models
+// currently resident in memory and is the correct source of truth for
+// "is the model loaded?".
+type ollamaPsResponse struct {
+	Models []struct {
+		Name  string `json:"name"`
+		Model string `json:"model"`
+		Size  int64  `json:"size"`
+	} `json:"models"`
+}
+
+// ollamaKeepAliveRequest is posted to /api/generate to evict a model from
+// memory: keep_alive=0 tells Ollama to drop the model immediately. This is
+// non-destructive (the GGUF stays on disk) and is the supported way to
+// release VRAM/RAM — unlike DELETE /api/delete, which permanently removes
+// the model from the local Ollama store.
+type ollamaKeepAliveRequest struct {
+	Model     string `json:"model"`
+	KeepAlive int    `json:"keep_alive"`
+	Stream    bool   `json:"stream"`
+}
+
 // Run implements Adapter. It POSTs to {base}/api/generate with stream=false,
 // parses the single-frame response, and maps it to inference.Response.
 func (o *OllamaAdapter) Run(ctx context.Context, req Request) (Response, error) {
@@ -209,13 +232,16 @@ func (o *OllamaAdapter) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Status returns a snapshot of the daemon's loaded models, if any. The first
-// model in the list is reported as the active one. Status is what /api/model/status
-// exposes when an OllamaAdapter is wired in.
+// Status returns a snapshot of the daemon's loaded models, if any. It calls
+// GET /api/ps — the endpoint that lists models *currently resident in
+// memory* — rather than /api/tags, which lists every model on disk and
+// would falsely report "loaded" for any pulled-but-cold model. The first
+// model in the response is reported as the active one and its size (bytes)
+// is converted to a MB figure for the privacy strip.
 func (o *OllamaAdapter) Status(ctx context.Context) (ModelStatus, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, o.BaseURL+"/api/tags", nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, o.BaseURL+"/api/ps", nil)
 	if err != nil {
-		return ModelStatus{}, fmt.Errorf("ollama: build tags request: %w", err)
+		return ModelStatus{}, fmt.Errorf("ollama: build ps request: %w", err)
 	}
 	resp, err := o.client().Do(httpReq)
 	if err != nil {
@@ -225,20 +251,28 @@ func (o *OllamaAdapter) Status(ctx context.Context) (ModelStatus, error) {
 	if resp.StatusCode >= 400 {
 		return ModelStatus{Sidecar: "stopped", Model: o.Model}, nil
 	}
-	var tags ollamaTagsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
-		return ModelStatus{}, fmt.Errorf("ollama: decode tags: %w", err)
+	var ps ollamaPsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&ps); err != nil {
+		return ModelStatus{}, fmt.Errorf("ollama: decode ps: %w", err)
 	}
-	loaded := len(tags.Models) > 0
+	loaded := len(ps.Models) > 0
 	model := o.Model
+	var ramMB int
 	if loaded {
-		model = tags.Models[0].Name
+		first := ps.Models[0]
+		if first.Name != "" {
+			model = first.Name
+		} else if first.Model != "" {
+			model = first.Model
+		}
+		ramMB = int(first.Size / (1024 * 1024))
 	}
 	return ModelStatus{
-		Loaded:  loaded,
-		Model:   model,
-		Quant:   "q4_k_m",
-		Sidecar: "running",
+		Loaded:     loaded,
+		Model:      model,
+		Quant:      "q4_k_m",
+		RAMUsageMB: ramMB,
+		Sidecar:    "running",
 	}, nil
 }
 
@@ -269,14 +303,20 @@ func (o *OllamaAdapter) Load(ctx context.Context, model string) error {
 	return nil
 }
 
-// Unload sends a DELETE to /api/delete for the named model. Returns nil on
-// success.
+// Unload evicts the named model from Ollama's memory by POSTing
+// /api/generate with keep_alive=0. This is the supported way to release
+// VRAM/RAM without deleting the model from disk — DELETE /api/delete is
+// destructive (it removes the GGUF entirely, equivalent to `ollama rm`)
+// and is intentionally NOT used here.
 func (o *OllamaAdapter) Unload(ctx context.Context, model string) error {
 	if model == "" {
 		return errors.New("ollama: unload requires a model name")
 	}
-	body, _ := json.Marshal(map[string]string{"name": model})
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, o.BaseURL+"/api/delete", bytes.NewReader(body))
+	body, err := json.Marshal(ollamaKeepAliveRequest{Model: model, KeepAlive: 0, Stream: false})
+	if err != nil {
+		return err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.BaseURL+"/api/generate", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
