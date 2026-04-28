@@ -11,6 +11,11 @@ import (
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/services"
 )
 
+// summaryDefaultModel is the model advertised in the digest response. The
+// frontend pairs this with the live /api/ai/route decision when rendering
+// the privacy strip, so this only acts as a fallback.
+const summaryDefaultModel = "gemma-4-e2b"
+
 // AISummary owns AI-driven chat summary endpoints. The first one is
 // GET /api/chats/unread-summary which returns a digest of recent B2C chat
 // messages for the authenticated user.
@@ -29,9 +34,14 @@ func NewAISummary(c *services.Chat, a inference.Adapter, i *services.Identity) *
 const unreadSummaryMaxMessages = 20
 
 // UnreadSummary collects recent B2C chat messages for the authenticated
-// user, builds a summarize prompt, calls the inference adapter, and returns
-// the response together with the source message IDs so the UI can back-link
-// each digest item to its origin.
+// user, builds a summarize prompt, and returns the prompt + source message
+// IDs so the UI can stream the actual digest via /api/ai/stream and back-
+// link each digest item to its origin.
+//
+// This endpoint deliberately does NOT run inference: the streaming path
+// already runs the model once with this prompt, so calling Run here would
+// be a duplicate inference (wasted cycles, and a visible text swap when
+// the streamed output and the digest output differ).
 func (h *AISummary) UnreadSummary(w http.ResponseWriter, r *http.Request) {
 	user, ok := userctx.From(r.Context())
 	if !ok {
@@ -78,28 +88,23 @@ func (h *AISummary) UnreadSummary(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp, err := h.adapter.Run(r.Context(), inference.Request{
-		TaskType:  inference.TaskTypeSummarize,
-		Prompt:    promptB.String(),
-		ChannelID: "", // cross-chat digest
-	})
-	if err != nil {
-		writeJSONError(w, http.StatusBadGateway, err.Error())
-		return
-	}
-
 	writeJSON(w, http.StatusOK, map[string]any{
-		"summary":         resp,
+		"prompt":          promptB.String(),
+		"model":           summaryDefaultModel,
 		"sources":         sources,
 		"computeLocation": "on_device",
 		"dataEgressBytes": 0,
 	})
 }
 
+// truncateForPrompt returns s trimmed and capped at max *runes* (not
+// bytes) so multi-byte characters (emoji, CJK, accented letters) are
+// never split mid-codepoint into invalid UTF-8.
 func truncateForPrompt(s string, max int) string {
 	s = strings.TrimSpace(s)
-	if len(s) <= max {
+	runes := []rune(s)
+	if len(runes) <= max {
 		return s
 	}
-	return s[:max] + "…"
+	return string(runes[:max]) + "…"
 }

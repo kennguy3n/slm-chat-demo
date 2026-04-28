@@ -93,8 +93,12 @@ export interface EgressPreview {
 }
 
 // UnreadSummaryResponse is the shape returned by GET /api/chats/unread-summary.
-// It bundles the AI digest itself with the source messages used to build it
-// so the digest card can back-link each line to its origin.
+// The endpoint deliberately does NOT run inference — it returns the prompt
+// it built plus the source messages used to build it, so the caller can
+// stream the actual digest exactly once via /api/ai/stream and back-link
+// each digest item to its origin. Running the model here as well would
+// be a wasted second inference pass (and a visible text swap in the UI
+// once the streamed and post-stream texts disagree).
 export interface UnreadSummarySource {
   id: string;
   channelId: string;
@@ -103,7 +107,8 @@ export interface UnreadSummarySource {
 }
 
 export interface UnreadSummaryResponse {
-  summary: AIRunResponse;
+  prompt: string;
+  model: string;
   sources: UnreadSummarySource[];
   computeLocation: ComputeLocation;
   dataEgressBytes: number;

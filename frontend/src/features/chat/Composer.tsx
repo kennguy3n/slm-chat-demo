@@ -6,7 +6,11 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   onSend?: (text: string) => void;
-  onAIAction?: (path: string[]) => void;
+  // onAIAction may return true to indicate the caller handled the action,
+  // suppressing the launcher's placeholder toast. Returning false /
+  // undefined leaves the toast in place so unwired actions still give the
+  // user feedback.
+  onAIAction?: (path: string[]) => boolean | void;
 }
 
 // Composer is the chat input row at the bottom of MainChat. It renders the
@@ -28,7 +32,7 @@ export function Composer({ placeholder = 'Message…', disabled, onSend, onAIAct
 
   return (
     <form className="composer" onSubmit={handleSubmit}>
-      <ActionLauncher context={context} onAction={onAIAction} suppressToast={!!onAIAction} />
+      <ActionLauncher context={context} onAction={onAIAction} />
 
       <input
         type="text"
