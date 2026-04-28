@@ -4,7 +4,11 @@ import type {
   AIRunRequest,
   AIRunResponse,
   EgressPreview,
+  ExtractTasksResponse,
   ModelStatus,
+  SmartReplyResponse,
+  ThreadSummaryResponse,
+  TranslateResponse,
   UnreadSummaryResponse,
 } from '../types/ai';
 
@@ -60,6 +64,61 @@ export async function runAITask(req: AIRunRequest): Promise<AIRunResponse> {
 // hardcodes the on-device, zero-egress decision.
 export async function fetchAIRoute(req: AIRunRequest): Promise<AIRouteResponse> {
   return apiFetch<AIRouteResponse>('/api/ai/route', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+}
+
+// fetchSmartReply asks the backend for 2–3 contextual reply suggestions
+// for the given channel + most-recent message. Used by the B2C
+// SmartReplyBar above the composer.
+export async function fetchSmartReply(req: {
+  channelId: string;
+  messageId?: string;
+}): Promise<SmartReplyResponse> {
+  return apiFetch<SmartReplyResponse>('/api/ai/smart-reply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+}
+
+// fetchTranslate runs on-device translation for a single message. The
+// caller passes the message ID and target language; the response carries
+// both the original and the translated text so the bubble can toggle.
+export async function fetchTranslate(req: {
+  messageId: string;
+  targetLanguage?: string;
+}): Promise<TranslateResponse> {
+  return apiFetch<TranslateResponse>('/api/ai/translate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+}
+
+// fetchExtractTasks runs B2C task extraction on a single message (with
+// surrounding context). When messageId is omitted the server defaults to
+// the latest message in the channel.
+export async function fetchExtractTasks(req: {
+  channelId?: string;
+  messageId?: string;
+}): Promise<ExtractTasksResponse> {
+  return apiFetch<ExtractTasksResponse>('/api/ai/extract-tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+}
+
+// fetchThreadSummary returns the prompt + source list for a thread
+// summary. The frontend hands the same prompt to /api/ai/stream so the
+// model runs exactly once (mirrors the digest flow).
+export async function fetchThreadSummary(req: {
+  threadId: string;
+}): Promise<ThreadSummaryResponse> {
+  return apiFetch<ThreadSummaryResponse>('/api/ai/summarize-thread', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),

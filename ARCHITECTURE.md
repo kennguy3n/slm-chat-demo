@@ -88,8 +88,8 @@ frontend/
 └── src/
     ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
     ├── features/
-    │   ├── chat/ (ChatSurface, MessageBubble, MessageList, Composer)        — Phase 0
-    │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10) and DigestCard for the unread-summary flow; ModelStatusBadge / OutputReview land in later phases
+    │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces)
+    │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), and ThreadSummaryCard for the B2B thread summary; ModelStatusBadge / OutputReview land in later phases
     │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard) — Phase 0; FormCard lands in Phase 3
     │   ├── artifacts/ (ArtifactWorkspace)                                    — Phase 3
     │   ├── ai-employees/ (AIEmployeePanel)                                   — Phase 4
@@ -137,7 +137,7 @@ backend/
 │   ├── api/
 │   │   ├── router.go
 │   │   ├── middleware.go
-│   │   ├── handlers/   (chat.go, workspace.go, ai.go, ai_summary.go, kapps.go, model.go, privacy.go; artifacts.go is a Phase 3 placeholder)
+│   │   ├── handlers/   (chat.go, workspace.go, ai.go, ai_summary.go, ai_smart_reply.go, ai_translate.go, ai_extract_tasks.go, ai_thread_summary.go, kapps.go, model.go, privacy.go; artifacts.go is a Phase 3 placeholder)
 │   │   └── userctx/    (request-scoped user helpers; avoids handlers ↔ api import cycle)
 │   ├── services/       (identity.go, workspace.go, chat.go, kapps.go; Phase 1+ adds ai_policy.go, ai_runtime.go; Phase 3 adds artifacts.go)
 │   ├── models/         (user.go, workspace.go, message.go, task.go, approval.go, artifact.go, event.go, card.go)
@@ -173,6 +173,8 @@ backend/
 
 ```
 POST /api/ai/route, /api/ai/run, /api/ai/stream
+POST /api/ai/smart-reply, /api/ai/translate, /api/ai/extract-tasks, /api/ai/summarize-thread
+GET  /api/chats/unread-summary
 POST /api/kapps/tasks/extract, /api/kapps/approvals/prefill
 POST /api/artifacts/draft, /api/artifacts/publish
 GET  /api/model/status
@@ -191,7 +193,31 @@ GET  /api/privacy/egress-preview
   `frontend/src/api/streamAI.ts` and uses `fetch` + `ReadableStream`
   rather than `EventSource` because the endpoint is a `POST`. WebSocket
   streaming is deferred to a later phase.
-- `POST /api/kapps/tasks/extract` — extracts task candidates from a thread.
+- `POST /api/ai/smart-reply` — returns 2–3 short contextual reply suggestions for
+  a chat. Body: `{ channelId, messageId? }`. Response: `{ replies, channelId,
+  sourceMessageId?, model, computeLocation, dataEgressBytes }`. Routes through
+  the inference router with `taskType: smart_reply` (E2B per PROPOSAL.md §2).
+- `POST /api/ai/translate` — translates a single message to the requested
+  language. Body: `{ messageId, targetLanguage? }` (default `en`). Response:
+  `{ messageId, channelId, original, translated, targetLanguage, model,
+  computeLocation, dataEgressBytes }`. The original is included so the UI's
+  tap-to-toggle never has to refetch. Routes with `taskType: translate` (E2B).
+- `POST /api/ai/extract-tasks` — extracts actionable items (task / reminder /
+  shopping) from a B2C message + its surrounding context. Body:
+  `{ channelId?, messageId? }` (one is required). Response: `{ tasks: [{ title,
+  dueDate?, type }], sourceMessageId, channelId, model, computeLocation,
+  dataEgressBytes }`. Routes with `taskType: extract_tasks` (E2B).
+- `POST /api/ai/summarize-thread` — returns the summarize prompt + source list
+  for a thread without running inference (matches the `/unread-summary`
+  contract). Body: `{ threadId }`. Response: `{ prompt, sources, threadId,
+  channelId, model, tier, reason, messageCount, computeLocation, dataEgressBytes }`.
+  The router picks E2B for short threads (≤ 8 messages) and E4B for longer
+  threads per PROPOSAL.md §2.
+- `POST /api/kapps/tasks/extract` — extracts task candidates from a B2B thread
+  with owner / due-date / status / source-message provenance. Body:
+  `{ threadId }`. Response: `{ tasks: [{ title, owner, dueDate, status,
+  sourceMessageId }], threadId, channelId, model, computeLocation, dataEgressBytes }`.
+  Routes with `taskType: extract_tasks` (E2B).
 - `POST /api/kapps/approvals/prefill` — prefills an approval template from a thread.
 - `POST /api/artifacts/draft` — drafts a PRD / RFC / proposal from sources.
 - `POST /api/artifacts/publish` — publishes an artifact version and emits a card.

@@ -145,6 +145,16 @@ func (m *Memory) PutMessage(msg models.Message) {
 	m.messages[msg.ID] = msg
 }
 
+// GetMessage returns a single message by ID. Used by handlers that need
+// to look up a specific message (translate, extract-tasks) without
+// scanning every channel.
+func (m *Memory) GetMessage(id string) (models.Message, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	msg, ok := m.messages[id]
+	return msg, ok
+}
+
 // ListChannelMessages returns the top-level messages for a channel (i.e. messages
 // whose ThreadID is empty or equal to their ID), sorted by CreatedAt.
 func (m *Memory) ListChannelMessages(channelID string) []models.Message {

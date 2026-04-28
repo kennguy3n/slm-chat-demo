@@ -9,7 +9,7 @@ Last updated: 2026-04-28 (Phase 1 status row)
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 0: Consolidated prototype foundation | Complete | 100% |
-| Phase 1: Local LLM MVP | In progress | ~40% |
+| Phase 1: Local LLM MVP | In progress | ~75% |
 | Phase 2: B2C second-brain demo | Not started | 0% |
 | Phase 3: B2B KApps MVP | Not started | 0% |
 | Phase 4: AI Employees and recipe engine | Not started | 0% |
@@ -45,11 +45,11 @@ Last updated: 2026-04-28 (Phase 1 status row)
 - [ ] WebSocket streaming responses
 - [x] Privacy strip with real compute location and model name (now driven by `/api/ai/route` decision)
 - [x] B2C: Summarize unread chats
-- [ ] B2C: Smart reply generation
-- [ ] B2C: Inline translation
-- [ ] B2C: Task extraction from messages
-- [ ] B2B: Thread summarization
-- [ ] B2B: Task extraction from threads
+- [x] B2C: Smart reply generation
+- [x] B2C: Inline translation
+- [x] B2C: Task extraction from messages
+- [x] B2B: Thread summarization
+- [x] B2B: Task extraction from threads
 - [ ] B2B: Approval prefill
 - [ ] B2B: Draft short artifact section
 
@@ -156,3 +156,9 @@ Last updated: 2026-04-28 (Phase 1 status row)
 | 2026-04-28 | Phase 0: Added React app shell with B2C/B2B switching, Go backend with mock auth, seeded demo data, and three-column web layout. |
 | 2026-04-28 | Phase 0 complete: Added shared card system, privacy strip, AI action launcher, mocked inference adapter, and mobile-responsive layout. |
 | 2026-04-28 | Phase 1 in progress: Ollama HTTP adapter (`backend/internal/inference/ollama.go`), inference router with E2B/E4B decision tree (`router.go`), SSE streaming on `/api/ai/stream` plus a `streamAITask` browser client, real model status / load / unload endpoints, `DeviceCapabilityPanel` component (ARCHITECTURE.md module #10), and the first end-to-end AI feature: `GET /api/chats/unread-summary` wired through the SSE stream into a `DigestCard` with sources and an AI-route-driven privacy strip. |
+| 2026-04-28 | Phase 1: B2C smart reply (`POST /api/ai/smart-reply`, `SmartReplyBar`) — composer renders 2–3 contextual suggestion chips above the input with E2B routing, on-device / 0 byte egress privacy strip. |
+| 2026-04-28 | Phase 1: B2C inline translation (`POST /api/ai/translate`, `TranslationCaption`) — per-message translation rendered as a caption under the bubble with tap-to-see-original toggle. E2B routing, original + translated returned together so the toggle never re-fetches. |
+| 2026-04-28 | Phase 1: B2C task extraction (`POST /api/ai/extract-tasks`, `TaskExtractionCard`) — wired to ChatSurface via the launcher's "Extract tasks" action; renders an inline AI badge expandable to Accept / Edit / Discard rows with type classification (task / reminder / shopping). |
+| 2026-04-28 | Phase 1: B2B thread summarization (`POST /api/ai/summarize-thread`, `ThreadSummaryCard`) — same no-double-inference pattern as the digest; tier hint (E2B for short threads, E4B for long) included in the response so the privacy strip can show real routing. |
+| 2026-04-28 | Phase 1: B2B task extraction from threads (`POST /api/kapps/tasks/extract`, `ThreadPanel` + reusable `TaskExtractionCard`) — replaces the Phase-3 stub with a real handler that returns owner / due-date / status / source-message provenance. |
+| 2026-04-28 | Phase 1 status row bumped to ~75% (5 new B2C + B2B AI features end-to-end). New frontend types in `types/ai.ts`, new API clients in `api/aiApi.ts` and `api/kappsApi.ts`. |

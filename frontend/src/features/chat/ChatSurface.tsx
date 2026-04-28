@@ -2,12 +2,17 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchChannelMessages } from '../../api/chatApi';
 import { fetchKAppCards } from '../../api/kappsApi';
-import { fetchAIRoute, fetchUnreadSummary } from '../../api/aiApi';
+import {
+  fetchAIRoute,
+  fetchExtractTasks,
+  fetchUnreadSummary,
+} from '../../api/aiApi';
 import { streamAITask } from '../../api/streamAI';
 import type { Channel, User } from '../../types/workspace';
 import type { KAppCard } from '../../types/kapps';
 import type {
   AIRouteResponse,
+  ExtractTasksResponse,
   PrivacyStripData,
   UnreadSummaryResponse,
 } from '../../types/ai';
@@ -16,10 +21,16 @@ import { Composer } from './Composer';
 import { KAppCardRenderer } from '../kapps/KAppCardRenderer';
 import { PrivacyStrip } from '../ai/PrivacyStrip';
 import { DigestCard } from '../ai/DigestCard';
+import { SmartReplyBar } from '../ai/SmartReplyBar';
+import { TaskExtractionCard, type TaskItem } from '../ai/TaskExtractionCard';
 
 interface Props {
   channel: Channel | null;
   users: Record<string, User>;
+  // currentUserId is used to detect the latest *incoming* message (one
+  // not sent by the viewer) so SmartReplyBar can suggest a reply. When
+  // omitted the smart-reply bar simply hides itself.
+  currentUserId?: string;
 }
 
 // privacyDataForCard builds the placeholder PrivacyStripData rendered under
@@ -115,7 +126,7 @@ function digestPrivacyData(
   };
 }
 
-export function ChatSurface({ channel, users }: Props) {
+export function ChatSurface({ channel, users, currentUserId }: Props) {
   const enabled = !!channel;
   const { data, isLoading, isError } = useQuery({
     queryKey: ['channel-messages', channel?.id],
@@ -137,6 +148,14 @@ export function ChatSurface({ channel, users }: Props) {
   const [digest, setDigest] = useState<UnreadSummaryResponse | null>(null);
   const [route, setRoute] = useState<AIRouteResponse | null>(null);
   const [streamErr, setStreamErr] = useState<string | null>(null);
+
+  // Composer text is lifted up so SmartReplyBar's chip clicks can seed it.
+  const [composerText, setComposerText] = useState('');
+  // Inline task-extraction card. Populated when the user runs the
+  // "Extract tasks" action from the launcher; cleared once they accept
+  // or discard everything.
+  const [extracted, setExtracted] = useState<ExtractTasksResponse | null>(null);
+  const [extractErr, setExtractErr] = useState<string | null>(null);
 
   // handleAIAction returns true when it actually handled the action so the
   // composer / launcher knows to suppress its placeholder "queued" toast.
@@ -183,8 +202,25 @@ export function ChatSurface({ channel, users }: Props) {
       void fetchAIRoute({ taskType: 'summarize' }).then(setRoute).catch(() => undefined);
       return true;
     }
+    if (path[0] === 'extract_tasks') {
+      setExtractErr(null);
+      setExtracted(null);
+      const lastMessageId = (data ?? []).at(-1)?.id;
+      void fetchExtractTasks({
+        channelId: channel?.id,
+        messageId: lastMessageId,
+      })
+        .then(setExtracted)
+        .catch((err: Error) => setExtractErr(err.message));
+      return true;
+    }
     return false;
   }
+
+  const lastIncomingMessage = (data ?? [])
+    .slice()
+    .reverse()
+    .find((m) => !currentUserId || m.senderId !== currentUserId);
 
   if (!channel) {
     return (
@@ -240,6 +276,24 @@ export function ChatSurface({ channel, users }: Props) {
             )}
           </div>
         )}
+        {extractErr && (
+          <div role="alert" className="chat-surface__digest-error">
+            Task extraction failed: {extractErr}
+          </div>
+        )}
+        {extracted && extracted.tasks.length > 0 && (
+          <div className="chat-surface__extracted" data-testid="chat-surface-extracted">
+            <TaskExtractionCard
+              tasks={extracted.tasks as TaskItem[]}
+              sourceMessageId={extracted.sourceMessageId}
+              channelId={extracted.channelId}
+              model={extracted.model}
+              computeLocation={extracted.computeLocation}
+              dataEgressBytes={extracted.dataEgressBytes}
+              acceptLabel="Add to my list"
+            />
+          </div>
+        )}
         {cards.length > 0 && (
           <div className="chat-surface__cards" data-testid="chat-surface-cards">
             {cards.map((card) => (
@@ -251,7 +305,20 @@ export function ChatSurface({ channel, users }: Props) {
           </div>
         )}
       </div>
-      <Composer placeholder={`Message ${channel.name}`} onAIAction={handleAIAction} />
+      <Composer
+        placeholder={`Message ${channel.name}`}
+        onAIAction={handleAIAction}
+        value={composerText}
+        onChange={setComposerText}
+      >
+        {channel.context === 'b2c' && lastIncomingMessage && (
+          <SmartReplyBar
+            channelId={channel.id}
+            sourceMessageId={lastIncomingMessage.id}
+            onSelect={(text) => setComposerText(text)}
+          />
+        )}
+      </Composer>
     </section>
   );
 }
