@@ -2,6 +2,8 @@
   "name": "kchat-slm-demo-frontend",
   "version": "0.0.0",
   "private": true,
+  "description": "KChat SLM Demo: Electron desktop app for on-device AI messaging.",
+  "author": "KChat",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -50,13 +52,43 @@
   "build": {
     "appId": "com.kchat.slm-demo",
     "productName": "KChat SLM Demo",
+    "copyright": "Copyright © 2026 KChat",
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
-      "package.json"
+      "package.json",
+      "!**/*.map",
+      "!**/__tests__/**",
+      "!**/*.test.{ts,tsx,js,jsx}"
     ],
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
+    },
+    "asar": true,
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] }
+      ],
+      "category": "Office",
+      "synopsis": "Local-first SLM chat demo",
+      "description": "KChat SLM Demo: Electron desktop app for on-device AI messaging."
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
     }
   }
 }

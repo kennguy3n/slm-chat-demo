@@ -50,10 +50,11 @@ Streaming uses an `ai:stream` request channel plus per-chunk
 
 Chat / thread / workspace data is fetched from the Go API over plain HTTP
 (`fetch`) just like before, but the Go server no longer hosts any AI
-endpoint — `internal/inference/` is kept as a deprecated reference for the
-TypeScript port. Persistent state still lives in the in-memory store for
-Phase 0; PostgreSQL, NATS JetStream, MinIO/S3 and Meilisearch land in
-later phases.
+endpoint and the legacy `internal/inference/` package has been
+removed — the canonical inference code lives entirely in
+`frontend/electron/inference/`. Persistent state still lives in the
+in-memory store for Phase 0; PostgreSQL, NATS JetStream, MinIO/S3 and
+Meilisearch land in later phases.
 
 ---
 
@@ -190,8 +191,6 @@ backend/
 │   │                              Phase 3 adds artifacts.go)
 │   ├── models/                   (user.go, workspace.go, message.go, task.go,
 │   │                              approval.go, artifact.go, event.go, card.go)
-│   ├── inference/                (DEPRECATED — adapter.go, mock.go, ollama.go,
-│   │                              router.go; kept as reference for the TS port)
 │   └── store/                    (memory.go + seed.go; Phase 6+ adds postgres.go)
 └── go.mod
 ```
@@ -200,10 +199,10 @@ backend/
 > (`internal/store/memory.go`) seeded at startup by `internal/store/seed.go`,
 > including four sample KApp cards (task, approval, artifact, event)
 > exposed via `GET /api/kapps/cards`. AI inference, model lifecycle and
-> the policy engine all moved to the Electron main process; the
-> `internal/inference/` package is preserved as a reference for the TS
-> port and its tests still exercise the routing rules, but **nothing in
-> `cmd/server/main.go` imports it**.
+> the policy engine all moved to the Electron main process; the legacy
+> `internal/inference/` package was deleted in the follow-up — the
+> canonical inference code now lives only in
+> `frontend/electron/inference/`.
 >
 > **Phase 1 progress.** The `OllamaAdapter` and `InferenceRouter` now
 > live in `frontend/electron/inference/ollama.ts` and
