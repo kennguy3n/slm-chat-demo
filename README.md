@@ -91,12 +91,32 @@ cd frontend
 npm run electron:build
 ```
 
-Vite builds the renderer into `dist/`; `tsconfig.electron.json`
-compiles `electron/` to CommonJS in `dist-electron/`. A
-`scripts/finalize-electron-build.mjs` step copies the renderer into
-the main-process layout so `electron .` (or a future
-`electron-builder` packaging step) loads `dist/index.html` directly
-instead of the dev server.
+`npm run electron:build` runs three stages:
+
+1. `npm run build` — Vite builds the renderer into `dist/`.
+2. `npm run electron:tsc` — `tsconfig.electron.json` compiles
+   `electron/` to CommonJS in `dist-electron/`, then
+   `scripts/finalize-electron-build.mjs` writes a
+   `dist-electron/package.json` with `"type": "commonjs"` so Electron
+   treats the `.js` files as CommonJS even though the outer
+   `frontend/package.json` is ESM.
+3. `electron-builder` packages the result into a platform installer
+   under `frontend/release/`. Targets are configured in the
+   `"build"` block of `frontend/package.json`:
+
+   - **Linux**: `AppImage` (x64).
+   - **macOS**: `dmg` (x64 + arm64; unsigned by default).
+   - **Windows**: `nsis` installer (x64).
+
+Build only one target with `npx electron-builder --linux AppImage`,
+`--mac dmg`, or `--win nsis`. The Linux AppImage build has been
+verified end-to-end on this snapshot — it produces a single
+`~107 MB` self-contained executable that bundles Electron + the
+React renderer + the TypeScript inference layer.
+
+Code-signing certificates are not configured. When you're ready to
+ship signed builds, set `CSC_LINK` / `CSC_KEY_PASSWORD` (macOS) or
+`WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` (Windows) in your CI.
 
 ## Project structure
 
