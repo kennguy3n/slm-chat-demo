@@ -393,6 +393,12 @@ export interface ElectronAI {
   familyChecklist(req: FamilyChecklistRequest): Promise<FamilyChecklistResponse>;
   shoppingNudges(req: ShoppingNudgesRequest): Promise<ShoppingNudgesResponse>;
   eventRSVP(req: EventRSVPRequest): Promise<EventRSVPResponse>;
+  // Phase 2 trip planner — opaque payloads here so the adapter module
+  // does not have to import the skill module (which depends on the
+  // search service); the renderer side gets full types via the
+  // dedicated `frontend/src/types/electron.d.ts` augmentation.
+  tripPlan(req: unknown): Promise<unknown>;
+  guardrailCheck(req: unknown): Promise<unknown>;
   modelStatus(): Promise<ModelStatus>;
   loadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
   unloadModel(model?: string): Promise<{ loaded: boolean; model: string }>;

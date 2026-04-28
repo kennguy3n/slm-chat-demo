@@ -61,6 +61,63 @@ export function buildFact(input: {
 // ---------- IndexedDB implementation ----------
 
 function createIndexedDBStore(): MemoryStore {
+  // Cache the IDBDatabase promise per-store so concurrent callers don't
+  // each open their own connection. If the connection ever closes (e.g.
+  // a versionchange event from another tab opens a higher schema), we
+  // null out the cache so the next call reopens cleanly.
+  let dbPromise: Promise<IDBDatabase> | null = null;
+
+  function db(): Promise<IDBDatabase> {
+    if (!dbPromise) {
+      dbPromise = openDB().then((database) => {
+        const reset = () => {
+          try {
+            database.close();
+          } catch {
+            // ignore — already closing
+          }
+          if (dbPromise === currentPromise) dbPromise = null;
+        };
+        database.onversionchange = reset;
+        database.onclose = reset;
+        return database;
+      });
+      const currentPromise = dbPromise;
+      dbPromise.catch(() => {
+        if (dbPromise === currentPromise) dbPromise = null;
+      });
+    }
+    return dbPromise;
+  }
+
+  async function withStore<T>(
+    mode: IDBTransactionMode,
+    fn: (store: IDBObjectStore) => Promise<T> | T,
+  ): Promise<T> {
+    const handle = await db();
+    return new Promise<T>((resolve, reject) => {
+      let tx: IDBTransaction;
+      try {
+        tx = handle.transaction(STORE_NAME, mode);
+      } catch (e) {
+        // Most commonly this fires when the cached connection has been
+        // closed under us. Drop the cache and surface the error so the
+        // caller can retry on the next tick.
+        if (dbPromise) dbPromise = null;
+        reject(e);
+        return;
+      }
+      const store = tx.objectStore(STORE_NAME);
+      Promise.resolve(fn(store))
+        .then((value) => {
+          tx.oncomplete = () => resolve(value);
+          tx.onerror = () => reject(tx.error ?? new Error('indexedDB tx failed'));
+          tx.onabort = () => reject(tx.error ?? new Error('indexedDB tx aborted'));
+        })
+        .catch(reject);
+    });
+  }
+
   return {
     list: () =>
       withStore('readonly', (s) =>
@@ -90,24 +147,6 @@ function openDB(): Promise<IDBDatabase> {
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error('indexedDB open failed'));
-  });
-}
-
-async function withStore<T>(
-  mode: IDBTransactionMode,
-  fn: (store: IDBObjectStore) => Promise<T> | T,
-): Promise<T> {
-  const db = await openDB();
-  return new Promise<T>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, mode);
-    const store = tx.objectStore(STORE_NAME);
-    Promise.resolve(fn(store))
-      .then((value) => {
-        tx.oncomplete = () => resolve(value);
-        tx.onerror = () => reject(tx.error ?? new Error('indexedDB tx failed'));
-        tx.onabort = () => reject(tx.error ?? new Error('indexedDB tx aborted'));
-      })
-      .catch(reject);
   });
 }
 

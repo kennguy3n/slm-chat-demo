@@ -24,6 +24,7 @@ import type {
 } from './adapter.js';
 import type { InferenceRouter } from './router.js';
 import { truncateForPrompt } from './tasks.js';
+import { INSUFFICIENT_RULE, detectInsufficient } from './skill-framework.js';
 
 const SECOND_BRAIN_MAX_MESSAGES = 30;
 
@@ -37,7 +38,7 @@ export async function runFamilyChecklist(
     throw new Error('family checklist requires at least one message');
   }
   const limited = req.messages.slice(-SECOND_BRAIN_MAX_MESSAGES);
-  let prompt = '';
+  let prompt = `${INSUFFICIENT_RULE}\n\n`;
   prompt += 'Read this family chat and produce a concrete preparation checklist. ';
   prompt += 'Each line is one item the family needs to do or bring. ';
   prompt += 'Format: <title> | <when if mentioned>. ';
@@ -91,6 +92,10 @@ export function parseChecklistItems(
   out: string,
   sources: { id: string; content: string }[],
 ): FamilyChecklistItem[] {
+  // Honour the SLM refusal contract: if the model explicitly returns
+  // "INSUFFICIENT: ..." we skip parsing instead of treating the refusal
+  // text as a checklist item.
+  if (detectInsufficient(out)) return [];
   const items: FamilyChecklistItem[] = [];
   for (const raw of out.split('\n')) {
     let line = raw.trim();
@@ -140,6 +145,7 @@ export async function runShoppingNudges(
   }
   const limited = req.messages.slice(-SECOND_BRAIN_MAX_MESSAGES);
   let prompt = '';
+  prompt += `${INSUFFICIENT_RULE}\n\n`;
   prompt += 'Read this family chat and suggest items the user may want to add to their shopping list. ';
   prompt += 'For every suggestion give a short reason that points back to the chat. ';
   prompt += 'Format: <item> | <reason>. ';
@@ -189,6 +195,7 @@ export function parseShoppingNudges(
   out: string,
   sources: { id: string; content: string }[],
 ): ShoppingNudge[] {
+  if (detectInsufficient(out)) return [];
   const nudges: ShoppingNudge[] = [];
   for (const raw of out.split('\n')) {
     let line = raw.trim();
@@ -224,6 +231,7 @@ export async function runEventRSVP(
   }
   const limited = req.messages.slice(-SECOND_BRAIN_MAX_MESSAGES);
   let prompt = '';
+  prompt += `${INSUFFICIENT_RULE}\n\n`;
   prompt += 'Read this community / family chat and find any upcoming events the user may want to RSVP to. ';
   prompt += 'For each event return: <title> | <when> | <location if any> | <rsvp-by if any>. ';
   prompt += 'Skip events without at least a title and a when. Return at most 4 events.\n\n';
@@ -261,6 +269,7 @@ export function parseRSVPEvents(
   out: string,
   sources: { id: string; content: string }[],
 ): RSVPEvent[] {
+  if (detectInsufficient(out)) return [];
   const events: RSVPEvent[] = [];
   for (const raw of out.split('\n')) {
     let line = raw.trim();

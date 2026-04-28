@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildDraftArtifact,
+  parseKAppsExtractedTasks,
   parsePrefilledApprovalFields,
   runPrefillApproval,
 } from './tasks.js';
@@ -172,5 +173,44 @@ describe('buildDraftArtifact', () => {
     expect(() =>
       buildDraftArtifact(router, { threadId: 't', artifactType: 'PRD', messages: [] }),
     ).toThrow(/thread/);
+  });
+});
+
+describe('parseKAppsExtractedTasks', () => {
+  it('parses pipe-delimited owner | title | due rows with source attribution', () => {
+    const out = [
+      'Alice | Send the contract draft | 2025-04-01',
+      'Bob | Review the SOC 2 report |',
+    ].join('\n');
+    const sources = [
+      { id: 'm1', content: 'Alice can you send the contract draft' },
+      { id: 'm2', content: 'Bob please review the SOC 2 report' },
+    ];
+    const tasks = parseKAppsExtractedTasks(out, sources);
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]).toMatchObject({
+      owner: 'Alice',
+      title: 'Send the contract draft',
+      dueDate: '2025-04-01',
+      sourceMessageId: 'm1',
+    });
+    expect(tasks[1]).toMatchObject({
+      owner: 'Bob',
+      title: 'Review the SOC 2 report',
+      sourceMessageId: 'm2',
+    });
+  });
+
+  it('returns an empty list when the model refuses with INSUFFICIENT', () => {
+    const out = 'INSUFFICIENT: thread does not name any owners or tasks';
+    expect(parseKAppsExtractedTasks(out, [])).toEqual([]);
+  });
+
+  it('returns an empty list even when INSUFFICIENT is followed by extra explanation', () => {
+    const out = [
+      'INSUFFICIENT: cannot determine owners',
+      'The thread is purely status updates without action items.',
+    ].join('\n');
+    expect(parseKAppsExtractedTasks(out, [])).toEqual([]);
   });
 });

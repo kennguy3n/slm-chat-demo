@@ -31,7 +31,7 @@ For the full product thesis, architecture, phasing, and progress, see:
 | Shell       | Electron 31 (main + preload + renderer), TypeScript                            |
 | Renderer    | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL      |
 | Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` and an `InferenceRouter` that picks E2B / E4B per task. |
-| IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `familyChecklist`, `shoppingNudges`, `eventRSVP`, `modelStatus`, `loadModel`, `unloadModel`, `route`. |
+| IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `familyChecklist`, `shoppingNudges`, `eventRSVP`, `tripPlan`, `guardrailCheck`, `modelStatus`, `loadModel`, `unloadModel`, `route`. |
 | Local memory | `features/memory/memoryStore.ts` — IndexedDB (`kchat-slm-memory` / `facts`) with an in-memory fallback. The AI never auto-writes; users add / edit / remove facts from the AI Memory page. 0 B egress. |
 | Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
 | Persistence | (Phase 0) in-memory; (Phase 6+) PostgreSQL + NATS JetStream + MinIO/S3         |
@@ -133,7 +133,6 @@ slm-chat-demo/
 │   │   │   └── userctx/         (request-scoped user helpers)
 │   │   ├── services/            (identity, workspace, chat, kapps)
 │   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card)
-│   │   ├── inference/           (DEPRECATED — kept as reference for the TS port)
 │   │   └── store/               (memory store + Phase-0 seed)
 │   └── go.mod
 ├── frontend/
@@ -145,15 +144,21 @@ slm-chat-demo/
 │   │       ├── adapter.ts       (Adapter / Loader / StatusProvider interfaces, types)
 │   │       ├── mock.ts          (canned MockAdapter; same outputs as the Go port)
 │   │       ├── ollama.ts        (HTTP client for the local daemon, NDJSON streaming)
+│   │       ├── llamacpp.ts      (LlamaCppAdapter stub; throws "not yet implemented")
 │   │       ├── router.ts        (PROPOSAL.md §2 scheduler — E2B / E4B / fallback)
 │   │       ├── tasks.ts         (smart-reply / translate / extract-tasks / summary helpers)
 │   │       ├── secondBrain.ts   (Phase 2: family checklist, shopping nudges, RSVP extraction)
-│   │       └── bootstrap.ts     (pings Ollama; chooses real vs. mock adapter set)
+│   │       ├── skill-framework.ts  (declarative SkillDefinition contract + runSkill executor)
+│   │       ├── search-service.ts   (SearchService interface + MockSearchService for trip planner)
+│   │       ├── skills/
+│   │       │   ├── trip-planner.ts       (B2C trip / event planning skill)
+│   │       │   └── guardrail-rewrite.ts  (PII / tone / unverified-claim detection + rewrite)
+│   │       └── bootstrap.ts     (pings Ollama; chooses real vs. mock adapter set; instantiates SearchService)
 │   ├── src/
 │   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
 │   │   ├── features/
 │   │   │   ├── chat/            (ChatSurface, ThreadPanel, MessageList, MessageBubble, Composer)
-│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard)
+│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, activityLog)
 │   │   │   ├── memory/          (AIMemoryPage + memoryStore — local-only IndexedDB-backed second brain)
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer)
 │   │   │   ├── artifacts/       (placeholder)
@@ -227,10 +232,12 @@ go test ./...
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
   plus four seeded KApp cards (family task, neighborhood event, vendor
   approval, engineering PRD draft)
-- 146 frontend tests (renderer components + Electron main-process
-  inference, including the new `tasks.test.ts` covering `parsePrefilledApprovalFields`,
-  `runPrefillApproval`, and `buildDraftArtifact`) plus full Go test
-  coverage of the data endpoints
+- 247 frontend tests (renderer components + Electron main-process
+  inference, including the new `skill-framework.test.ts`,
+  `trip-planner.test.ts`, `guardrail-rewrite.test.ts`,
+  `llamacpp.test.ts`, `activityLog.test.ts`, `MetricsDashboard.test.tsx`,
+  `GuardrailRewriteCard.test.tsx`, and `TripPlannerCard.test.tsx`) plus
+  full Go test coverage of the data endpoints
 
 ## Phase 1 — what's in progress
 
@@ -319,8 +326,37 @@ go test ./...
   IndexedDB-or-in-memory store (`memoryStore.ts`); the AI never
   auto-writes — every entry passes through a confirmation step.
 - **Tabbed B2C right rail** — `B2CLayout` now switches between Digest /
-  Family / Shopping / Events / Memory in the right rail so the
-  second-brain surfaces share one column without overflowing.
+  Family / Shopping / Events / Trip / Memory / Stats in the right rail
+  so the second-brain surfaces share one column without overflowing.
+- **AI Skills Framework** — `electron/inference/skill-framework.ts`
+  defines a declarative `SkillDefinition` contract (meta prompt, steps,
+  tools, guardrails, response template, preferred tier) plus a
+  `runSkill(router, def, ctx)` executor that injects user context, runs
+  pre-/post-inference guardrails, parses the model output, and detects
+  the `INSUFFICIENT: <reason>` refusal pattern that all skills share.
+  Existing `tasks.ts` / `secondBrain.ts` parsers honour the same
+  refusal contract.
+- **Trip planner** — `TripPlannerCard` mounted as the right-rail "Trip"
+  tab. Reads AI Memory (`location`, `member`, `community-detail`)
+  for the family/community context, calls the new `MockSearchService`
+  for weather / events / attractions at the destination, and asks the
+  on-device router for a day-by-day itinerary. Every item is back-
+  linked to its source (search tool or memory fact); the privacy
+  strip shows routing + 0 B egress for inference.
+- **Guardrail rewrite card** — `Composer` now calls
+  `window.electronAI.guardrailCheck` before sending. The
+  `runGuardrailRewrite` skill combines a deterministic PII regex with
+  the on-device SLM's tone / claim review and surfaces a
+  `GuardrailRewriteCard` inline with the original, suggested rewrite,
+  category-tagged findings, and Accept / Keep original / Edit actions.
+- **Metrics dashboard** — `MetricsDashboard` mounted as the right-rail
+  "Stats" tab. Reads from the new in-memory `activityLog` module which
+  records `{ skillId, model, tier, itemsProduced, egressBytes,
+  latencyMs }` for every successful AI call across smart reply,
+  translate, extract-tasks, summary, family checklist, shopping
+  nudges, RSVP, trip plan, and guardrail review. Renders runs / items
+  / egress / time-saved cards plus a per-run drilldown — confirming
+  that "all AI ran on-device" with 0 bytes egressed.
 
 ## What's deferred to later phases
 

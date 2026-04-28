@@ -1,6 +1,6 @@
 # KChat SLM Demo — Progress Tracker
 
-Last updated: 2026-04-28 (Phase 2 second-brain batch)
+Last updated: 2026-04-28 (Skills framework + trip planner + guardrail rewrite + metrics dashboard)
 
 ---
 
@@ -9,8 +9,8 @@ Last updated: 2026-04-28 (Phase 2 second-brain batch)
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 0: Consolidated prototype foundation | Complete | 100% |
-| Phase 1: Local LLM MVP | In progress | ~90% |
-| Phase 2: B2C second-brain demo | In progress | ~85% |
+| Phase 1: Local LLM MVP | In progress | ~95% |
+| Phase 2: B2C second-brain demo | Complete | 100% |
 | Phase 3: B2B KApps MVP | Not started | 0% |
 | Phase 4: AI Employees and recipe engine | Not started | 0% |
 | Phase 5: Connectors and knowledge graph | Not started | 0% |
@@ -39,7 +39,7 @@ Last updated: 2026-04-28 (Phase 2 second-brain batch)
 - [x] Local model status panel (model name, loaded/unloaded, memory usage)
 - [x] Electron main-process inference adapter contract (`frontend/electron/inference/adapter.ts`)
 - [x] Ollama adapter (TypeScript, in the Electron main process)
-- [ ] llama.cpp / llama-server adapter
+- [x] llama.cpp / llama-server adapter — stub `LlamaCppAdapter` (`frontend/electron/inference/llamacpp.ts`) implementing the `Adapter` contract; `run` / `stream` throw `not yet implemented` until the GGUF runtime lands.
 - [x] E2B routing (short/private/latency-sensitive tasks)
 - [ ] E4B routing (reasoning-heavy tasks) — partial: router prefers E4B for `draft_artifact`/`prefill_approval`, but real E4B adapter wiring lands with the second Ollama tier
 - [x] IPC streaming responses (`ai:stream` channel + `ai:stream:chunk` events)
@@ -65,10 +65,12 @@ Last updated: 2026-04-28 (Phase 2 second-brain batch)
 - [x] Family checklist generation — `ai:family-checklist` IPC + `runFamilyChecklist` (`electron/inference/secondBrain.ts`); `FamilyChecklistCard` accepts an event hint and renders an on-device checklist with source attribution and an E2B routing privacy strip
 - [x] Shopping list with nudges ("Add sunscreen because field trip is tomorrow") — `ai:shopping-nudges` IPC + `runShoppingNudges`; `ShoppingNudgesPanel` owns a local list and folds AI suggestions into it without the list ever leaving the device
 - [x] Community event / RSVP card generation — `ai:event-rsvp` IPC + `runEventRSVP`; `EventRSVPCard` lifts events out of community chats with title / when / location / RSVP-by and lets the user mark Yes / Maybe / No locally
-- [ ] Guardrail rewrite card (risky post detection)
+- [x] Guardrail rewrite card (risky post detection) — `ai:guardrail-check` IPC + `runGuardrailRewrite` skill (`electron/inference/skills/guardrail-rewrite.ts`); `Composer` calls the check before sending and renders `GuardrailRewriteCard` inline with a regex+SLM finding list, suggested rewrite, and on-device privacy strip.
 - [x] Morning digest (multi-chat summary) — `MorningDigestPanel` mounted in the B2C right rail, reuses the unread-summary IPC + `ai:stream` pattern with chats / messages / egress / compute metrics
-- [x] Local-only memory index (IndexedDB) — `features/memory/memoryStore.ts` opens `kchat-slm-memory`/`facts` and falls back to an in-memory map under jsdom / SSR; the AI never auto-writes to memory
-- [ ] Metrics dashboard ("I handled 6 items this morning")
+- [x] Local-only memory index (IndexedDB) — `features/memory/memoryStore.ts` opens `kchat-slm-memory`/`facts` and falls back to an in-memory map under jsdom / SSR; the AI never auto-writes to memory. Connection is now cached per store with auto-reset on `versionchange`/`close` events.
+- [x] AI Skills Framework — `electron/inference/skill-framework.ts` defines `SkillDefinition`, registry, `runSkill` executor, `INSUFFICIENT_RULE` refusal contract, pre/post-inference guardrails, and structured `SkillResult` privacy metadata. Existing `tasks.ts` and `secondBrain.ts` parsers honour the framework's INSUFFICIENT contract.
+- [x] B2C trip planning skill — `electron/inference/skills/trip-planner.ts` + `electron/inference/search-service.ts` (mock weather/events/attractions); `TripPlannerCard` reads AI Memory (location / member / community-detail) and renders day-by-day itinerary with source attribution and a privacy strip. Wired through `ai:trip-plan` IPC.
+- [x] Metrics dashboard ("I handled 6 items this morning") — `MetricsDashboard` reads from the new `features/ai/activityLog` module which captures `{ skillId, model, tier, itemsProduced, egressBytes, latencyMs }` for every successful AI call. Mounted as the B2C right-rail "Stats" tab.
 
 ---
 
@@ -160,6 +162,12 @@ Last updated: 2026-04-28 (Phase 2 second-brain batch)
 | 2026-04-28 | Phase 1: B2C smart reply (`POST /api/ai/smart-reply`, `SmartReplyBar`) — composer renders 2–3 contextual suggestion chips above the input with E2B routing, on-device / 0 byte egress privacy strip. |
 | 2026-04-28 | Phase 1: B2C inline translation (`POST /api/ai/translate`, `TranslationCaption`) — per-message translation rendered as a caption under the bubble with tap-to-see-original toggle. E2B routing, original + translated returned together so the toggle never re-fetches. |
 | 2026-04-28 | Phase 1: B2C task extraction (`POST /api/ai/extract-tasks`, `TaskExtractionCard`) — wired to ChatSurface via the launcher's "Extract tasks" action; renders an inline AI badge expandable to Accept / Edit / Discard rows with type classification (task / reminder / shopping). |
+| 2026-04-28 | Phase 1/2: Skills framework landed (`electron/inference/skill-framework.ts`) — declarative `SkillDefinition` contract, registry, `runSkill` executor, `INSUFFICIENT` refusal pattern, pre/post-inference guardrails, and structured privacy metadata. Existing `tasks.ts` / `secondBrain.ts` parsers honour the new INSUFFICIENT contract. |
+| 2026-04-28 | Phase 1: `LlamaCppAdapter` stub added (`electron/inference/llamacpp.ts`) — implements the `Adapter` contract; `run` / `stream` throw a clearly-labelled "not yet implemented" error. Phase 1 status bumped to ~95%. |
+| 2026-04-28 | Phase 2: B2C trip planner skill (`electron/inference/skills/trip-planner.ts`, `electron/inference/search-service.ts`) — mock weather/events/attractions search service; `TripPlannerCard` reads AI Memory (`location`, `member`, `community-detail`) and renders a day-by-day itinerary with per-item source attribution. Wired through `ai:trip-plan` IPC + new "Trip" right-rail tab. |
+| 2026-04-28 | Phase 2: Guardrail rewrite card (`electron/inference/skills/guardrail-rewrite.ts`, `features/ai/GuardrailRewriteCard.tsx`) — composer calls `ai:guardrail-check` before sending; combines deterministic PII regex with SLM tone/claim review and surfaces a rewrite + on-device privacy strip. |
+| 2026-04-28 | Phase 2: Metrics dashboard (`features/ai/activityLog.ts`, `features/ai/MetricsDashboard.tsx`) — every successful AI call logs `{skillId, model, tier, itemsProduced, egressBytes, latencyMs}`; dashboard mounted as the B2C right-rail "Stats" tab. Phase 2 marked complete. |
+| 2026-04-28 | Phase 1/2 cleanup: Cached the IndexedDB connection inside `createIndexedDBStore` (auto-reset on `versionchange` / `close`); added barrel exports for `GuardrailRewriteCard`, `MetricsDashboard`, `TripPlannerCard`, and the activity-log helpers; removed the deprecated `backend/internal/inference` line from the README project-structure tree. |
 | 2026-04-28 | Phase 1: B2B thread summarization (`POST /api/ai/summarize-thread`, `ThreadSummaryCard`) — same no-double-inference pattern as the digest; tier hint (E2B for short threads, E4B for long) included in the response so the privacy strip can show real routing. |
 | 2026-04-28 | Phase 1: B2B task extraction from threads (`POST /api/kapps/tasks/extract`, `ThreadPanel` + reusable `TaskExtractionCard`) — replaces the Phase-3 stub with a real handler that returns owner / due-date / status / source-message provenance. |
 | 2026-04-28 | Phase 1 status row bumped to ~75% (5 new B2C + B2B AI features end-to-end). New frontend types in `types/ai.ts`, new API clients in `api/aiApi.ts` and `api/kappsApi.ts`. |
