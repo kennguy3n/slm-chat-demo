@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { Channel, User, Workspace } from '../types/workspace';
 import { ChatSurface } from '../features/chat/ChatSurface';
+import { DeviceCapabilityPanel } from '../features/ai/DeviceCapabilityPanel';
 
 interface Props {
   workspace?: Workspace;
@@ -81,6 +82,7 @@ export function B2BLayout({ workspace, channels, users }: Props) {
       </main>
 
       <aside className="rightpanel" aria-label="Right panel">
+        <DeviceCapabilityPanel />
         <div className="rightpanel__placeholder">Select a thread to view details</div>
       </aside>
     </div>

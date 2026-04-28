@@ -1,22 +1,31 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchChannelMessages } from '../../api/chatApi';
 import { fetchKAppCards } from '../../api/kappsApi';
+import { fetchAIRoute, fetchUnreadSummary } from '../../api/aiApi';
+import { streamAITask } from '../../api/streamAI';
 import type { Channel, User } from '../../types/workspace';
 import type { KAppCard } from '../../types/kapps';
-import type { PrivacyStripData } from '../../types/ai';
+import type {
+  AIRouteResponse,
+  PrivacyStripData,
+  UnreadSummaryResponse,
+} from '../../types/ai';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { KAppCardRenderer } from '../kapps/KAppCardRenderer';
 import { PrivacyStrip } from '../ai/PrivacyStrip';
+import { DigestCard } from '../ai/DigestCard';
 
 interface Props {
   channel: Channel | null;
   users: Record<string, User>;
 }
 
-// Phase 0 placeholder privacy data. Each AI-generated card renders an
-// identical strip showing on-device E2B + zero egress; Phase 1 produces
-// these from the policy engine and the inference adapter.
+// privacyDataForCard builds the placeholder PrivacyStripData rendered under
+// each AI-generated KApp card. Phase 1 produces these from the policy
+// engine + adapter outputs; the values here are realistic mocks that match
+// the adapter's reports.
 function privacyDataForCard(card: KAppCard): PrivacyStripData {
   const originID =
     card.task?.sourceMessageId ??
@@ -79,6 +88,33 @@ function cardKey(card: KAppCard): string {
   );
 }
 
+// digestPrivacyData turns a finished UnreadSummaryResponse + AIRouteResponse
+// into a PrivacyStripData for the digest card.
+function digestPrivacyData(
+  digest: UnreadSummaryResponse,
+  route: AIRouteResponse | null,
+): PrivacyStripData {
+  return {
+    computeLocation: digest.computeLocation,
+    modelName: route?.model ?? digest.summary.model,
+    sources: digest.sources.map((s) => ({
+      kind: 'message' as const,
+      id: s.id,
+      label: `${s.sender}: ${s.excerpt}`,
+    })),
+    dataEgressBytes: digest.dataEgressBytes,
+    confidence: 0.84,
+    whySuggested:
+      route?.reason ??
+      'Catch-up digest summarises the most recent messages from your B2C chats.',
+    origin: {
+      kind: 'message',
+      id: digest.sources[0]?.id ?? 'digest',
+      label: 'Recent chats',
+    },
+  };
+}
+
 export function ChatSurface({ channel, users }: Props) {
   const enabled = !!channel;
   const { data, isLoading, isError } = useQuery({
@@ -92,6 +128,40 @@ export function ChatSurface({ channel, users }: Props) {
     queryFn: () => fetchKAppCards(channel!.id),
     enabled,
   });
+
+  // AI digest state. The "Catch me up" action triggers the SSE stream and
+  // also fires off /unread-summary + /route in parallel so the digest card
+  // can show source back-links and a privacy strip once streaming finishes.
+  const [streamingText, setStreamingText] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [digest, setDigest] = useState<UnreadSummaryResponse | null>(null);
+  const [route, setRoute] = useState<AIRouteResponse | null>(null);
+  const [streamErr, setStreamErr] = useState<string | null>(null);
+
+  function handleAIAction(path: string[]) {
+    if (path[0] === 'catch_me_up') {
+      setStreamErr(null);
+      setStreamingText('');
+      setIsStreaming(true);
+      setDigest(null);
+      setRoute(null);
+
+      // Fire the stream + the digest fetch + the route lookup in parallel.
+      streamAITask(
+        { taskType: 'summarize', channelId: channel?.id },
+        {
+          onChunk: (delta) => setStreamingText((t) => t + delta),
+          onDone: () => setIsStreaming(false),
+          onError: (err) => {
+            setStreamErr(err.message);
+            setIsStreaming(false);
+          },
+        },
+      );
+      void fetchUnreadSummary().then(setDigest).catch(() => undefined);
+      void fetchAIRoute({ taskType: 'summarize' }).then(setRoute).catch(() => undefined);
+    }
+  }
 
   if (!channel) {
     return (
@@ -120,6 +190,39 @@ export function ChatSurface({ channel, users }: Props) {
         {!isLoading && !isError && (
           <MessageList messages={data ?? []} users={users} emptyLabel="This chat has no messages yet." />
         )}
+        {(isStreaming || digest || streamErr) && (
+          <div className="chat-surface__digest" data-testid="chat-surface-digest">
+            {streamErr && (
+              <div role="alert" className="chat-surface__digest-error">
+                AI digest failed: {streamErr}
+              </div>
+            )}
+            {(isStreaming || digest) && (
+              <DigestCard
+                digest={
+                  digest ?? {
+                    summary: {
+                      taskType: 'summarize',
+                      model: 'gemma-4-e2b',
+                      output: streamingText,
+                      tokensUsed: 0,
+                      latencyMs: 0,
+                      onDevice: true,
+                    },
+                    sources: [],
+                    computeLocation: 'on_device',
+                    dataEgressBytes: 0,
+                  }
+                }
+                streamingText={streamingText}
+                isStreaming={isStreaming}
+              />
+            )}
+            {digest && !isStreaming && (
+              <PrivacyStrip data={digestPrivacyData(digest, route)} />
+            )}
+          </div>
+        )}
         {cards.length > 0 && (
           <div className="chat-surface__cards" data-testid="chat-surface-cards">
             {cards.map((card) => (
@@ -131,7 +234,7 @@ export function ChatSurface({ channel, users }: Props) {
           </div>
         )}
       </div>
-      <Composer placeholder={`Message ${channel.name}`} />
+      <Composer placeholder={`Message ${channel.name}`} onAIAction={handleAIAction} />
     </section>
   );
 }

@@ -28,7 +28,8 @@ export function Composer({ placeholder = 'Message…', disabled, onSend, onAIAct
 
   return (
     <form className="composer" onSubmit={handleSubmit}>
-      <ActionLauncher context={context} onAction={onAIAction} />
+      <ActionLauncher context={context} onAction={onAIAction} suppressToast={!!onAIAction} />
+
       <input
         type="text"
         className="composer__input"

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/inference"
@@ -123,17 +124,20 @@ func TestAIRunRejectsInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestAIStreamReturnsSameShapeAsRun(t *testing.T) {
+func TestAIStreamReturnsSSEContentType(t *testing.T) {
 	h := newTestServer()
 	rec := doPost(t, h, "/api/ai/stream", map[string]any{"taskType": "summarize"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	var resp inference.Response
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode: %v", err)
+	if got := rec.Header().Get("Content-Type"); got != "text/event-stream" {
+		t.Errorf("expected text/event-stream, got %q", got)
 	}
-	if !resp.OnDevice || resp.Output == "" {
-		t.Errorf("expected on-device response with content from /stream")
+	body := rec.Body.String()
+	if !strings.Contains(body, "data: ") {
+		t.Errorf("expected SSE data frames, got %q", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Errorf("expected a final done frame, got %q", body)
 	}
 }

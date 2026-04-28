@@ -57,6 +57,10 @@ export interface AIRouteResponse {
   redactionRequired: boolean;
   dataEgressBytes: number;
   sourcesAllowed: string[];
+  // Phase 1+: human-readable explanation of the routing decision (which
+  // tier, why) — surfaced by the privacy strip.
+  reason?: string;
+  tier?: 'e2b' | 'e4b';
 }
 
 export type AITaskType =
@@ -86,4 +90,21 @@ export interface AIRunResponse {
 export interface EgressPreview {
   egressBytes: number;
   sources: string[];
+}
+
+// UnreadSummaryResponse is the shape returned by GET /api/chats/unread-summary.
+// It bundles the AI digest itself with the source messages used to build it
+// so the digest card can back-link each line to its origin.
+export interface UnreadSummarySource {
+  id: string;
+  channelId: string;
+  sender: string;
+  excerpt: string;
+}
+
+export interface UnreadSummaryResponse {
+  summary: AIRunResponse;
+  sources: UnreadSummarySource[];
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
 }

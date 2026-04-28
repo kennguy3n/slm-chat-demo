@@ -14,11 +14,15 @@ import (
 
 // Deps bundles the services every handler needs.
 type Deps struct {
-	Identity   *services.Identity
-	Workspaces *services.Workspace
-	Chat       *services.Chat
-	KApps      *services.KApps
-	Inference  inference.Adapter
+	Identity     *services.Identity
+	Workspaces   *services.Workspace
+	Chat         *services.Chat
+	KApps        *services.KApps
+	Inference    inference.Adapter
+	ModelStatus  inference.StatusProvider // optional; nil → static stub status
+	ModelLoader  inference.Loader         // optional; nil → /load, /unload return 503
+	DefaultModel string
+	DefaultQuant string
 }
 
 // NewRouter wires the chi router with CORS, JSON content-type, mock auth, and
@@ -41,9 +45,10 @@ func NewRouter(d Deps) http.Handler {
 	chatH := handlers.NewChat(d.Chat)
 	wsH := handlers.NewWorkspace(d.Workspaces, d.Identity)
 	aiH := handlers.NewAI(d.Inference)
+	aiSummary := handlers.NewAISummary(d.Chat, d.Inference, d.Identity)
 	kH := handlers.NewKApps(d.KApps)
 	artH := handlers.NewArtifacts()
-	mH := handlers.NewModel()
+	mH := handlers.NewModel(d.ModelStatus, d.ModelLoader, d.DefaultModel, d.DefaultQuant)
 	pH := handlers.NewPrivacy()
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +67,7 @@ func NewRouter(d Deps) http.Handler {
 		// Chats / messages / threads.
 		r.Get("/chats", chatH.List)
 		r.Get("/chats/{chatId}/messages", chatH.Messages)
+		r.Get("/chats/unread-summary", aiSummary.UnreadSummary)
 		r.Get("/threads/{threadId}/messages", chatH.ThreadMessages)
 
 		// AI surface — Phase 0 ships mocked /run and a hardcoded /route
@@ -82,8 +88,8 @@ func NewRouter(d Deps) http.Handler {
 
 		// Local model / privacy.
 		r.Get("/model/status", mH.Status)
-		r.Post("/model/load", mH.Status)
-		r.Post("/model/unload", mH.Status)
+		r.Post("/model/load", mH.Load)
+		r.Post("/model/unload", mH.Unload)
 		r.Get("/privacy/egress-preview", pH.EgressPreview)
 	})
 

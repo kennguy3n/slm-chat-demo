@@ -89,7 +89,7 @@ frontend/
     ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
     ├── features/
     │   ├── chat/ (ChatSurface, MessageBubble, MessageList, Composer)        — Phase 0
-    │   ├── ai/ (ActionLauncher, PrivacyStrip)                                — Phase 0; ModelStatusBadge, OutputReview, DeviceCapabilityPanel land in Phase 1+
+    │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10) and DigestCard for the unread-summary flow; ModelStatusBadge / OutputReview land in later phases
     │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard) — Phase 0; FormCard lands in Phase 3
     │   ├── artifacts/ (ArtifactWorkspace)                                    — Phase 3
     │   ├── ai-employees/ (AIEmployeePanel)                                   — Phase 4
@@ -137,11 +137,11 @@ backend/
 │   ├── api/
 │   │   ├── router.go
 │   │   ├── middleware.go
-│   │   ├── handlers/   (chat.go, workspace.go, ai.go, kapps.go, model.go, privacy.go; artifacts.go is a Phase 3 placeholder)
+│   │   ├── handlers/   (chat.go, workspace.go, ai.go, ai_summary.go, kapps.go, model.go, privacy.go; artifacts.go is a Phase 3 placeholder)
 │   │   └── userctx/    (request-scoped user helpers; avoids handlers ↔ api import cycle)
 │   ├── services/       (identity.go, workspace.go, chat.go, kapps.go; Phase 1+ adds ai_policy.go, ai_runtime.go; Phase 3 adds artifacts.go)
 │   ├── models/         (user.go, workspace.go, message.go, task.go, approval.go, artifact.go, event.go, card.go)
-│   ├── inference/      (adapter.go interface + mock.go; Phase 1+ adds ollama.go, llamacpp.go, router.go)
+│   ├── inference/      (adapter.go interface, mock.go, ollama.go, router.go; Phase 2+ adds llamacpp.go and a confidential-server adapter)
 │   └── store/          (memory.go + seed.go; Phase 6+ adds postgres.go and migrations/)
 └── go.mod
 ```
@@ -149,12 +149,20 @@ backend/
 > **Phase 0 status.** The Go backend currently uses an **in-memory store**
 > (`internal/store/memory.go`) seeded at startup by `internal/store/seed.go`,
 > including four sample KApp cards (task, approval, artifact, event)
-> exposed via `GET /api/kapps/cards`. The `inference` package now ships an
+> exposed via `GET /api/kapps/cards`. The `inference` package ships an
 > `Adapter` interface plus a `MockAdapter` returning canned responses for
 > `summarize`, `translate`, `extract_tasks`, `smart_reply`,
-> `prefill_approval`, and `draft_artifact`; `POST /api/ai/run` and
-> `POST /api/ai/stream` are wired through the mock, and `POST /api/ai/route`
-> returns the hardcoded Phase-0 policy (allow / E2B / on-device / 0 egress).
+> `prefill_approval`, and `draft_artifact`.
+>
+> **Phase 1 progress.** Live `OllamaAdapter` (`inference/ollama.go`) and
+> `InferenceRouter` (`inference/router.go`) are now in tree. `cmd/server`
+> auto-detects an Ollama daemon on `OLLAMA_BASE_URL` (default
+> `http://localhost:11434`); when it's reachable the router wires Ollama
+> as the E2B and E4B adapter, otherwise it falls back to the mock.
+> `POST /api/ai/route` now reflects the router's real decision (model,
+> tier, reason); `POST /api/ai/stream` emits real SSE frames; `GET
+> /api/model/status` and `POST /api/model/{load,unload}` proxy to Ollama;
+> `GET /api/chats/unread-summary` is the first end-to-end AI feature.
 > **PostgreSQL is not yet integrated**, and **NATS JetStream**, **MinIO/S3**,
 > and **Meilisearch** are referenced in this document but do not yet exist
 > in the codebase. They land in later phases per [PHASES.md](./PHASES.md):
@@ -175,7 +183,14 @@ GET  /api/privacy/egress-preview
 - `POST /api/ai/route` — runs the AI policy engine and returns the chosen model,
   compute location, and redaction requirements without executing inference.
 - `POST /api/ai/run` — runs inference synchronously and returns the full output.
-- `POST /api/ai/stream` — runs inference and streams tokens via SSE / WebSocket.
+- `POST /api/ai/stream` — runs inference and streams tokens via SSE.
+  Phase 1 implements this as `Content-Type: text/event-stream`,
+  `Cache-Control: no-cache`, `Connection: keep-alive` with one
+  `data: {"delta":"…","done":false}\n\n` frame per chunk and a final
+  `data: {"done":true}\n\n` sentinel; the browser client lives in
+  `frontend/src/api/streamAI.ts` and uses `fetch` + `ReadableStream`
+  rather than `EventSource` because the endpoint is a `POST`. WebSocket
+  streaming is deferred to a later phase.
 - `POST /api/kapps/tasks/extract` — extracts task candidates from a thread.
 - `POST /api/kapps/approvals/prefill` — prefills an approval template from a thread.
 - `POST /api/artifacts/draft` — drafts a PRD / RFC / proposal from sources.
@@ -196,6 +211,16 @@ React (browser) ──SSE/WebSocket──▶ Go backend (localhost or hosted)
                                     └─▶ llama-server / Ollama / Unsloth Studio
                                           └─▶ Gemma 4 E2B / E4B GGUF
 ```
+
+Phase 1 implements the SSE leg of this diagram with `OllamaAdapter`
+talking to a local Ollama daemon at `OLLAMA_BASE_URL` (default
+`http://localhost:11434`). The `InferenceRouter` sits in front of the
+adapter set and applies the PROPOSAL.md §2 scheduler rule: short /
+private / latency-sensitive tasks (`summarize`, `translate`,
+`extract_tasks`, `smart_reply`) route to E2B; reasoning-heavy tasks
+(`draft_artifact`, `prefill_approval`) prefer E4B with a documented
+fallback to E2B. The router records its decision (model, tier, reason)
+so the privacy strip can show *why* a model was chosen.
 
 This is the most reliable path and the one the demo defaults to. The model runs
 locally via a sidecar process; the UI is a normal browser app talking to the Go

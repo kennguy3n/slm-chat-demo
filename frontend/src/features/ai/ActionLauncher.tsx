@@ -15,6 +15,9 @@ interface Props {
   // own composer toolbar. The launcher provides the popover; the caller
   // decides where the trigger lives.
   triggerLabel?: string;
+  // When true, skip the built-in "queued" toast (callers wiring a real
+  // streaming flow render their own progress UI instead).
+  suppressToast?: boolean;
 }
 
 // Phase 0 menu definitions. PROPOSAL.md section 4.2 describes the B2C quick
@@ -71,7 +74,7 @@ const B2B_ACTIONS: ActionLauncherAction[] = [
 // surfaces the four core intents with submenus. Phase 0 invokes onAction
 // with the path of action ids; full wiring (route + run + privacy strip)
 // lands in Phase 1.
-export function ActionLauncher({ context, onAction, triggerLabel = 'AI' }: Props) {
+export function ActionLauncher({ context, onAction, triggerLabel = 'AI', suppressToast = false }: Props) {
   const [open, setOpen] = useState(false);
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -99,7 +102,9 @@ export function ActionLauncher({ context, onAction, triggerLabel = 'AI' }: Props
 
   function trigger(path: string[], label: string) {
     onAction?.(path);
-    setToast(`Queued ${label} (Phase 1 will wire this to the inference adapter)`);
+    if (!suppressToast) {
+      setToast(`Queued ${label} (Phase 1 will wire this to the inference adapter)`);
+    }
     setOpen(false);
     setOpenSubmenu(null);
   }

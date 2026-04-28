@@ -9,7 +9,7 @@ Last updated: 2026-04-28
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 0: Consolidated prototype foundation | Complete | 100% |
-| Phase 1: Local LLM MVP | Not started | 0% |
+| Phase 1: Local LLM MVP | In progress | ~30% |
 | Phase 2: B2C second-brain demo | Not started | 0% |
 | Phase 3: B2B KApps MVP | Not started | 0% |
 | Phase 4: AI Employees and recipe engine | Not started | 0% |
@@ -35,16 +35,16 @@ Last updated: 2026-04-28
 
 ## Phase 1 — Local LLM MVP
 
-- [ ] Local model status panel (model name, loaded/unloaded, memory usage)
-- [ ] Go inference proxy (adapter interface)
-- [ ] Ollama adapter
+- [x] Local model status panel (model name, loaded/unloaded, memory usage)
+- [x] Go inference proxy (adapter interface)
+- [x] Ollama adapter
 - [ ] llama.cpp / llama-server adapter
-- [ ] E2B routing (short/private/latency-sensitive tasks)
-- [ ] E4B routing (reasoning-heavy tasks)
-- [ ] SSE streaming responses
+- [x] E2B routing (short/private/latency-sensitive tasks)
+- [ ] E4B routing (reasoning-heavy tasks) — partial: router prefers E4B for `draft_artifact`/`prefill_approval`, but real E4B adapter wiring lands with the second Ollama tier
+- [x] SSE streaming responses
 - [ ] WebSocket streaming responses
-- [ ] Privacy strip with real compute location and model name
-- [ ] B2C: Summarize unread chats
+- [x] Privacy strip with real compute location and model name (now driven by `/api/ai/route` decision)
+- [x] B2C: Summarize unread chats
 - [ ] B2C: Smart reply generation
 - [ ] B2C: Inline translation
 - [ ] B2C: Task extraction from messages
@@ -148,3 +148,4 @@ Last updated: 2026-04-28
 | 2026-04-28 | Initial progress tracker created. Project kickoff. |
 | 2026-04-28 | Phase 0: Added React app shell with B2C/B2B switching, Go backend with mock auth, seeded demo data, and three-column web layout. |
 | 2026-04-28 | Phase 0 complete: Added shared card system, privacy strip, AI action launcher, mocked inference adapter, and mobile-responsive layout. |
+| 2026-04-28 | Phase 1 in progress: Ollama HTTP adapter (`backend/internal/inference/ollama.go`), inference router with E2B/E4B decision tree (`router.go`), SSE streaming on `/api/ai/stream` plus a `streamAITask` browser client, real model status / load / unload endpoints, `DeviceCapabilityPanel` component (ARCHITECTURE.md module #10), and the first end-to-end AI feature: `GET /api/chats/unread-summary` wired through the SSE stream into a `DigestCard` with sources and an AI-route-driven privacy strip. |
