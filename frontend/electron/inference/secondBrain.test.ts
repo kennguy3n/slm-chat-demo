@@ -178,6 +178,20 @@ describe('runShoppingNudges', () => {
     });
     expect(adapter.lastReq?.prompt ?? '').toContain('Bananas');
   });
+
+  it('throws when given an empty messages array (no chat to ground in)', async () => {
+    const adapter = new CannedAdapter('- Sunscreen | hallucinated');
+    const router = new InferenceRouter(adapter, null, null);
+    await expect(
+      runShoppingNudges(router, {
+        channelId: 'fam',
+        messages: [],
+        existingItems: [],
+      }),
+    ).rejects.toThrow(/at least one message/i);
+    // Adapter must not have been invoked.
+    expect(adapter.lastReq).toBeNull();
+  });
 });
 
 const RSVP_MESSAGES = [

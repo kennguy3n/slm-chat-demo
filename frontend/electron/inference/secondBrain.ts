@@ -131,6 +131,13 @@ export async function runShoppingNudges(
   router: InferenceRouter,
   req: ShoppingNudgesRequest,
 ): Promise<ShoppingNudgesResponse> {
+  if (req.messages.length === 0) {
+    // Mirror runFamilyChecklist / runEventRSVP: without chat context the
+    // model would hallucinate ungrounded suggestions and the response
+    // would carry an empty sourceMessageIds array that the privacy strip
+    // dereferences at index 0.
+    throw new Error('shopping nudges requires at least one message');
+  }
   const limited = req.messages.slice(-SECOND_BRAIN_MAX_MESSAGES);
   let prompt = '';
   prompt += 'Read this family chat and suggest items the user may want to add to their shopping list. ';
