@@ -2,18 +2,22 @@ import { useMemo } from 'react';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { Channel, User, Workspace } from '../types/workspace';
 import { ChatSurface } from '../features/chat/ChatSurface';
+import { ThreadPanel } from '../features/chat/ThreadPanel';
 import { DeviceCapabilityPanel } from '../features/ai/DeviceCapabilityPanel';
 
 interface Props {
   workspace?: Workspace;
   channels: Channel[];
   users: Record<string, User>;
+  // currentUserId is forwarded to ChatSurface so SmartReplyBar can
+  // detect the latest *incoming* message correctly.
+  currentUserId?: string;
 }
 
 // B2BLayout renders the workspace -> domain -> channel hierarchy in the sidebar
 // (PROPOSAL.md section 4.1) plus the main chat and a thread placeholder right
 // panel. Channels with no domain fall under a "Direct messages" section.
-export function B2BLayout({ workspace, channels, users }: Props) {
+export function B2BLayout({ workspace, channels, users, currentUserId }: Props) {
   const { selectedChatId, setSelectedChatId } = useWorkspaceStore();
 
   const grouped = useMemo(() => {
@@ -78,12 +82,12 @@ export function B2BLayout({ workspace, channels, users }: Props) {
       </aside>
 
       <main className="main" aria-label="Main chat">
-        <ChatSurface channel={selected} users={users} />
+        <ChatSurface channel={selected} users={users} currentUserId={currentUserId} />
       </main>
 
       <aside className="rightpanel" aria-label="Right panel">
         <DeviceCapabilityPanel />
-        <div className="rightpanel__placeholder">Select a thread to view details</div>
+        <ThreadPanel channel={selected} />
       </aside>
     </div>
   );

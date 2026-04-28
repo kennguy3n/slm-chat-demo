@@ -7,13 +7,16 @@ import { DeviceCapabilityPanel } from '../features/ai/DeviceCapabilityPanel';
 interface Props {
   chats: Channel[];
   users: Record<string, User>;
+  // currentUserId enables SmartReplyBar by letting ChatSurface detect
+  // the latest incoming message in the selected chat.
+  currentUserId?: string;
 }
 
 // B2CLayout is the messaging-first consumer layout: a simpler sidebar showing
 // personal DMs, family groups, and community groups, plus the main chat. It
 // renders an empty right panel placeholder for thread/AI-output views that
 // land in Phase 1+.
-export function B2CLayout({ chats, users }: Props) {
+export function B2CLayout({ chats, users, currentUserId }: Props) {
   const { selectedChatId, setSelectedChatId } = useWorkspaceStore();
 
   const sections = useMemo(() => {
@@ -53,7 +56,7 @@ export function B2CLayout({ chats, users }: Props) {
       </aside>
 
       <main className="main" aria-label="Main chat">
-        <ChatSurface channel={selected} users={users} />
+        <ChatSurface channel={selected} users={users} currentUserId={currentUserId} />
       </main>
 
       <aside className="rightpanel" aria-label="Right panel">

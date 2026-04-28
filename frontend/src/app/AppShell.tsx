@@ -103,12 +103,17 @@ export function AppShell() {
       {showLayout ? (
         <div className={layoutClassName}>
           {context === 'b2c' ? (
-            <B2CLayout chats={chatsQ.data ?? []} users={users} />
+            <B2CLayout
+              chats={chatsQ.data ?? []}
+              users={users}
+              currentUserId={meQ.data?.id}
+            />
           ) : (
             <B2BLayout
               workspace={activeWorkspace}
               channels={channelsQ.data ?? []}
               users={users}
+              currentUserId={meQ.data?.id}
             />
           )}
         </div>

@@ -33,3 +33,9 @@ func (c *Chat) ChannelMessages(channelID string) []models.Message {
 func (c *Chat) ThreadMessages(threadID string) []models.Message {
 	return c.store.ListThreadMessages(threadID)
 }
+
+// Message returns a single message by ID. Used by the translate and
+// task-extraction handlers.
+func (c *Chat) Message(id string) (models.Message, bool) {
+	return c.store.GetMessage(id)
+}

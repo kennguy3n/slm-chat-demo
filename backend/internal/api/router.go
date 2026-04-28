@@ -46,7 +46,11 @@ func NewRouter(d Deps) http.Handler {
 	wsH := handlers.NewWorkspace(d.Workspaces, d.Identity)
 	aiH := handlers.NewAI(d.Inference)
 	aiSummary := handlers.NewAISummary(d.Chat, d.Inference, d.Identity)
-	kH := handlers.NewKApps(d.KApps)
+	aiSmartReply := handlers.NewAISmartReply(d.Chat, d.Inference)
+	aiTranslate := handlers.NewAITranslate(d.Chat, d.Inference)
+	aiExtract := handlers.NewAIExtractTasks(d.Chat, d.Inference)
+	aiThreadSummary := handlers.NewAIThreadSummary(d.Chat, d.Inference)
+	kH := handlers.NewKApps(d.KApps).WithInference(d.Chat, d.Inference)
 	artH := handlers.NewArtifacts()
 	mH := handlers.NewModel(d.ModelStatus, d.ModelLoader, d.DefaultModel, d.DefaultQuant)
 	pH := handlers.NewPrivacy()
@@ -75,11 +79,17 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/ai/route", aiH.Route)
 		r.Post("/ai/run", aiH.Run)
 		r.Post("/ai/stream", aiH.Stream)
+		r.Post("/ai/smart-reply", aiSmartReply.SmartReply)
+		r.Post("/ai/translate", aiTranslate.Translate)
+		r.Post("/ai/extract-tasks", aiExtract.ExtractTasks)
+		r.Post("/ai/summarize-thread", aiThreadSummary.SummarizeThread)
 
 		// KApps — Phase 0 ships GET /api/kapps/cards (seeded sample
-		// cards). Task / approval extraction stubs land in Phase 3.
+		// cards); Phase 1 wires POST /api/kapps/tasks/extract for the
+		// B2B "Plan → Extract tasks" flow. Approval prefill remains a
+		// Phase-3 stub.
 		r.Get("/kapps/cards", kH.Cards)
-		r.Post("/kapps/tasks/extract", kH.NotImplemented)
+		r.Post("/kapps/tasks/extract", kH.ExtractTasks)
 		r.Post("/kapps/approvals/prefill", kH.NotImplemented)
 
 		// Artifacts — Phase 3 stubs.

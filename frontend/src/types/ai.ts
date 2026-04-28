@@ -113,3 +113,85 @@ export interface UnreadSummaryResponse {
   computeLocation: ComputeLocation;
   dataEgressBytes: number;
 }
+
+// SmartReplyResponse is returned by POST /api/ai/smart-reply. The server
+// runs inference once and returns 2–3 short suggestions plus privacy
+// metadata so the SmartReplyBar can render the strip without a second
+// round trip.
+export interface SmartReplyResponse {
+  replies: string[];
+  model: string;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+  channelId: string;
+  sourceMessageId?: string;
+}
+
+// TranslateResponse is returned by POST /api/ai/translate. Carries both
+// the original and translated text so the message bubble can toggle
+// between them without re-fetching.
+export interface TranslateResponse {
+  messageId: string;
+  channelId: string;
+  original: string;
+  translated: string;
+  targetLanguage: string;
+  model: string;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+}
+
+export type ExtractedTaskType = 'task' | 'reminder' | 'shopping';
+
+export interface ExtractedTask {
+  title: string;
+  dueDate?: string;
+  type: ExtractedTaskType;
+}
+
+// ExtractTasksResponse is the B2C task-extraction shape returned by
+// POST /api/ai/extract-tasks.
+export interface ExtractTasksResponse {
+  tasks: ExtractedTask[];
+  sourceMessageId: string;
+  channelId: string;
+  model: string;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+}
+
+// ThreadSummaryResponse follows the same no-double-inference contract as
+// UnreadSummaryResponse: the server returns the prompt + sources, and the
+// frontend streams the actual summary via /api/ai/stream.
+export interface ThreadSummaryResponse {
+  prompt: string;
+  sources: UnreadSummarySource[];
+  threadId: string;
+  channelId: string;
+  model: string;
+  tier: 'e2b' | 'e4b';
+  reason: string;
+  messageCount: number;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+}
+
+export interface KAppsExtractedTask {
+  title: string;
+  owner?: string;
+  dueDate?: string;
+  status: string;
+  sourceMessageId?: string;
+}
+
+// KAppsExtractTasksResponse is the B2B task-extraction shape returned by
+// POST /api/kapps/tasks/extract. Adds owner / status / source provenance
+// to the simpler B2C ExtractedTask.
+export interface KAppsExtractTasksResponse {
+  tasks: KAppsExtractedTask[];
+  threadId: string;
+  channelId: string;
+  model: string;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+}

@@ -83,7 +83,7 @@ slm-chat-demo/
 │   │   ├── api/
 │   │   │   ├── router.go
 │   │   │   ├── middleware.go
-│   │   │   ├── handlers/        (chat, workspace, ai, ai_summary, kapps, artifacts*, model, privacy)
+│   │   │   ├── handlers/        (chat, workspace, ai, ai_summary, ai_smart_reply, ai_translate, ai_extract_tasks, ai_thread_summary, kapps, artifacts*, model, privacy)
 │   │   │   └── userctx/         (request-scoped user helpers)
 │   │   ├── services/            (identity, workspace, chat, kapps)
 │   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card)
@@ -94,8 +94,8 @@ slm-chat-demo/
 │   ├── src/
 │   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
 │   │   ├── features/
-│   │   │   ├── chat/            (ChatSurface, MessageList, MessageBubble, Composer)
-│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard)
+│   │   │   ├── chat/            (ChatSurface, ThreadPanel, MessageList, MessageBubble, Composer)
+│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard)
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer)
 │   │   │   ├── artifacts/       (placeholder)
 │   │   │   ├── ai-employees/    (placeholder)
@@ -162,9 +162,10 @@ go test ./...
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
   plus four seeded KApp cards (family task, neighborhood event, vendor
   approval, engineering PRD draft)
-- 63 frontend tests, full backend test coverage of seed / store /
+- 89 frontend tests, full backend test coverage of seed / store /
   middleware / chat / kapps / inference / ai handlers / SSE streaming /
-  router decisions / unread-summary / model load / unload
+  router decisions / unread-summary / model load / unload / smart-reply
+  / translate / extract-tasks / thread-summary / kapps task extraction
 
 ## Phase 1 — what's in progress
 
@@ -196,6 +197,33 @@ go test ./...
   `ActionLauncher` → `streamAITask` → `DigestCard` → `PrivacyStrip` so
   the digest streams in token-by-token and renders source pins +
   privacy metadata once complete.
+- **B2C smart reply generation** — `POST /api/ai/smart-reply` returns
+  2–3 short contextual reply suggestions for the last incoming message
+  in a chat. The `SmartReplyBar` component renders them as chips above
+  the composer; tapping a chip seeds the input text. E2B routing,
+  on-device / 0-byte egress privacy strip.
+- **B2C inline translation** — `POST /api/ai/translate` translates a
+  single message and returns *both* the original and the translated
+  text. The `TranslationCaption` component renders below the bubble
+  with a tap-to-toggle between original / translated. Wired into
+  `MessageBubble` as a per-message "Translate" affordance.
+- **B2C task extraction** — `POST /api/ai/extract-tasks` extracts
+  actionable items (tasks, reminders, shopping) from a message + its
+  surrounding context and classifies each by type. `TaskExtractionCard`
+  renders an inline AI badge expandable to per-item Accept / Edit /
+  Discard rows. Triggered from the `ActionLauncher`'s "Extract tasks"
+  quick action.
+- **B2B thread summarization** — `POST /api/ai/summarize-thread`
+  fetches every message in a thread and returns the summarize prompt +
+  source list (no double inference, same contract as the digest).
+  Tier hint included (E2B for ≤ 8 messages, E4B for longer threads).
+  `ThreadSummaryCard` renders in `ThreadPanel` with streamed body,
+  source back-links, and a privacy strip.
+- **B2B task extraction from threads** — `POST /api/kapps/tasks/extract`
+  replaces the Phase-3 stub with a real handler that returns task
+  title / owner / due-date / status / source-message provenance. The
+  same `TaskExtractionCard` is reused with B2B field rendering and an
+  "Add to plan" accept label.
 
 ## What's deferred to later phases
 
