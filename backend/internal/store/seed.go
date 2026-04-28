@@ -1,0 +1,157 @@
+package store
+
+import (
+	"time"
+
+	"github.com/kennguy3n/slm-chat-demo/backend/internal/models"
+)
+
+// Seed populates the store with the Phase 0 demo data: five mock users, a
+// personal B2C workspace, an "Acme Corp" B2B workspace with two domains, the
+// channels they contain, and realistic chat messages that back the demo flows
+// described in PROPOSAL.md section 5.
+func Seed(m *Memory) {
+	now := time.Date(2026, 4, 28, 9, 0, 0, 0, time.UTC)
+
+	// Users.
+	users := []models.User{
+		{ID: "user_alice", DisplayName: "Alice Chen", Email: "alice@example.com", AvatarColor: "#7c3aed"},
+		{ID: "user_bob", DisplayName: "Bob Martinez", Email: "bob@example.com", AvatarColor: "#0ea5e9"},
+		{ID: "user_carol", DisplayName: "Carol Kim", Email: "carol@example.com", AvatarColor: "#16a34a"},
+		{ID: "user_dave", DisplayName: "Dave Wilson", Email: "dave@example.com", AvatarColor: "#f97316"},
+		{ID: "user_eve", DisplayName: "Eve Johnson", Email: "eve@example.com", AvatarColor: "#dc2626"},
+	}
+	for _, u := range users {
+		m.PutUser(u)
+	}
+
+	// Workspaces.
+	personal := models.Workspace{
+		ID:      "ws_personal",
+		Name:    "Personal",
+		Context: models.ContextB2C,
+		Domains: []models.Domain{{ID: "dom_personal", Name: "Personal"}},
+	}
+	acme := models.Workspace{
+		ID:      "ws_acme",
+		Name:    "Acme Corp",
+		Context: models.ContextB2B,
+		Domains: []models.Domain{
+			{ID: "dom_eng", Name: "Engineering"},
+			{ID: "dom_fin", Name: "Finance"},
+		},
+	}
+	m.PutWorkspace(personal)
+	m.PutWorkspace(acme)
+
+	// Channels — B2C.
+	channels := []models.Channel{
+		{
+			ID:          "ch_dm_alice_bob",
+			WorkspaceID: personal.ID,
+			DomainID:    "dom_personal",
+			Name:        "Bob Martinez",
+			Kind:        models.ChannelDM,
+			Context:     models.ContextB2C,
+			MemberIDs:   []string{"user_alice", "user_bob"},
+		},
+		{
+			ID:          "ch_family",
+			WorkspaceID: personal.ID,
+			DomainID:    "dom_personal",
+			Name:        "Family Group",
+			Kind:        models.ChannelFamily,
+			Context:     models.ContextB2C,
+			MemberIDs:   []string{"user_alice", "user_bob"},
+		},
+		{
+			ID:          "ch_neighborhood",
+			WorkspaceID: personal.ID,
+			DomainID:    "dom_personal",
+			Name:        "Neighborhood Community",
+			Kind:        models.ChannelCommunity,
+			Context:     models.ContextB2C,
+			MemberIDs:   []string{"user_alice", "user_carol"},
+		},
+
+		// Channels — B2B.
+		{
+			ID:          "ch_general",
+			WorkspaceID: acme.ID,
+			DomainID:    "dom_eng",
+			Name:        "general",
+			Kind:        models.ChannelChannel,
+			Context:     models.ContextB2B,
+			MemberIDs:   []string{"user_alice", "user_dave", "user_eve"},
+		},
+		{
+			ID:          "ch_engineering",
+			WorkspaceID: acme.ID,
+			DomainID:    "dom_eng",
+			Name:        "engineering",
+			Kind:        models.ChannelChannel,
+			Context:     models.ContextB2B,
+			MemberIDs:   []string{"user_alice", "user_dave", "user_eve"},
+		},
+		{
+			ID:          "ch_vendor_management",
+			WorkspaceID: acme.ID,
+			DomainID:    "dom_fin",
+			Name:        "vendor-management",
+			Kind:        models.ChannelChannel,
+			Context:     models.ContextB2B,
+			MemberIDs:   []string{"user_alice", "user_dave", "user_eve"},
+		},
+	}
+	for _, c := range channels {
+		m.PutChannel(c)
+	}
+
+	// Messages.
+	seedMessages(m, now)
+}
+
+func seedMessages(m *Memory, base time.Time) {
+	// B2C — Alice <-> Bob DM.
+	addMsg(m, "msg_dm_1", "ch_dm_alice_bob", "", "user_bob", "hey, are you free for dinner Thursday?", base.Add(-3*time.Hour))
+	addMsg(m, "msg_dm_2", "ch_dm_alice_bob", "", "user_alice", "yes! 7pm at the usual place?", base.Add(-3*time.Hour+5*time.Minute))
+	addMsg(m, "msg_dm_3", "ch_dm_alice_bob", "", "user_bob", "perfect, I'll book it", base.Add(-3*time.Hour+6*time.Minute))
+
+	// B2C — Family group (drives the task-extraction demo flow in PROPOSAL 5.2).
+	addMsg(m, "msg_fam_1", "ch_family", "", "user_bob", "Mom: Field trip form due Friday, please sign. Also we need sunscreen.", base.Add(-2*time.Hour))
+	addMsg(m, "msg_fam_2", "ch_family", "", "user_alice", "got it — I'll sign the form tonight and grab sunscreen on the way home", base.Add(-2*time.Hour+10*time.Minute))
+	addMsg(m, "msg_fam_3", "ch_family", "", "user_bob", "thanks!", base.Add(-2*time.Hour+11*time.Minute))
+
+	// B2C — Neighborhood community (event card demo).
+	addMsg(m, "msg_comm_1", "ch_neighborhood", "", "user_carol", "Block party Saturday May 16, 4pm at Maple Park. Bring a side dish!", base.Add(-90*time.Minute))
+	addMsg(m, "msg_comm_2", "ch_neighborhood", "", "user_alice", "in! happy to bring drinks", base.Add(-85*time.Minute))
+	addMsg(m, "msg_comm_3", "ch_neighborhood", "", "user_carol", "rain plan: we'll move to the community center if it's wet", base.Add(-80*time.Minute))
+
+	// B2B — vendor-management thread (vendor approval demo flow, PROPOSAL 5.3).
+	addMsg(m, "msg_vend_root", "ch_vendor_management", "msg_vend_root", "user_dave", "Need to lock vendor pricing for the Q3 logging contract — three bids on the table.", base.Add(-50*time.Minute))
+	addMsg(m, "msg_vend_r1", "ch_vendor_management", "msg_vend_root", "user_eve", "what are the bids and risk notes?", base.Add(-48*time.Minute))
+	addMsg(m, "msg_vend_r2", "ch_vendor_management", "msg_vend_root", "user_dave", "Acme Logs $42k/yr, BetterLog $51k/yr, CloudTrace $39k/yr. CloudTrace failed our SOC 2 review last quarter.", base.Add(-45*time.Minute))
+	addMsg(m, "msg_vend_r3", "ch_vendor_management", "msg_vend_root", "user_eve", "skip CloudTrace then. lean Acme; need pricing breakdown + termination terms before I approve.", base.Add(-43*time.Minute))
+	addMsg(m, "msg_vend_r4", "ch_vendor_management", "msg_vend_root", "user_dave", "pulling that now — pending decision in this thread.", base.Add(-42*time.Minute))
+
+	// B2B — engineering thread (PRD draft demo flow, PROPOSAL 5.4).
+	addMsg(m, "msg_eng_root", "ch_engineering", "msg_eng_root", "user_alice", "Kicking off the inline-translation feature. Goal: per-message translation rendered under the bubble, original always one tap away.", base.Add(-30*time.Minute))
+	addMsg(m, "msg_eng_r1", "ch_engineering", "msg_eng_root", "user_dave", "requirements I have so far: locale auto-detect, on-device only, fall back to original on low confidence, must work in family group chats.", base.Add(-28*time.Minute))
+	addMsg(m, "msg_eng_r2", "ch_engineering", "msg_eng_root", "user_eve", "metric: % messages translated successfully without user toggling back to original. target > 90% for top 5 locales.", base.Add(-25*time.Minute))
+	addMsg(m, "msg_eng_r3", "ch_engineering", "msg_eng_root", "user_alice", "good. I'll draft a PRD from this thread and post v1 here for review.", base.Add(-23*time.Minute))
+
+	// B2B — #general (a couple of casual messages so the channel is not empty).
+	addMsg(m, "msg_gen_1", "ch_general", "", "user_eve", "morning everyone — standup in 10", base.Add(-20*time.Minute))
+	addMsg(m, "msg_gen_2", "ch_general", "", "user_dave", "joining", base.Add(-19*time.Minute))
+}
+
+func addMsg(m *Memory, id, channelID, threadID, senderID, content string, t time.Time) {
+	m.PutMessage(models.Message{
+		ID:        id,
+		ChannelID: channelID,
+		ThreadID:  threadID,
+		SenderID:  senderID,
+		Content:   content,
+		CreatedAt: t,
+	})
+}

@@ -1,0 +1,18 @@
+# Frontend
+frontend/node_modules
+frontend/dist
+frontend/coverage
+frontend/.vite
+
+# Backend
+backend/server
+backend/coverage.out
+
+# Local-only artifacts (not committed)
+.screenshots/
+
+# Editor / OS
+.DS_Store
+.idea
+.vscode
+*.log
