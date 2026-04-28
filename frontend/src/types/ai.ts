@@ -256,3 +256,78 @@ export interface DraftArtifactResponse {
   computeLocation: ComputeLocation;
   dataEgressBytes: number;
 }
+
+// ---------- Phase 2 B2C second-brain surfaces ----------
+
+export interface FamilyChecklistItem {
+  title: string;
+  dueHint?: string;
+  sourceMessageId?: string;
+}
+
+export interface FamilyChecklistResponse {
+  channelId: string;
+  title: string;
+  items: FamilyChecklistItem[];
+  sourceMessageIds: string[];
+  model: string;
+  tier: 'e2b' | 'e4b';
+  reason: string;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+}
+
+export interface ShoppingNudge {
+  item: string;
+  reason: string;
+  sourceMessageId?: string;
+}
+
+export interface ShoppingNudgesResponse {
+  channelId: string;
+  nudges: ShoppingNudge[];
+  sourceMessageIds: string[];
+  model: string;
+  tier: 'e2b' | 'e4b';
+  reason: string;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+}
+
+export interface RSVPEvent {
+  title: string;
+  whenHint?: string;
+  location?: string;
+  rsvpBy?: string;
+  sourceMessageId?: string;
+}
+
+export interface EventRSVPResponse {
+  channelId: string;
+  events: RSVPEvent[];
+  sourceMessageIds: string[];
+  model: string;
+  tier: 'e2b' | 'e4b';
+  reason: string;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+}
+
+// MemoryFact represents one user-confirmed item in the local AI Memory
+// store (PROPOSAL.md §3.2, PHASES.md Phase 2). Stored entirely on-device
+// (IndexedDB). The AI never auto-writes memory; users accept or edit
+// suggestions from the chat into the memory page.
+export type MemoryFactKind = 'person' | 'preference' | 'routine' | 'note';
+
+export interface MemoryFact {
+  id: string;
+  kind: MemoryFactKind;
+  text: string;
+  // Optional source pin so the user can see where the fact originated.
+  sourceChannelId?: string;
+  sourceMessageId?: string;
+  // ISO-8601; present once written. Never rendered in inference prompts
+  // because the prompt is built from `text` alone.
+  createdAt: string;
+  updatedAt: string;
+}

@@ -278,6 +278,97 @@ export interface UnreadSummaryResponse {
   dataEgressBytes: 0;
 }
 
+// ---------- Phase 2 B2C second-brain surfaces ----------
+//
+// The next batch of B2C surfaces all share the same shape: read recent
+// chat messages from a single chat, run a single E2B-class inference,
+// return a structured set of items the renderer can render as cards.
+// None of the requests carry persistent state — the renderer stores
+// any user-confirmed memory locally (IndexedDB) and re-supplies the
+// relevant context on each call.
+
+export interface FamilyChecklistItem {
+  title: string;
+  // dueHint is a soft, free-form deadline ("tonight", "Friday morning")
+  // pulled from the chat. Always renderer-displayable as-is.
+  dueHint?: string;
+  sourceMessageId?: string;
+}
+
+export interface FamilyChecklistRequest {
+  channelId: string;
+  // Recent messages (last ~30) the renderer fetched from the data API.
+  messages: { id: string; channelId: string; senderId: string; content: string }[];
+  // Optional event hint ("Soccer practice tomorrow", "Birthday party
+  // Saturday") so the model can ground the checklist around it.
+  eventHint?: string;
+}
+
+export interface FamilyChecklistResponse {
+  channelId: string;
+  title: string;
+  items: FamilyChecklistItem[];
+  sourceMessageIds: string[];
+  model: string;
+  tier: Tier;
+  reason: string;
+  computeLocation: 'on_device';
+  dataEgressBytes: 0;
+}
+
+export interface ShoppingNudge {
+  // Suggested item to add to the list.
+  item: string;
+  // Reason — referenced back to a chat message when possible
+  // ("Add sunscreen because field trip is tomorrow").
+  reason: string;
+  sourceMessageId?: string;
+}
+
+export interface ShoppingNudgesRequest {
+  channelId: string;
+  messages: { id: string; channelId: string; senderId: string; content: string }[];
+  // Items already on the user's shopping list — the model uses these to
+  // avoid duplicating suggestions.
+  existingItems: string[];
+}
+
+export interface ShoppingNudgesResponse {
+  channelId: string;
+  nudges: ShoppingNudge[];
+  sourceMessageIds: string[];
+  model: string;
+  tier: Tier;
+  reason: string;
+  computeLocation: 'on_device';
+  dataEgressBytes: 0;
+}
+
+export interface RSVPEvent {
+  title: string;
+  // Free-form date/time hint ("Saturday 3pm", "Friday afternoon").
+  whenHint?: string;
+  location?: string;
+  rsvpBy?: string;
+  sourceMessageId?: string;
+}
+
+export interface EventRSVPRequest {
+  channelId: string;
+  messages: { id: string; channelId: string; senderId: string; content: string }[];
+}
+
+export interface EventRSVPResponse {
+  channelId: string;
+  events: RSVPEvent[];
+  sourceMessageIds: string[];
+  model: string;
+  tier: Tier;
+  reason: string;
+  computeLocation: 'on_device';
+  dataEgressBytes: 0;
+}
+
 // ElectronAI is the contract `preload.ts` exposes on `window.electronAI`.
 // `stream` returns a cancel function rather than a generator because
 // the IPC bridge is event-driven; the renderer-side helpers in
@@ -299,6 +390,9 @@ export interface ElectronAI {
   prefillApproval(req: PrefillApprovalRequest): Promise<PrefillApprovalResponse>;
   draftArtifact(req: DraftArtifactRequest): Promise<DraftArtifactResponse>;
   unreadSummary(req: UnreadSummaryRequest): Promise<UnreadSummaryResponse>;
+  familyChecklist(req: FamilyChecklistRequest): Promise<FamilyChecklistResponse>;
+  shoppingNudges(req: ShoppingNudgesRequest): Promise<ShoppingNudgesResponse>;
+  eventRSVP(req: EventRSVPRequest): Promise<EventRSVPResponse>;
   modelStatus(): Promise<ModelStatus>;
   loadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
   unloadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
