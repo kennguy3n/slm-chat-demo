@@ -61,7 +61,8 @@ export function PolicyAdminPanel({
   const [form, setForm] = useState<FormState | null>(
     initialPolicy ? toFormState(initialPolicy) : null,
   );
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -76,7 +77,7 @@ export function PolicyAdminPanel({
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
+        setLoadError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       cancelled = true;
@@ -97,11 +98,11 @@ export function PolicyAdminPanel({
     return a !== b;
   }, [policy, form]);
 
-  if (error) {
+  if (loadError) {
     return (
       <div className="policy-admin-panel" data-testid="policy-admin-panel">
         <p className="policy-admin-panel__error" role="alert">
-          Failed to load policy: {error}
+          Failed to load policy: {loadError}
         </p>
       </div>
     );
@@ -137,14 +138,14 @@ export function PolicyAdminPanel({
   async function handleSave() {
     if (!form) return;
     setSaving(true);
-    setError(null);
+    setSaveError(null);
     try {
       const updated = await updater(workspaceId, fromFormState(form));
       setPolicy(updated);
       setForm(toFormState(updated));
       setSavedAt(new Date().toISOString());
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -232,9 +233,18 @@ export function PolicyAdminPanel({
         >
           {saving ? 'Saving…' : 'Save policy'}
         </button>
-        {savedAt && (
+        {savedAt && !saveError && (
           <span className="policy-admin-panel__saved" data-testid="policy-saved">
             Saved {new Date(savedAt).toLocaleTimeString()}
+          </span>
+        )}
+        {saveError && (
+          <span
+            className="policy-admin-panel__save-error"
+            role="alert"
+            data-testid="policy-save-error"
+          >
+            Failed to save: {saveError}
           </span>
         )}
       </footer>

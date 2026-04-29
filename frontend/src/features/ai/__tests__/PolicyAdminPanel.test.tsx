@@ -111,6 +111,43 @@ describe('PolicyAdminPanel', () => {
     );
   });
 
+  it('keeps the form mounted and shows an inline save error when the save fails (regression)', async () => {
+    // Regression test: a save failure must not replace the entire form
+    // with a "Failed to load policy" dead-end. The form stays mounted, the
+    // user's edits are preserved, and the inline save error is shown.
+    const fetcher = vi.fn().mockResolvedValue(seed);
+    const updater = vi.fn().mockRejectedValue(new Error('save kaboom'));
+    renderWithProviders(
+      <PolicyAdminPanel
+        workspaceId="ws_acme"
+        injectedFetch={fetcher}
+        injectedUpdate={updater}
+      />,
+    );
+
+    const allow = await screen.findByTestId('policy-allow-server');
+    const allowInput = allow.querySelector('input') as HTMLInputElement;
+    const user = userEvent.setup();
+    await user.click(allowInput);
+    expect(allowInput.checked).toBe(true);
+
+    await user.click(screen.getByTestId('policy-save'));
+
+    // Inline error appears, form is still mounted, and the user's edit
+    // (allowServerCompute = true) is still in the DOM — not nuked by an
+    // early-return error screen.
+    const inlineError = await screen.findByTestId('policy-save-error');
+    expect(inlineError).toHaveTextContent('save kaboom');
+    expect(screen.getByTestId('policy-admin-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('policy-save')).toBeInTheDocument();
+    expect(
+      (screen.getByTestId('policy-allow-server').querySelector('input') as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    // The "Failed to load policy" dead-end must NOT appear.
+    expect(screen.queryByText(/Failed to load policy/i)).not.toBeInTheDocument();
+  });
+
   it('renders an error state when the fetch fails', async () => {
     const fetcher = vi.fn().mockRejectedValue(new Error('boom'));
     renderWithProviders(
