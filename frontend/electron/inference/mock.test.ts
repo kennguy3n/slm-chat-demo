@@ -10,6 +10,7 @@ describe('MockAdapter', () => {
       'extract_tasks',
       'smart_reply',
       'prefill_approval',
+      'prefill_form',
       'draft_artifact',
     ];
     for (const t of tasks) {

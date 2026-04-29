@@ -33,9 +33,10 @@ class StubAdapter implements Adapter {
 }
 
 describe('taskPreference', () => {
-  it('routes draft_artifact and prefill_approval to e4b', () => {
+  it('routes reasoning-heavy tasks (draft_artifact, prefill_approval, prefill_form) to e4b', () => {
     expect(taskPreference('draft_artifact')).toBe('e4b');
     expect(taskPreference('prefill_approval')).toBe('e4b');
+    expect(taskPreference('prefill_form')).toBe('e4b');
   });
 
   it('routes the rest to e2b', () => {

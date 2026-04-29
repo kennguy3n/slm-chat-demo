@@ -419,12 +419,19 @@ talking to a local Ollama daemon at `OLLAMA_BASE_URL` (default
 `InferenceRouter` in `bootstrap.ts`, which pings Ollama with a 500 ms
 timeout; if reachable it instantiates **two distinct `OllamaAdapter`
 instances** — one bound to `E2B_MODEL` (default `gemma-4-e2b`) and one
-bound to `E4B_MODEL` (default `gemma-4-e4b`). Bootstrap pings each
-model independently; if the larger E4B model has not been pulled it
-aliases the E4B slot to the E2B adapter and the router's `hasE4B()`
-returns `false`, so reasoning-heavy tasks gracefully fall back to E2B
-without ever hitting an unloaded model. When the daemon itself is
-unreachable both adapters fall back to `MockAdapter`. The
+bound to `E4B_MODEL` (default `gemma-4-e4b`). The default names are
+*aliases*: the repo ships `models/Modelfile.e2b` and `models/Modelfile.e4b`
+that wrap the upstream Gemma 4 base models published by Google to the
+Ollama library (`gemma4:e2b` / `gemma4:e4b`, verified against
+[ollama.com/library/gemma4/tags](https://ollama.com/library/gemma4/tags)
+on 2026-04-29) with the demo's preferred temperature / top_p / context
+length / system prompt. `scripts/setup-models.sh` automates the pull +
+alias creation. Bootstrap pings each model independently; if the larger
+E4B model has not been pulled it aliases the E4B slot to the E2B
+adapter and the router's `hasE4B()` returns `false`, so reasoning-heavy
+tasks gracefully fall back to E2B without ever hitting an unloaded
+model. When the daemon itself is unreachable both adapters fall back
+to `MockAdapter`. The
 `model:status` IPC channel reports both tiers (`e2bModel`, `e2bLoaded`,
 `e4bModel`, `e4bLoaded`, `hasE4B`) so the renderer's
 `DeviceCapabilityPanel` can display them side-by-side.
