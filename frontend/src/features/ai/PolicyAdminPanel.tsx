@@ -68,10 +68,19 @@ export function PolicyAdminPanel({
 
   useEffect(() => {
     if (initialPolicy) return;
-    // Clear any stale loadError from a previous workspace so a
-    // successful fetch doesn't get hidden by the early-return error
-    // screen below.
+    // Reset every piece of state that's tied to the *previous*
+    // workspace before the new fetch begins. Without this, the gap
+    // between a re-render with the new workspaceId and the new fetch
+    // resolving leaves the old workspace's `form` (and `dirty=true`
+    // if the user had unsaved edits) in scope, which means a save
+    // click in that window would PATCH the new workspace's endpoint
+    // with the old workspace's data. Stale savedAt / saveError
+    // indicators from the prior workspace would also linger.
     setLoadError(null);
+    setSaveError(null);
+    setSavedAt(null);
+    setPolicy(null);
+    setForm(null);
     let cancelled = false;
     fetcher(workspaceId)
       .then((p) => {

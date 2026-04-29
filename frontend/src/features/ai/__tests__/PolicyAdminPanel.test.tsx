@@ -185,6 +185,87 @@ describe('PolicyAdminPanel', () => {
     expect(fetcher).toHaveBeenNthCalledWith(2, 'ws_other');
   });
 
+  it('resets form state when workspaceId changes so the old workspace cannot be saved into the new one (regression)', async () => {
+    // Regression test: switching workspaceId while the user has
+    // unsaved edits must not leave the old workspace's `form`
+    // (and dirty=true) in scope. If it did, a save click in the
+    // gap before the new fetch resolves would PATCH the *new*
+    // workspace's endpoint with the *old* workspace's data.
+    const otherSeed: WorkspacePolicy = {
+      ...seed,
+      workspaceId: 'ws_other',
+      serverAllowedTasks: ['translate'],
+    };
+
+    // Make the second fetch never resolve so we can observe the
+    // in-between state where the old form must be gone but the new
+    // one isn't here yet.
+    let resolveSecond: (p: WorkspacePolicy) => void = () => {};
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(seed)
+      .mockImplementationOnce(
+        () =>
+          new Promise<WorkspacePolicy>((resolve) => {
+            resolveSecond = resolve;
+          }),
+      );
+    const updater = vi.fn();
+
+    const { rerender } = renderWithProviders(
+      <PolicyAdminPanel
+        workspaceId="ws_acme"
+        injectedFetch={fetcher}
+        injectedUpdate={updater}
+      />,
+    );
+
+    // Load the first workspace and create a dirty edit.
+    const allow = await screen.findByTestId('policy-allow-server');
+    const allowInput = allow.querySelector('input') as HTMLInputElement;
+    const user = userEvent.setup();
+    await user.click(allowInput);
+    expect(allowInput.checked).toBe(true);
+    expect(screen.getByTestId('policy-save')).not.toBeDisabled();
+
+    // Switch workspaces. The second fetcher is hung intentionally.
+    rerender(
+      <PolicyAdminPanel
+        workspaceId="ws_other"
+        injectedFetch={fetcher}
+        injectedUpdate={updater}
+      />,
+    );
+
+    // The old form must be gone — replaced by the loading state —
+    // and the Save button must NOT be reachable, so the user cannot
+    // accidentally PATCH ws_other with ws_acme's edits.
+    await waitFor(() => {
+      expect(screen.queryByTestId('policy-save')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('policy-allow-server')).not.toBeInTheDocument();
+    expect(screen.getByText(/Loading policy/i)).toBeInTheDocument();
+
+    // Once the second fetch resolves, the new workspace's form
+    // appears and reflects the new seed (translate allowed, not
+    // draft_artifact).
+    resolveSecond(otherSeed);
+    await screen.findByTestId('policy-save');
+    expect(
+      (screen.getByTestId('policy-allowed-translate').querySelector('input') as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId('policy-allowed-draft_artifact')
+        .querySelector('input') as HTMLInputElement).checked,
+    ).toBe(false);
+
+    // Save was never called, so no cross-workspace PATCH happened.
+    expect(updater).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenNthCalledWith(2, 'ws_other');
+  });
+
   it('renders an error state when the fetch fails', async () => {
     const fetcher = vi.fn().mockRejectedValue(new Error('boom'));
     renderWithProviders(
