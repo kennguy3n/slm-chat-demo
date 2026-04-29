@@ -68,6 +68,10 @@ export function PolicyAdminPanel({
 
   useEffect(() => {
     if (initialPolicy) return;
+    // Clear any stale loadError from a previous workspace so a
+    // successful fetch doesn't get hidden by the early-return error
+    // screen below.
+    setLoadError(null);
     let cancelled = false;
     fetcher(workspaceId)
       .then((p) => {

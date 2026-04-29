@@ -148,6 +148,43 @@ describe('PolicyAdminPanel', () => {
     expect(screen.queryByText(/Failed to load policy/i)).not.toBeInTheDocument();
   });
 
+  it('clears stale loadError when workspaceId changes and the new fetch succeeds (regression)', async () => {
+    // Regression test: useEffect must reset loadError when re-running
+    // after workspaceId changes, otherwise the early-return error
+    // screen masks the successfully-loaded new policy.
+    const fetcher = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('first-load-boom'))
+      .mockResolvedValueOnce({ ...seed, workspaceId: 'ws_other' });
+    const { rerender } = renderWithProviders(
+      <PolicyAdminPanel
+        workspaceId="ws_acme"
+        injectedFetch={fetcher}
+        injectedUpdate={vi.fn()}
+      />,
+    );
+
+    // First fetch fails -> dead-end error screen renders.
+    expect(await screen.findByRole('alert')).toHaveTextContent('first-load-boom');
+    expect(screen.queryByTestId('policy-save')).not.toBeInTheDocument();
+
+    // Switch workspace; second fetch resolves successfully.
+    rerender(
+      <PolicyAdminPanel
+        workspaceId="ws_other"
+        injectedFetch={fetcher}
+        injectedUpdate={vi.fn()}
+      />,
+    );
+
+    // The form now appears and the stale "Failed to load policy" copy
+    // is gone.
+    await screen.findByTestId('policy-save');
+    expect(screen.queryByText(/Failed to load policy/i)).not.toBeInTheDocument();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenNthCalledWith(2, 'ws_other');
+  });
+
   it('renders an error state when the fetch fails', async () => {
     const fetcher = vi.fn().mockRejectedValue(new Error('boom'));
     renderWithProviders(

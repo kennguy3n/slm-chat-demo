@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/models"
@@ -24,9 +25,16 @@ type EncryptionKeyService struct {
 	now      func() time.Time
 	idGen    func() string
 	keyBytes func() ([]byte, error)
+	// mu guards material against concurrent writes from HTTP handlers,
+	// which net/http dispatches from multiple goroutines. Without it,
+	// two simultaneous POSTs to the generate / rotate endpoints would
+	// trigger Go's fatal `concurrent map writes` runtime error, which
+	// bypasses chi's middleware.Recoverer.
+	mu sync.Mutex
 	// material is the in-process map of key id -> raw 32-byte material.
 	// We don't expose this — it's only used by EncryptStub to demonstrate
-	// the lookup path the production cipher would take.
+	// the lookup path the production cipher would take. Always read /
+	// written under mu.
 	material map[string][]byte
 }
 
@@ -58,6 +66,11 @@ var ErrNoActiveKey = errors.New("no active encryption key for workspace")
 // GenerateKey creates a fresh 32-byte AES-256-GCM key for the given
 // workspace and stores it as the new active key. Any previously active
 // keys remain in the history with `Active=false`.
+//
+// The whole read-modify-write (ListEncryptionKeys -> demote active ->
+// ReplaceEncryptionKeys -> remember material) runs under the service
+// mutex so that two concurrent rotate / generate requests can't lose
+// each other's writes or race the material map.
 func (e *EncryptionKeyService) GenerateKey(workspaceID string) (models.TenantEncryptionKey, error) {
 	if workspaceID == "" {
 		return models.TenantEncryptionKey{}, errors.New("workspaceID is required")
@@ -66,6 +79,10 @@ func (e *EncryptionKeyService) GenerateKey(workspaceID string) (models.TenantEnc
 	if err != nil {
 		return models.TenantEncryptionKey{}, err
 	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	keyID := e.idGen()
 	key := models.TenantEncryptionKey{
 		WorkspaceID: workspaceID,
@@ -121,6 +138,9 @@ func (e *EncryptionKeyService) EncryptStub(workspaceID string, plaintext []byte)
 	if err != nil {
 		return "", err
 	}
-	log.Printf("encryption-service: would encrypt %d bytes with key %s (workspace=%s)", len(plaintext), key.KeyID, workspaceID)
+	e.mu.Lock()
+	_, hasMaterial := e.material[key.KeyID]
+	e.mu.Unlock()
+	log.Printf("encryption-service: would encrypt %d bytes with key %s (workspace=%s, material=%v)", len(plaintext), key.KeyID, workspaceID, hasMaterial)
 	return hex.EncodeToString(plaintext), nil
 }
