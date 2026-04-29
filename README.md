@@ -288,7 +288,7 @@ go test ./...
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
   plus four seeded KApp cards (family task, neighborhood event, vendor
   approval, engineering PRD draft)
-- 358 frontend tests (renderer components + Electron main-process
+- 489 frontend tests (renderer components + Electron main-process
   inference) covering the Phase 2 skills framework, the Phase 3
   KApp lifecycle (`TaskCard`, `ApprovalCard`, `ArtifactCard`,
   `KAppCardRenderer`, `TasksKApp`, `CreateTaskForm`,
