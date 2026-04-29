@@ -195,3 +195,72 @@ func TestAuditLogFilterByObjectKind(t *testing.T) {
 		t.Errorf("expected approval entry, got %q", entries.Entries[0].ObjectKind)
 	}
 }
+
+func TestAuditLogRecordsTaskDeletionActor(t *testing.T) {
+	h := newTestServer()
+
+	rec := doRequest(t, h, "POST", "/api/kapps/tasks", "user_alice",
+		bytes.NewBufferString(`{"channelId":"ch_engineering_q4","title":"To delete"}`))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create task: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Task models.Task `json:"task"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+
+	rec = doRequest(t, h, "DELETE", "/api/kapps/tasks/"+created.Task.ID, "user_dave", nil)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete task: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = doGet(t, h, "/api/audit?objectId="+created.Task.ID, "user_alice")
+	var entries auditEntries
+	_ = json.Unmarshal(rec.Body.Bytes(), &entries)
+	if len(entries.Entries) != 2 {
+		t.Fatalf("expected 2 entries (created + closed), got %d: %+v", len(entries.Entries), entries.Entries)
+	}
+	closed := entries.Entries[1]
+	if closed.EventType != models.AuditEventTaskClosed {
+		t.Errorf("expected task.closed, got %q", closed.EventType)
+	}
+	if closed.Actor != "user_dave" {
+		t.Errorf("expected actor=user_dave on the delete, got %q", closed.Actor)
+	}
+	if closed.Details["reason"] != "deleted" {
+		t.Errorf("expected reason=deleted, got %+v", closed.Details)
+	}
+}
+
+func TestAuditLogRecordsFormSubmissionActor(t *testing.T) {
+	h := newTestServer()
+
+	rec := doRequest(t, h, "POST", "/api/kapps/forms", "user_carol",
+		bytes.NewBufferString(`{
+			"channelId":"ch_vendor_management",
+			"templateId":"vendor_onboarding_v1",
+			"title":"Acme onboarding",
+			"fields":{"vendor_name":"Acme"}
+		}`))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create form: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Form models.Form `json:"form"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+
+	rec = doGet(t, h, "/api/audit?objectId="+created.Form.ID+"&objectKind=form", "user_alice")
+	var entries auditEntries
+	_ = json.Unmarshal(rec.Body.Bytes(), &entries)
+	if len(entries.Entries) != 1 {
+		t.Fatalf("expected 1 form.submitted entry, got %d", len(entries.Entries))
+	}
+	e := entries.Entries[0]
+	if e.EventType != models.AuditEventFormSubmitted {
+		t.Errorf("expected form.submitted, got %q", e.EventType)
+	}
+	if e.Actor != "user_carol" {
+		t.Errorf("expected actor=user_carol, got %q", e.Actor)
+	}
+}

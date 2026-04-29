@@ -175,7 +175,7 @@ func (h *KApps) UpdateTaskStatus(w http.ResponseWriter, r *http.Request) {
 // DeleteTask handles DELETE /api/kapps/tasks/{id} (treated as close/archive).
 func (h *KApps) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := h.kapps.DeleteTask(id); err != nil {
+	if err := h.kapps.DeleteTask(id, actorFromContext(r)); err != nil {
 		mapKAppsError(w, err)
 		return
 	}

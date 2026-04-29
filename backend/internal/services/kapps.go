@@ -208,12 +208,14 @@ func (k *KApps) UpdateTask(id string, in UpdateTaskInput) (models.Task, error) {
 }
 
 // DeleteTask removes a task from the store. Returns ErrNotFound when the task
-// does not exist.
-func (k *KApps) DeleteTask(id string) error {
+// does not exist. Actor is recorded on the resulting `task.closed` audit
+// entry; the handler should pass actorFromContext(r) so the audit log
+// reflects who actually deleted the task.
+func (k *KApps) DeleteTask(id string, actor string) error {
 	if !k.store.DeleteTask(id) {
 		return ErrNotFound
 	}
-	k.audit.Record(models.AuditEventTaskClosed, models.AuditObjectTask, id, "", map[string]any{
+	k.audit.Record(models.AuditEventTaskClosed, models.AuditObjectTask, id, actor, map[string]any{
 		"reason": "deleted",
 	})
 	return nil
@@ -552,6 +554,7 @@ type CreateFormInput struct {
 	SourceThreadID string
 	Status         models.FormStatus
 	AIGenerated    bool
+	Actor          string
 }
 
 // CreateForm validates and persists a Form intake instance. The TemplateID
@@ -591,7 +594,7 @@ func (k *KApps) CreateForm(in CreateFormInput) (models.Form, error) {
 		AIGenerated:    in.AIGenerated,
 	}
 	saved := k.store.CreateForm(f)
-	k.audit.Record(models.AuditEventFormSubmitted, models.AuditObjectForm, saved.ID, "", map[string]any{
+	k.audit.Record(models.AuditEventFormSubmitted, models.AuditObjectForm, saved.ID, in.Actor, map[string]any{
 		"templateId":  saved.TemplateID,
 		"title":       saved.Title,
 		"channelId":   saved.ChannelID,

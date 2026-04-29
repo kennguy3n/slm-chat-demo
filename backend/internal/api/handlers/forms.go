@@ -42,6 +42,7 @@ func (h *Forms) Create(w http.ResponseWriter, r *http.Request) {
 		SourceThreadID: body.SourceThreadID,
 		Status:         models.FormStatus(body.Status),
 		AIGenerated:    body.AIGenerated,
+		Actor:          actorFromContext(r),
 	})
 	if err != nil {
 		mapKAppsError(w, err)
