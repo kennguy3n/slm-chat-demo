@@ -27,6 +27,7 @@ func newTestServer() http.Handler {
 		RecipeRuns:  services.NewRecipeRunService(mem),
 		Connectors:  services.NewConnectorService(mem),
 		Retrieval:   services.NewRetrievalService(mem),
+		Knowledge:   services.NewKnowledgeService(mem),
 	})
 }
 

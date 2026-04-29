@@ -76,3 +76,29 @@ export interface ThreadSummary {
   title: string;
   messageCount: number;
 }
+
+// Phase 5 knowledge graph types — mirror
+// backend/internal/models/knowledge.go.
+export type KnowledgeEntityKind =
+  | 'decision'
+  | 'owner'
+  | 'risk'
+  | 'requirement'
+  | 'deadline';
+
+export type KnowledgeEntityStatus = 'open' | 'resolved' | 'accepted';
+
+export interface KnowledgeEntity {
+  id: string;
+  channelId: string;
+  threadId?: string;
+  sourceMessageId: string;
+  kind: KnowledgeEntityKind;
+  title: string;
+  description: string;
+  actors?: string[];
+  dueDate?: string;
+  status: KnowledgeEntityStatus;
+  createdAt: string;
+  confidence: number;
+}

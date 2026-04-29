@@ -79,6 +79,7 @@ Meilisearch land in later phases.
 | 13 | `ConnectorPanel` | Phase 5 — B2B right-rail "Connectors" tab that lists workspace connectors, shows per-channel attach status, exposes per-row file counts, and toggles attach / detach via `connectorApi`. Enforces the channel-scoped privacy boundary so only files from connectors attached to the active channel can be picked. |
 | 14 | `PermissionPreview` | Phase 5 — "AI will read from…" sheet rendered between SourcePicker confirm and `onAction` dispatch (and as an in-card gate inside `ArtifactDraftCard` when `pickedSources` includes file selections). One row per channel / thread / file plus a `0 bytes will leave this device` egress badge and Confirm / Cancel actions. |
 | 15 | `CitationChip` / `CitationRenderer` | Phase 5 — inline citation rendering. `CitationRenderer` parses `[source:id]` markers in streamed AI output, renders chips numbered in citation order (repeated cites reuse the same index), and emits a "Sources (N)" footer with full attribution. `CitationChip` exposes per-chip hover tooltip and click-through to `#message-{id}` or the connector URL. Wired into `ThreadSummaryCard`, `ArtifactDraftCard`, `ApprovalPrefillCard`, and `RecipeOutputGate`. |
+| 16 | `KnowledgeGraphPanel` | Phase 5 — B2B right-rail "Knowledge" tab. Renders five collapsible sections (Decisions, Owners, Risks, Requirements, Deadlines), each listing extracted `KnowledgeEntity` cards with title, description snippet, source-message link (`#message-{sourceMessageId}`), confidence badge, optional actor pills (owners) and due-date chip (deadlines). The `Extract` button calls `POST /api/channels/{channelId}/knowledge/extract` and refreshes the list. Empty state: "No entities extracted yet. Click Extract to scan this channel." |
 
 ### 2.2 Frontend stack
 
@@ -149,7 +150,7 @@ frontend/
     │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)  — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation. — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation.
     │   ├── artifacts/ (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections) — Phase 3 right-rail viewer for full artifacts: section split, inline source pins, version history, line-by-line diff, status transitions.
     │   ├── ai-employees/ (AIEmployeeList, AIEmployeePanel, QueueView, RecipeOutputGate, recipeCatalog) — Phase 4 (B2B sidebar cards + right-rail profile panel with inline channel picker, inline budget editor, recipe list, `QueueView` pending-AI-tasks panel, and the `RecipeOutputGate` human-approval surface that wraps `OutputReview` for completed runs; `recipeCatalog.ts` is the renderer-side display map for recipe ids)
-    │   └── knowledge/ (SourcePicker, ConnectorPanel, PermissionPreview, CitationChip, CitationRenderer)        — Phase 5 (three-tab picker with chip list, B2B Connectors right-rail panel for per-channel attach / detach, egress-aware permission preview, and inline citation rendering with stable indices + Sources footer)
+    │   └── knowledge/ (SourcePicker, ConnectorPanel, PermissionPreview, CitationChip, CitationRenderer, KnowledgeGraphPanel) — Phase 5 (three-tab picker with chip list, B2B Connectors right-rail panel for per-channel attach / detach, egress-aware permission preview, inline citation rendering with stable indices + Sources footer, and the workspace knowledge-graph panel mounted on the B2B right-rail "Knowledge" tab — five collapsible sections for decisions / owners / risks / requirements / deadlines extracted from channel messages)
     ├── stores/ (chatStore, aiStore, workspaceStore, kappsStore — Phase 3 task/approval CRUD with optimistic merge)
     ├── api/ (client, aiApi, chatApi, kappsApi, workspaceApi — Phase 3 navigation, streamAI, aiEmployeeApi — Phase 4, recipeRunApi — Phase 4, electronBridge)
     ├── types/ (chat, ai, kapps, workspace, aiEmployee, knowledge, electron.d.ts)
@@ -330,7 +331,8 @@ are the data services that persist Phase-0+ state and stream events.
 | 5 | `kapps-service` | Tasks, approvals, forms, base rows, sheet metadata. |
 | 6 | `artifact-service` | Docs / PRDs / RFCs / proposals, versions, citations. |
 | 7 | `retrieval-service` | Local + source retrieval, citations, chunking. Phase 5 ships `services.RetrievalService` with per-channel keyword indexing (`IndexChannel` chunks all channel + thread messages and connector file excerpts) and term-overlap scoring (`Search`); channel-scoped so no cross-channel leakage. |
-| 8 | `connector-service` | Drive / OneDrive / GitHub mock connectors with channel-scoped attachment. Phase 5 ships `services.ConnectorService` with `List` / `Get` / `ListFiles` / `ListFilesByChannel` / `AttachToChannel` / `DetachFromChannel`; one seeded Google Drive connector (`conn_gdrive_acme`) attached to `ch_vendor_management`. |
+| 8 | `connector-service` | Drive / OneDrive / GitHub mock connectors with channel-scoped attachment. Phase 5 ships `services.ConnectorService` with `List` / `Get` / `ListFiles` / `ListFilesByChannel` / `AttachToChannel` / `DetachFromChannel`; one seeded Google Drive connector (`conn_gdrive_acme`) attached to `ch_vendor_management`. `AttachToChannel`'s idempotency check runs **inside** the `UpdateConnector` callback under the store's write lock so concurrent attaches with the same channelId can't double-append. |
+| 8a | `knowledge-service` | Phase 5 — workspace knowledge graph. `services.KnowledgeService.ExtractEntities` scans every message in a channel via `store.ListAllChannelMessages` and emits five kinds of `KnowledgeEntity` (decision / owner / risk / requirement / deadline) using keyword + regex heuristics; each entity references its `sourceMessageId` for thread attribution. `List(channelId, kind)` returns filtered entities and `Get(id)` returns a single one. Re-extraction is idempotent (existing entities for the channel are dropped before each run via `ClearKnowledgeEntitiesForChannel`). |
 | 9 | `event-service` | NATS JetStream event publication and subscriptions. |
 | 10 | `audit-service` | Immutable append-only event log for all KApp mutations (task, approval, artifact, form lifecycle events). In-memory store (Phase 0); persisted in later phases. |
 
@@ -348,21 +350,24 @@ backend/
 │   │   │                          ai_employees.go [Phase 4],
 │   │   │                          recipe_runs.go [Phase 4],
 │   │   │                          connectors.go [Phase 5],
-│   │   │                          retrieval.go [Phase 5])
+│   │   │                          retrieval.go [Phase 5],
+│   │   │                          knowledge.go [Phase 5])
 │   │   └── userctx/              (request-scoped user helpers)
 │   ├── services/                 (identity.go, workspace.go, chat.go, kapps.go,
 │   │                              audit.go [Phase 3],
 │   │                              ai_employees.go [Phase 4],
 │   │                              recipe_runs.go [Phase 4],
 │   │                              connectors.go [Phase 5],
-│   │                              retrieval.go [Phase 5])
+│   │                              retrieval.go [Phase 5],
+│   │                              knowledge.go [Phase 5])
 │   ├── models/                   (user.go, workspace.go, message.go, task.go,
 │   │                              approval.go, artifact.go, event.go, card.go,
 │   │                              audit.go [Phase 3],
 │   │                              ai_employee.go [Phase 4],
 │   │                              recipe_run.go [Phase 4],
 │   │                              connector.go [Phase 5],
-│   │                              retrieval.go [Phase 5])
+│   │                              retrieval.go [Phase 5],
+│   │                              knowledge.go [Phase 5])
 │   └── store/                    (memory.go + seed.go + seedAIEmployees;
 │                                   Phase 6+ adds postgres.go)
 └── go.mod
@@ -441,6 +446,9 @@ DELETE /api/connectors/{id}/channels/{channelId}          (Phase 5)
 GET    /api/channels/{channelId}/connector-files          (Phase 5)
 POST   /api/channels/{channelId}/index                    (Phase 5 — chunks channel + thread messages + connector files)
 GET    /api/channels/{channelId}/search?q=&topK=          (Phase 5 — keyword retrieval; channel-scoped, default topK=5)
+POST   /api/channels/{channelId}/knowledge/extract        (Phase 5 — extract knowledge entities from channel messages)
+GET    /api/channels/{channelId}/knowledge?kind=          (Phase 5 — list entities, optional kind filter: decision/owner/risk/requirement/deadline)
+GET    /api/knowledge/{id}                                (Phase 5 — fetch a single KnowledgeEntity)
 GET    /api/privacy/egress-preview
 ```
 
@@ -687,6 +695,25 @@ status (draft | submitted), ai_generated
 `FormTemplate` (seeded; not user-editable in Phase 3): `id, title,
 fields[ { name, label, required } ]`. Phase 3 ships
 `vendor_onboarding_v1`, `expense_report_v1`, and `access_request_v1`.
+
+**KnowledgeEntity** (Phase 5)
+
+```
+id, channel_id, thread_id, source_message_id,
+kind (decision | owner | risk | requirement | deadline),
+title, description, actors[], due_date,
+status (open | resolved | accepted),
+created_at, confidence
+```
+
+`KnowledgeEntity` is emitted by `services.KnowledgeService.ExtractEntities`
+when the renderer (or an AI Employee recipe) hits
+`POST /api/channels/{channelId}/knowledge/extract`. Each entity
+references the `source_message_id` it was derived from so the
+right-rail `KnowledgeGraphPanel` can link cards back to the
+originating message via the `#message-{id}` anchor pattern. Re-running
+extraction is idempotent — prior entities for the channel are dropped
+before re-emission via `store.ClearKnowledgeEntitiesForChannel`.
 
 ### 6.2 Events
 

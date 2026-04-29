@@ -33,6 +33,7 @@ func main() {
 	recipeRuns := services.NewRecipeRunService(mem)
 	connectors := services.NewConnectorService(mem)
 	retrieval := services.NewRetrievalService(mem)
+	knowledge := services.NewKnowledgeService(mem)
 
 	r := api.NewRouter(api.Deps{
 		Identity:    identity,
@@ -44,6 +45,7 @@ func main() {
 		RecipeRuns:  recipeRuns,
 		Connectors:  connectors,
 		Retrieval:   retrieval,
+		Knowledge:   knowledge,
 	})
 
 	addr := os.Getenv("ADDR")

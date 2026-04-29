@@ -24,6 +24,7 @@ type Deps struct {
 	RecipeRuns  *services.RecipeRunService
 	Connectors  *services.ConnectorService
 	Retrieval   *services.RetrievalService
+	Knowledge   *services.KnowledgeService
 }
 
 // NewRouter wires the chi router with CORS, JSON content-type, mock auth, and
@@ -55,6 +56,7 @@ func NewRouter(d Deps) http.Handler {
 	rrH := handlers.NewRecipeRuns(d.RecipeRuns, d.AIEmployees)
 	connH := handlers.NewConnectors(d.Connectors)
 	retH := handlers.NewRetrieval(d.Retrieval)
+	kgH := handlers.NewKnowledge(d.Knowledge)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
@@ -148,6 +150,14 @@ func NewRouter(d Deps) http.Handler {
 		// in real source content.
 		r.Post("/channels/{channelId}/index", retH.Index)
 		r.Get("/channels/{channelId}/search", retH.Search)
+
+		// Knowledge graph — Phase 5 workspace-scoped entity
+		// extraction (decisions / owners / risks / requirements /
+		// deadlines) over channel messages. The renderer hits
+		// these from the right-rail KnowledgeGraphPanel.
+		r.Post("/channels/{channelId}/knowledge/extract", kgH.Extract)
+		r.Get("/channels/{channelId}/knowledge", kgH.List)
+		r.Get("/knowledge/{id}", kgH.Get)
 	})
 
 	return r

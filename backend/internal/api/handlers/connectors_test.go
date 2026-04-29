@@ -212,3 +212,40 @@ func TestAttachUnknownConnectorReturns404(t *testing.T) {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }
+
+// Regression for the TOCTOU between the stale dup-check snapshot and
+// the UpdateConnector write — two sequential attaches with the same
+// channelId must result in exactly one entry in `channelIds`. Before
+// the fix the dup check ran against a stale GetConnector snapshot, so
+// concurrent / repeat callers could double-append.
+func TestAttachIsIdempotentForRepeatedChannel(t *testing.T) {
+	h := newTestServer()
+
+	body1 := bytes.NewBufferString(`{"channelId":"ch_engineering"}`)
+	rec := doRequest(t, h, "POST", "/api/connectors/conn_gdrive_acme/channels", "user_alice", body1)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first attach: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	body2 := bytes.NewBufferString(`{"channelId":"ch_engineering"}`)
+	rec = doRequest(t, h, "POST", "/api/connectors/conn_gdrive_acme/channels", "user_alice", body2)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second attach: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Connector models.Connector `json:"connector"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	count := 0
+	for _, cid := range resp.Connector.ChannelIDs {
+		if cid == "ch_engineering" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected ch_engineering once in channelIds, got %d (channelIds=%v)",
+			count, resp.Connector.ChannelIDs)
+	}
+}
