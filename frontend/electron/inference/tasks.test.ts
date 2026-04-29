@@ -73,7 +73,7 @@ describe('runPrefillApproval', () => {
     expect(resp.fields.risk).toBe('medium');
     expect(resp.title).toContain('Acme Logs');
     expect(resp.sourceMessageIds.length).toBeGreaterThan(0);
-    expect(resp.tier === 'local' || resp.tier === 'local').toBe(true);
+    expect(resp.tier).toBe('local');
     expect(typeof resp.reason).toBe('string');
   });
 
@@ -150,7 +150,7 @@ describe('buildDraftArtifact', () => {
         { id: 'm1', channelId: 'c1', senderId: 'u1', content: 'How to rotate keys.' },
       ],
     });
-    expect(out.tier === 'local' || out.tier === 'local').toBe(true);
+    expect(out.tier).toBe('local');
     expect(out.reason.length).toBeGreaterThan(0);
   });
 
