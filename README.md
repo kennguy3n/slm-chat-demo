@@ -315,13 +315,12 @@ go test ./...
 ## Phase 1 — complete
 
 - **Single on-device routing tier** — `bootstrap.ts` creates one
-  `OllamaAdapter` instance (`MODEL_NAME`, defaulting
-  to `ternary-bonsai-8b`), pings each model independently, and
-  falls back to the mock adapter when the model is not
-  pulled. The `InferenceRouter` `decide()` reports
-  the real model so the privacy strip and `model:status` (`model`,
-  `loaded`) reflect what actually ran. The
-  `DeviceCapabilityPanel` shows both tiers side-by-side.
+  `OllamaAdapter` instance (`MODEL_NAME`, defaulting to
+  `ternary-bonsai-8b`), pings the Ollama daemon, and falls back to
+  the mock adapter when the model is not pulled. The
+  `InferenceRouter` `decide()` reports the real model so the privacy
+  strip and `model:status` (`model`, `loaded`) reflect what actually
+  ran. The `DeviceCapabilityPanel` shows the on-device model status.
 
 ## Phase 6 — in progress
 

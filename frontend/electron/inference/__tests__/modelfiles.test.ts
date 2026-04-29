@@ -1,11 +1,11 @@
 // Modelfile existence + content sanity tests.
 //
-// The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults the
-// E2B / E4B model names to `ternary-bonsai-8b` (both tiers point at the
-// same on-device model), and the repo-level `scripts/setup-models.sh`
-// creates that exact alias from the Modelfile under `models/`. If those
-// files drift apart the installation flow documented in `README.md`
-// silently breaks, so we pin the contract here.
+// The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults
+// the model name to `ternary-bonsai-8b` (a single on-device model),
+// and the repo-level `scripts/setup-models.sh` creates that exact
+// alias from the Modelfile under `models/`. If those files drift apart
+// the installation flow documented in `README.md` silently breaks, so
+// we pin the contract here.
 
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import path from 'node:path';

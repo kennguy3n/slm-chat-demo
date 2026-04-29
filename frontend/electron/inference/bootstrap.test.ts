@@ -74,4 +74,57 @@ describe('bootstrapInference', () => {
     const dec = stack.router.decide({ taskType: 'summarize', prompt: 'p' });
     expect(dec.model).toBe('custom-alias');
   });
+
+  describe('confidential server probe', () => {
+    const ORIGINAL_POLICY = process.env.CONFIDENTIAL_SERVER_POLICY;
+    afterEach(() => {
+      if (ORIGINAL_POLICY === undefined) {
+        delete process.env.CONFIDENTIAL_SERVER_POLICY;
+      } else {
+        process.env.CONFIDENTIAL_SERVER_POLICY = ORIGINAL_POLICY;
+      }
+    });
+
+    it('does NOT probe the server when policy is not "allow"', async () => {
+      delete process.env.CONFIDENTIAL_SERVER_POLICY;
+      let pinged = false;
+      const stack = await bootstrapInference({
+        fetchImpl: makeFetch({ pingOk: false }),
+        pingServer: async () => {
+          pinged = true;
+        },
+      });
+      expect(pinged).toBe(false);
+      expect(stack.hasServer).toBe(false);
+      expect(stack.router.hasServer()).toBe(false);
+    });
+
+    it('wires the server tier when policy=allow AND ping resolves', async () => {
+      process.env.CONFIDENTIAL_SERVER_POLICY = 'allow';
+      const stack = await bootstrapInference({
+        fetchImpl: makeFetch({ pingOk: false }),
+        pingServer: async () => {},
+      });
+      expect(stack.hasServer).toBe(true);
+      expect(stack.router.hasServer()).toBe(true);
+      const dec = stack.router.decide({ taskType: 'summarize', tier: 'server' });
+      expect(dec.allow).toBe(true);
+      expect(dec.tier).toBe('server');
+    });
+
+    it('leaves server unwired when policy=allow but ping rejects', async () => {
+      process.env.CONFIDENTIAL_SERVER_POLICY = 'allow';
+      const stack = await bootstrapInference({
+        fetchImpl: makeFetch({ pingOk: false }),
+        pingServer: async () => {
+          throw new Error('refused');
+        },
+      });
+      expect(stack.hasServer).toBe(false);
+      expect(stack.router.hasServer()).toBe(false);
+      const dec = stack.router.decide({ taskType: 'summarize', tier: 'server' });
+      expect(dec.allow).toBe(false);
+      expect(dec.reason).toMatch(/unreachable/i);
+    });
+  });
 });

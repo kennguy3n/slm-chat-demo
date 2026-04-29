@@ -90,7 +90,7 @@ describe('runTripPlanner', () => {
     expect(it.summary).toContain('Three-day');
     expect(exec.result.privacy.computeLocation).toBe('on_device');
     expect(exec.result.privacy.dataEgressBytes).toBe(0);
-    expect(exec.result.privacy.tier === 'local' || exec.result.privacy.tier === 'local').toBe(true);
+    expect(exec.result.privacy.tier).toBe('local');
     // Prompt carries the AI Memory facts and search results.
     expect(adapter.lastReq?.prompt).toContain('Austin, TX');
     expect(adapter.lastReq?.prompt).toContain('Senso-ji');

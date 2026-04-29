@@ -1,8 +1,8 @@
 # Ollama Modelfile for Ternary-Bonsai-8B — the single on-device model
 # used by the KChat SLM demo. Creates a local alias
-# `ternary-bonsai-8b` matching the app's default `E2B_MODEL` /
-# `E4B_MODEL` (both tiers point at the same model; the two-tier routing
-# logic is preserved for future flexibility).
+# `ternary-bonsai-8b` matching the app's default `MODEL_NAME` (the
+# bootstrap wires exactly one on-device adapter; there is no separate
+# tier split).
 #
 # Source: https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf
 #
