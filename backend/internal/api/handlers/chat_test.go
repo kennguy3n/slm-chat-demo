@@ -18,16 +18,20 @@ func newTestServer() http.Handler {
 	store.Seed(mem)
 	audit := services.NewAudit(mem)
 	return api.NewRouter(api.Deps{
-		Identity:    services.NewIdentity(mem, "user_alice"),
-		Workspaces:  services.NewWorkspace(mem),
-		Chat:        services.NewChat(mem),
-		KApps:       services.NewKApps(mem).WithAudit(audit),
-		Audit:       audit,
-		AIEmployees: services.NewAIEmployeeService(mem),
-		RecipeRuns:  services.NewRecipeRunService(mem),
-		Connectors:  services.NewConnectorService(mem),
-		Retrieval:   services.NewRetrievalService(mem),
-		Knowledge:   services.NewKnowledgeService(mem),
+		Identity:      services.NewIdentity(mem, "user_alice"),
+		Workspaces:    services.NewWorkspace(mem),
+		Chat:          services.NewChat(mem),
+		KApps:         services.NewKApps(mem).WithAudit(audit),
+		Audit:         audit,
+		AIEmployees:   services.NewAIEmployeeService(mem),
+		RecipeRuns:    services.NewRecipeRunService(mem),
+		Connectors:    services.NewConnectorService(mem),
+		Retrieval:     services.NewRetrievalService(mem),
+		Knowledge:     services.NewKnowledgeService(mem),
+		Policy:        services.NewPolicyService(mem),
+		Encryption:    services.NewEncryptionKeyService(mem),
+		TenantStorage: services.NewTenantStorageService(mem),
+		Store:         mem,
 	})
 }
 

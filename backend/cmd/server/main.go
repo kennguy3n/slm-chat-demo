@@ -34,18 +34,25 @@ func main() {
 	connectors := services.NewConnectorService(mem)
 	retrieval := services.NewRetrievalService(mem)
 	knowledge := services.NewKnowledgeService(mem)
+	policy := services.NewPolicyService(mem)
+	encryption := services.NewEncryptionKeyService(mem)
+	tenantStorage := services.NewTenantStorageService(mem)
 
 	r := api.NewRouter(api.Deps{
-		Identity:    identity,
-		Workspaces:  workspaces,
-		Chat:        chat,
-		KApps:       kapps,
-		Audit:       audit,
-		AIEmployees: aiEmployees,
-		RecipeRuns:  recipeRuns,
-		Connectors:  connectors,
-		Retrieval:   retrieval,
-		Knowledge:   knowledge,
+		Identity:      identity,
+		Workspaces:    workspaces,
+		Chat:          chat,
+		KApps:         kapps,
+		Audit:         audit,
+		AIEmployees:   aiEmployees,
+		RecipeRuns:    recipeRuns,
+		Connectors:    connectors,
+		Retrieval:     retrieval,
+		Knowledge:     knowledge,
+		Policy:        policy,
+		Encryption:    encryption,
+		TenantStorage: tenantStorage,
+		Store:         mem,
 	})
 
 	addr := os.Getenv("ADDR")

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test/renderWithProviders';
 import { AuditLogPanel } from '../AuditLogPanel';
 import type { AuditEntry } from '../../../types/audit';
@@ -60,5 +61,63 @@ describe('AuditLogPanel', () => {
     );
     expect(screen.getByText('Task created')).toBeInTheDocument();
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('renders Export JSON / CSV buttons and triggers downloads (Phase 6)', async () => {
+    const exporter = vi.fn().mockResolvedValue('blob:mock-url');
+    // jsdom does not implement URL.revokeObjectURL — patch it on so
+    // the post-download cleanup path doesn't throw on the deferred
+    // setTimeout callback. We leave it installed for the rest of the
+    // suite because uninstalling it during the timeout window races
+    // the assertion phase.
+    (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = () => {};
+
+    renderWithProviders(
+      <AuditLogPanel
+        objectId="task_1"
+        objectKind="task"
+        initialEntries={sampleEntries}
+        injectedExport={exporter}
+      />,
+    );
+
+    const jsonBtn = screen.getByTestId('audit-export-json');
+    const csvBtn = screen.getByTestId('audit-export-csv');
+    expect(jsonBtn).toBeInTheDocument();
+    expect(csvBtn).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(jsonBtn);
+    await waitFor(() =>
+      expect(exporter).toHaveBeenCalledWith('json', {
+        objectId: 'task_1',
+        objectKind: 'task',
+      }),
+    );
+
+    await user.click(csvBtn);
+    await waitFor(() =>
+      expect(exporter).toHaveBeenCalledWith('csv', {
+        objectId: 'task_1',
+        objectKind: 'task',
+      }),
+    );
+
+  });
+
+  it('shows an export error when the exporter rejects', async () => {
+    const exporter = vi.fn().mockRejectedValue(new Error('boom'));
+    renderWithProviders(
+      <AuditLogPanel
+        objectId="task_1"
+        objectKind="task"
+        initialEntries={sampleEntries}
+        injectedExport={exporter}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('audit-export-json'));
+    expect(await screen.findByTestId('audit-export-error')).toHaveTextContent(/boom/);
   });
 });

@@ -26,6 +26,12 @@ type Memory struct {
 	connectorFiles []models.ConnectorFile
 	retrievalChunks []models.RetrievalChunk
 	knowledgeEntities []models.KnowledgeEntity
+
+	// Phase 6 — confidential server mode + enterprise hardening.
+	workspacePolicies    map[string]models.WorkspacePolicy     // keyed by workspaceID
+	ssoConfigs           map[string]models.SSOConfig           // keyed by workspaceID
+	encryptionKeys       map[string][]models.TenantEncryptionKey // keyed by workspaceID
+	tenantStorageConfigs map[string]models.TenantStorageConfig // keyed by workspaceID
 }
 
 // NewMemory returns an empty Memory store. Call Seed to populate it with the
@@ -46,7 +52,133 @@ func NewMemory() *Memory {
 		connectorFiles: []models.ConnectorFile{},
 		retrievalChunks: []models.RetrievalChunk{},
 		knowledgeEntities: []models.KnowledgeEntity{},
+
+		workspacePolicies:    map[string]models.WorkspacePolicy{},
+		ssoConfigs:           map[string]models.SSOConfig{},
+		encryptionKeys:       map[string][]models.TenantEncryptionKey{},
+		tenantStorageConfigs: map[string]models.TenantStorageConfig{},
 	}
+}
+
+// ---- Phase 6 — workspace policy ----
+
+// PutWorkspacePolicy persists the per-workspace AI compute policy.
+func (m *Memory) PutWorkspacePolicy(p models.WorkspacePolicy) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.workspacePolicies[p.WorkspaceID] = p
+}
+
+// GetWorkspacePolicy returns the policy for the given workspace.
+func (m *Memory) GetWorkspacePolicy(workspaceID string) (models.WorkspacePolicy, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	p, ok := m.workspacePolicies[workspaceID]
+	return p, ok
+}
+
+// ---- Phase 6 — SSO config ----
+
+// PutSSOConfig persists the per-workspace SSO config.
+func (m *Memory) PutSSOConfig(c models.SSOConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ssoConfigs[c.WorkspaceID] = c
+}
+
+// GetSSOConfig returns the SSO config for the given workspace.
+func (m *Memory) GetSSOConfig(workspaceID string) (models.SSOConfig, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	c, ok := m.ssoConfigs[workspaceID]
+	return c, ok
+}
+
+// ---- Phase 6 — SCIM user provisioning ----
+
+// CreateUser inserts a new user. Returns false if the user id already
+// exists (SCIM `POST /Users` should 409 in that case).
+func (m *Memory) CreateUser(u models.User) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.users[u.ID]; ok {
+		return false
+	}
+	m.users[u.ID] = u
+	return true
+}
+
+// DeactivateUser marks the user inactive. Returns false if the user
+// does not exist.
+func (m *Memory) DeactivateUser(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[id]
+	if !ok {
+		return false
+	}
+	u.Active = false
+	m.users[id] = u
+	return true
+}
+
+// ---- Phase 6 — per-tenant encryption keys ----
+
+// PutEncryptionKey appends a key to the workspace's key history.
+func (m *Memory) PutEncryptionKey(k models.TenantEncryptionKey) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.encryptionKeys[k.WorkspaceID] = append(m.encryptionKeys[k.WorkspaceID], k)
+}
+
+// GetEncryptionKey returns a single key by workspace+keyID.
+func (m *Memory) GetEncryptionKey(workspaceID, keyID string) (models.TenantEncryptionKey, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, k := range m.encryptionKeys[workspaceID] {
+		if k.KeyID == keyID {
+			return k, true
+		}
+	}
+	return models.TenantEncryptionKey{}, false
+}
+
+// ListEncryptionKeys returns every key for a workspace, sorted by
+// CreatedAt.
+func (m *Memory) ListEncryptionKeys(workspaceID string) []models.TenantEncryptionKey {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	src := m.encryptionKeys[workspaceID]
+	out := make([]models.TenantEncryptionKey, len(src))
+	copy(out, src)
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out
+}
+
+// ReplaceEncryptionKeys is used by the rotate path so the service can
+// deactivate the previous active key and append the new one in one
+// atomic write.
+func (m *Memory) ReplaceEncryptionKeys(workspaceID string, keys []models.TenantEncryptionKey) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.encryptionKeys[workspaceID] = keys
+}
+
+// ---- Phase 6 — tenant storage config ----
+
+// PutTenantStorageConfig persists the per-workspace storage config.
+func (m *Memory) PutTenantStorageConfig(c models.TenantStorageConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.tenantStorageConfigs[c.WorkspaceID] = c
+}
+
+// GetTenantStorageConfig returns the storage config for a workspace.
+func (m *Memory) GetTenantStorageConfig(workspaceID string) (models.TenantStorageConfig, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	c, ok := m.tenantStorageConfigs[workspaceID]
+	return c, ok
 }
 
 // User lookups.

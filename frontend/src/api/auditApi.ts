@@ -1,5 +1,40 @@
-import { apiFetch } from './client';
+import { apiBase, DEMO_USER_ID, apiFetch } from './client';
 import type { AuditEntry, AuditObjectKind } from '../types/audit';
+
+export type AuditExportFormat = 'json' | 'csv';
+
+export interface AuditExportFilters {
+  objectId?: string;
+  objectKind?: AuditObjectKind;
+  channelId?: string;
+}
+
+// exportAuditLog downloads the audit log as JSON or CSV (Phase 6).
+// Returns an object URL (`URL.createObjectURL`) the caller can attach
+// to a hidden <a download> to trigger the browser save dialog.
+export async function exportAuditLog(
+  format: AuditExportFormat,
+  filters: AuditExportFilters = {},
+): Promise<string> {
+  const params = new URLSearchParams();
+  params.set('format', format);
+  if (filters.objectId) params.set('objectId', filters.objectId);
+  if (filters.objectKind) params.set('objectKind', filters.objectKind);
+  if (filters.channelId) params.set('channelId', filters.channelId);
+
+  const res = await fetch(`${apiBase}/api/audit/export?${params.toString()}`, {
+    headers: {
+      Accept: format === 'csv' ? 'text/csv' : 'application/json',
+      'X-User-ID': DEMO_USER_ID,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`audit export failed: ${res.status} ${text}`);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
 
 // fetchAuditLog returns the audit entries for a single KApp object.
 // Pass an empty objectId to fetch by kind only; pass both empty to

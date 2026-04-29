@@ -1,5 +1,9 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchAuditLog } from '../../api/auditApi';
+import {
+  exportAuditLog as defaultExportAuditLog,
+  fetchAuditLog,
+} from '../../api/auditApi';
 import type { AuditEntry, AuditEventType, AuditObjectKind } from '../../types/audit';
 
 interface Props {
@@ -7,6 +11,9 @@ interface Props {
   objectKind?: AuditObjectKind;
   // Optional injected fetcher for tests.
   injectedFetch?: typeof fetchAuditLog;
+  // Optional injected exporter for tests — defaults to the real
+  // exportAuditLog which hits /api/audit/export.
+  injectedExport?: typeof defaultExportAuditLog;
   // Optional pre-loaded entries (for tests / Storybook).
   initialEntries?: AuditEntry[];
 }
@@ -47,9 +54,37 @@ export function AuditLogPanel({
   objectId,
   objectKind,
   injectedFetch,
+  injectedExport,
   initialEntries,
 }: Props) {
   const fetcher = injectedFetch ?? fetchAuditLog;
+  const exporter = injectedExport ?? defaultExportAuditLog;
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<'json' | 'csv' | null>(null);
+
+  async function handleExport(format: 'json' | 'csv') {
+    setExporting(format);
+    setExportError(null);
+    try {
+      const url = await exporter(format, { objectId, objectKind });
+      // Trigger a download via a hidden anchor. We use a manual
+      // anchor (rather than window.open) so the filename hint from
+      // the Content-Disposition header is honoured.
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit-export.${format}`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Release the blob shortly after the download starts.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e: unknown) {
+      setExportError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(null);
+    }
+  }
   const query = useQuery<AuditEntry[]>({
     queryKey: ['audit', 'object', objectId, objectKind ?? ''],
     queryFn: () => fetcher(objectId, objectKind),
@@ -91,7 +126,30 @@ export function AuditLogPanel({
       <header className="audit-log-panel__header">
         <h4>Audit log</h4>
         <span className="audit-log-panel__count">{entries.length} event{entries.length === 1 ? '' : 's'}</span>
+        <div className="audit-log-panel__export" data-testid="audit-export">
+          <button
+            type="button"
+            onClick={() => handleExport('json')}
+            disabled={exporting !== null}
+            data-testid="audit-export-json"
+          >
+            {exporting === 'json' ? 'Exporting…' : 'Export JSON'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExport('csv')}
+            disabled={exporting !== null}
+            data-testid="audit-export-csv"
+          >
+            {exporting === 'csv' ? 'Exporting…' : 'Export CSV'}
+          </button>
+        </div>
       </header>
+      {exportError && (
+        <p className="audit-log-panel__error" role="alert" data-testid="audit-export-error">
+          Export failed: {exportError}
+        </p>
+      )}
       <ol className="audit-log-panel__list">
         {entries.map((e) => (
           <li
