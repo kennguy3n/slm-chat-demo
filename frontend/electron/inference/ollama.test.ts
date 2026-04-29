@@ -123,4 +123,37 @@ describe('OllamaAdapter.status', () => {
     expect(s.model).toBe('gemma-4-e2b');
     expect(s.ramUsageMB).toBeGreaterThan(0);
   });
+
+  it('reports loaded=false when /api/ps lists only an unrelated model (E4B adapter sees only E2B)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ models: [{ name: 'gemma-4-e2b', size: 2 * 1024 * 1024 * 1024 }] }),
+    );
+    const ad = new OllamaAdapter({
+      model: 'gemma-4-e4b',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const s = await ad.status();
+    expect(s.loaded).toBe(false);
+    expect(s.model).toBe('gemma-4-e4b');
+    expect(s.ramUsageMB).toBe(0);
+  });
+
+  it('matches the adapter model when an Ollama tag suffix is present', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        models: [
+          { name: 'gemma-4-e2b:latest', size: 1 * 1024 * 1024 * 1024 },
+          { name: 'gemma-4-e4b:q4_k_m', size: 3 * 1024 * 1024 * 1024 },
+        ],
+      }),
+    );
+    const ad = new OllamaAdapter({
+      model: 'gemma-4-e4b',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const s = await ad.status();
+    expect(s.loaded).toBe(true);
+    expect(s.model).toBe('gemma-4-e4b:q4_k_m');
+    expect(s.ramUsageMB).toBeGreaterThanOrEqual(3000);
+  });
 });

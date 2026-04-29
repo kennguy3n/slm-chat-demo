@@ -178,15 +178,30 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     }
     const ps = (await res.json()) as OllamaPsResponse;
     const models = ps.models ?? [];
-    const loaded = models.length > 0;
-    let model = this.model;
-    let ramMB = 0;
-    if (loaded) {
-      const first = models[0];
-      model = first.name || first.model || this.model;
-      ramMB = Math.floor((first.size ?? 0) / (1024 * 1024));
+    // Two adapter instances (E2B / E4B) share the same daemon. Each one
+    // must report only on the model it represents — finding any other
+    // model in /api/ps does NOT mean this adapter's model is loaded.
+    // Match permissively (Ollama tag suffixes like ":latest" / ":q4_k_m"
+    // shouldn't change the answer).
+    const wanted = this.model.toLowerCase();
+    const match = models.find((m) => {
+      const raw = (m.name || m.model || '').toLowerCase();
+      // Strip Ollama's optional `:tag` suffix (e.g. "gemma-4-e2b:q4_k_m") and
+      // compare bare names. This lets us match a model regardless of which
+      // quantisation the user pulled, but never confuses two distinct models.
+      const bare = raw.split(':')[0];
+      return bare === wanted;
+    });
+    if (!match) {
+      return { loaded: false, model: this.model, quant: 'q4_k_m', ramUsageMB: 0, sidecar: 'running' };
     }
-    return { loaded, model, quant: 'q4_k_m', ramUsageMB: ramMB, sidecar: 'running' };
+    return {
+      loaded: true,
+      model: match.name || match.model || this.model,
+      quant: 'q4_k_m',
+      ramUsageMB: Math.floor((match.size ?? 0) / (1024 * 1024)),
+      sidecar: 'running',
+    };
   }
 
   async load(model: string, signal?: AbortSignal): Promise<void> {

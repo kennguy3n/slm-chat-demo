@@ -7,7 +7,12 @@ interface Props {
   // to drive transitions without the parent having to wire its own
   // controls. When omitted the card renders read-only.
   onStatusChange?: (next: TaskStatus) => void;
-  onEdit?: (patch: { title?: string; owner?: string; dueDate?: string | null }) => void;
+  onEdit?: (patch: {
+    title?: string;
+    owner?: string;
+    dueDate?: string | null;
+    clearDueDate?: boolean;
+  }) => void;
   onClose?: () => void;
   onOpenSource?: (id: string) => void;
   // mode controls density: full (chat / Tasks KApp) vs compact
@@ -62,11 +67,26 @@ export function TaskCard({
   const sourceID = task.sourceMessageId ?? task.sourceThreadId;
 
   function commitEdits() {
-    onEdit?.({
+    // The Go handler only treats a due date as cleared when the request body
+    // sets `clearDueDate: true`. A bare `dueDate: null` is indistinguishable
+    // from an absent field server-side and is silently ignored. Set the flag
+    // when the user has wiped a previously-set date.
+    const hadDueDate = !!task.dueDate;
+    const hasDueDate = !!draftDue;
+    const patch: {
+      title?: string;
+      owner?: string;
+      dueDate?: string | null;
+      clearDueDate?: boolean;
+    } = {
       title: draftTitle.trim() || task.title,
       owner: draftOwner,
-      dueDate: draftDue ? new Date(draftDue).toISOString() : null,
-    });
+      dueDate: hasDueDate ? new Date(draftDue).toISOString() : null,
+    };
+    if (hadDueDate && !hasDueDate) {
+      patch.clearDueDate = true;
+    }
+    onEdit?.(patch);
     setEditing(false);
   }
 
