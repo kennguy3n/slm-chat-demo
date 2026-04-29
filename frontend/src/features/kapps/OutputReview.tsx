@@ -100,7 +100,11 @@ export function OutputReview({
     setBusy(true);
     setErr(null);
     try {
-      await onAccept(editing ? draft : content);
+      // draft is initialised to content and is the only thing the
+      // textarea mutates, so it always reflects the latest text the
+      // user wants to accept — including the post-"Save edits" case
+      // where editing has been toggled back to false.
+      await onAccept(draft);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {

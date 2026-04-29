@@ -48,6 +48,33 @@ describe('OutputReview', () => {
     expect(onAccept).toHaveBeenCalledWith('Edited body');
   });
 
+  it('preserves edits when the user clicks Save edits before Accept', async () => {
+    const onAccept = vi.fn();
+    const onEdit = vi.fn();
+    render(
+      <OutputReview
+        objectKind="artifact"
+        content="Original body"
+        sources={[]}
+        onAccept={onAccept}
+        onEdit={onEdit}
+        onDiscard={() => undefined}
+      />,
+    );
+    await userEvent.click(screen.getByTestId('output-review-edit'));
+    const editor = await screen.findByTestId('output-review-editor');
+    await userEvent.clear(editor);
+    await userEvent.type(editor, 'Edited then saved');
+    // First click on the Edit button entered edit mode; the second click
+    // is the "Save edits" action — it fires onEdit and exits edit mode.
+    await userEvent.click(screen.getByTestId('output-review-edit'));
+    expect(onEdit).toHaveBeenCalledWith('Edited then saved');
+    await userEvent.click(screen.getByTestId('output-review-accept'));
+    // Accept must use the edited draft, not the original content, even
+    // though the edit-mode flag has been toggled back to false.
+    expect(onAccept).toHaveBeenCalledWith('Edited then saved');
+  });
+
   it('calls onDiscard when Discard is clicked', async () => {
     const onDiscard = vi.fn();
     render(
