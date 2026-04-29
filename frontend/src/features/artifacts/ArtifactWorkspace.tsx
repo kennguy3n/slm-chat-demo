@@ -8,6 +8,7 @@ import {
 import type { Artifact, ArtifactSourcePin, ArtifactStatus, ArtifactVersion } from '../../types/kapps';
 import { SourcePin } from './SourcePin';
 import { ArtifactDiffView } from './ArtifactDiffView';
+import { splitIntoSections as splitParsedSections } from './sections';
 
 interface Props {
   // The artifact to display. The workspace fetches the full artifact
@@ -30,31 +31,17 @@ interface Section {
   pins: ArtifactSourcePin[];
 }
 
-// splitIntoSections segments a markdown body by `# ...` headings. Each
-// heading becomes a section whose `id` is the slugified heading text
-// (lowercased, non-word chars stripped). Source pins reference these
-// section ids so the renderer can place footnote markers next to the
-// right heading. Sections with no heading are bucketed under "preamble".
+// splitIntoSections segments a markdown body by `# ...` headings.
+// Implementation lives in `./sections` so other modules (e.g. the
+// ThreadPanel that creates source pins from the streamed draft body)
+// can produce sectionIds that match the renderer's slug format.
 function splitIntoSections(body: string): Section[] {
-  if (!body.trim()) return [];
-  const lines = body.split('\n');
-  const sections: Section[] = [];
-  let current: Section = { id: 'preamble', heading: '', body: '', pins: [] };
-  for (const line of lines) {
-    const m = /^#+\s+(.*)$/.exec(line);
-    if (m) {
-      if (current.heading || current.body.trim()) {
-        sections.push(current);
-      }
-      const heading = m[1].trim();
-      const id = heading.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-      current = { id: id || heading, heading, body: '', pins: [] };
-    } else {
-      current.body += (current.body ? '\n' : '') + line;
-    }
-  }
-  if (current.heading || current.body.trim()) sections.push(current);
-  return sections;
+  return splitParsedSections(body).map((s) => ({
+    id: s.id,
+    heading: s.heading,
+    body: s.body,
+    pins: [],
+  }));
 }
 
 function buildSections(version: ArtifactVersion | null): Section[] {
@@ -63,7 +50,7 @@ function buildSections(version: ArtifactVersion | null): Section[] {
   for (const pin of version.sourcePins ?? []) {
     const target = secs.find((s) => s.id === pin.sectionId);
     if (target) target.pins.push(pin);
-    else if (secs.length > 0) secs[secs.length - 1].pins.push(pin);
+    else if (secs.length > 0) secs[0].pins.push(pin);
   }
   return secs;
 }

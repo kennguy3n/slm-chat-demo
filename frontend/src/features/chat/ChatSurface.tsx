@@ -223,8 +223,13 @@ export function ChatSurface({ channel, users, currentUserId }: Props) {
     // selected thread, so we forward the action to whichever panel is
     // currently mounted (typically the right-rail ThreadPanel).
     if (path[0] === 'create' && (path[1] === 'prd' || path[1] === 'rfc' || path[1] === 'proposal')) {
+      // Map launcher slug to the canonical ArtifactKind ('PRD' / 'RFC' /
+      // 'Proposal'). 'proposal' is mixed-case in models/artifact.go and
+      // types/ai.ts, so toUpperCase() would mismatch the validator.
+      const artifactType =
+        path[1] === 'proposal' ? 'Proposal' : (path[1].toUpperCase() as 'PRD' | 'RFC');
       const evt = new CustomEvent('kapps:launcher', {
-        detail: { kind: 'draft_artifact', artifactType: path[1].toUpperCase() },
+        detail: { kind: 'draft_artifact', artifactType },
       });
       window.dispatchEvent(evt);
       return true;

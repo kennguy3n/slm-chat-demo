@@ -16,6 +16,7 @@ import { KAppCardRenderer } from '../kapps/KAppCardRenderer';
 import { CreateApprovalForm } from '../kapps/CreateApprovalForm';
 import { FormCard } from '../kapps/FormCard';
 import { ArtifactWorkspace } from '../artifacts/ArtifactWorkspace';
+import { findSectionIdForExcerpt } from '../artifacts/sections';
 import { streamAITask } from '../../api/streamAI';
 import type { Channel } from '../../types/workspace';
 import type {
@@ -301,8 +302,14 @@ export function ThreadPanel({ channel }: Props) {
   // artifact's source pins.
   async function handleArtifactAccept() {
     if (!artifact || !channel) return;
+    // The streamed draft body is the source of truth for which section
+    // each pin belongs to. `artifact.section` ('all' by default) is a
+    // routing hint for the prompt, NOT a sectionId — assigning it here
+    // would cluster all pins onto a single section in ArtifactWorkspace.
+    // Match each excerpt to the section it falls under in the body.
+    const body = artifactStreamingText;
     const sourcePins: ArtifactSourcePin[] = artifact.sources.map((s) => ({
-      sectionId: artifact.section,
+      sectionId: findSectionIdForExcerpt(body, s.excerpt),
       sourceMessageId: s.id,
       sourceThreadId: artifact.threadId,
       excerpt: s.excerpt,
