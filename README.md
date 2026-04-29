@@ -36,6 +36,10 @@ For the full product thesis, architecture, phasing, and progress, see:
 | Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
 | Persistence | (Phase 0) in-memory; (Phase 6+) PostgreSQL + NATS JetStream + MinIO/S3         |
 
+## Demo
+
+The `demo/` directory contains screenshots and video walkthroughs of the key B2C and B2B user journeys running on real Gemma 4 E2B/E4B models. See [`demo/README.md`](./demo/README.md) for the full inventory.
+
 ## Quick start
 
 ```bash
@@ -204,10 +208,10 @@ slm-chat-demo/
 │   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, activityLog)
 │   │   │   ├── memory/          (AIMemoryPage + memoryStore — local-only IndexedDB-backed second brain)
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer, TasksKApp, CreateTaskForm, CreateApprovalForm, FormCard, AuditLogPanel, OutputReview)
-│   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, sections)
+│   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections)
 │   │   │   ├── ai-employees/    (placeholder)
 │   │   │   └── knowledge/       (placeholder)
-│   │   ├── stores/              (workspaceStore, chatStore*, aiStore*)
+│   │   ├── stores/              (workspaceStore, chatStore*, aiStore*, useKAppsStore)
 │   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, electronBridge)
 │   │   ├── types/               (chat, ai, kapps, workspace, audit, electron.d.ts)
 │   │   ├── router.tsx
@@ -218,6 +222,10 @@ slm-chat-demo/
 │   ├── tsconfig.json
 │   ├── tsconfig.electron.json
 │   └── vite.config.ts
+├── demo/                        # Screenshots and video walkthroughs
+│   ├── README.md
+│   ├── screenshots/
+│   └── video/
 ├── PROPOSAL.md
 ├── ARCHITECTURE.md
 ├── PHASES.md
@@ -275,7 +283,7 @@ go test ./...
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
   plus four seeded KApp cards (family task, neighborhood event, vendor
   approval, engineering PRD draft)
-- 356 frontend tests (renderer components + Electron main-process
+- 358 frontend tests (renderer components + Electron main-process
   inference) covering the Phase 2 skills framework, the Phase 3
   KApp lifecycle (`TaskCard`, `ApprovalCard`, `ArtifactCard`,
   `KAppCardRenderer`, `TasksKApp`, `CreateTaskForm`,
