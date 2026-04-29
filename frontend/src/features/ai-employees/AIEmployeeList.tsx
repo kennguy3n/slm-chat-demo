@@ -1,4 +1,5 @@
 import type { AIEmployee } from '../../types/aiEmployee';
+import { AIEmployeeModeBadge } from '../ai/AIEmployeeModeBadge';
 
 interface Props {
   employees: AIEmployee[];
@@ -42,7 +43,10 @@ export function AIEmployeeList({ employees, selectedId, onSelect }: Props) {
                   {initials(e.name)}
                 </span>
                 <span className="ai-employee-card__meta">
-                  <span className="ai-employee-card__name">{e.name}</span>
+                  <span className="ai-employee-card__name-row">
+                    <span className="ai-employee-card__name">{e.name}</span>
+                    <AIEmployeeModeBadge mode={e.mode} employeeName={e.name} />
+                  </span>
                   <span className="ai-employee-card__role">{e.role}</span>
                 </span>
               </button>

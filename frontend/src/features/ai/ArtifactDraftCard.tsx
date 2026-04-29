@@ -4,6 +4,7 @@ import type {
   PrivacyStripData,
   PrivacyStripWhyDetail,
 } from '../../types/ai';
+import type { SelectedSource } from '../../types/knowledge';
 import { PrivacyStrip } from './PrivacyStrip';
 
 interface Props {
@@ -16,6 +17,11 @@ interface Props {
   onAccept?: () => void | Promise<void>;
   onEdit?: () => void;
   onDiscard?: () => void;
+  // Phase 5 — the sources the user picked in the SourcePicker before
+  // this draft was generated. Rendered as a separate "Context" strip
+  // in the card's attribution section so the user can see exactly
+  // which channels/threads the AI was allowed to read from.
+  pickedSources?: SelectedSource[];
 }
 
 const SECTION_LABEL: Record<DraftArtifactResponse['section'], string> = {
@@ -37,6 +43,7 @@ export function ArtifactDraftCard({
   onAccept,
   onEdit,
   onDiscard,
+  pickedSources,
 }: Props) {
   const text = streamingText ?? '';
   const [accepted, setAccepted] = useState(false);
@@ -141,6 +148,30 @@ export function ArtifactDraftCard({
             {draft.sources.map((src) => (
               <li key={src.id}>
                 <a href={`#message-${src.id}`}>{src.sender}</a>: {src.excerpt}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {pickedSources && pickedSources.length > 0 && (
+        <details
+          className="artifact-draft-card__picked-sources"
+          data-testid="artifact-draft-picked-sources"
+        >
+          <summary>Context ({pickedSources.length})</summary>
+          <ul>
+            {pickedSources.map((s) => (
+              <li
+                key={`${s.kind}:${s.id}`}
+                data-testid={`artifact-draft-picked-source-${s.kind}-${s.id}`}
+              >
+                <span className="artifact-draft-card__picked-kind">{s.kind}</span>{' '}
+                {s.name}
+                {s.kind === 'thread' && s.parentChannelName && (
+                  <span className="artifact-draft-card__picked-parent">
+                    {' '}in #{s.parentChannelName}
+                  </span>
+                )}
               </li>
             ))}
           </ul>

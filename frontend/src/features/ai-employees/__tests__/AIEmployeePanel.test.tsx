@@ -170,4 +170,91 @@ describe('AIEmployeePanel', () => {
       'ch_engineering',
     ]);
   });
+
+  it('edits the budget and saves via PATCH with optimistic update', async () => {
+    fetchSpy.mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/queue')) return jsonResponse({ recipeRuns: [] });
+      if (url.includes('/budget')) {
+        return jsonResponse({
+          aiEmployee: {
+            ...kara,
+            budget: { maxTokensPerDay: 250000, usedTokensToday: 25000 },
+          },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const onChange = vi.fn();
+    renderWithProviders(
+      <AIEmployeePanel
+        employee={kara}
+        channels={channels}
+        recipeCatalog={AI_EMPLOYEE_RECIPES}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('ai-employee-panel-edit-budget'));
+    expect(screen.getByTestId('ai-employee-panel-budget-editor')).toBeInTheDocument();
+
+    const input = screen.getByTestId('ai-employee-panel-budget-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '250000' } });
+
+    fireEvent.click(screen.getByTestId('ai-employee-panel-save-budget'));
+
+    await waitFor(() => {
+      const patchCalls = fetchSpy.mock.calls.filter(
+        ([url, init]) =>
+          typeof url === 'string' &&
+          url.includes('/budget') &&
+          !url.includes('increment') &&
+          (init as RequestInit | undefined)?.method === 'PATCH',
+      );
+      expect(patchCalls).toHaveLength(1);
+    });
+
+    const patchCall = fetchSpy.mock.calls.find(
+      ([url, init]) =>
+        typeof url === 'string' &&
+        url.includes('/budget') &&
+        !url.includes('increment') &&
+        (init as RequestInit | undefined)?.method === 'PATCH',
+    )!;
+    expect(patchCall[0]).toBe('/api/ai-employees/ai_kara_ops/budget');
+    const body = JSON.parse(String((patchCall[1] as RequestInit).body));
+    expect(body.maxTokensPerDay).toBe(250000);
+
+    // Editor should be dismissed after a successful save.
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('ai-employee-panel-budget-editor'),
+      ).not.toBeInTheDocument();
+    });
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it('rejects negative budgets client-side without firing the request', async () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <AIEmployeePanel
+        employee={kara}
+        channels={channels}
+        recipeCatalog={AI_EMPLOYEE_RECIPES}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('ai-employee-panel-edit-budget'));
+    const input = screen.getByTestId('ai-employee-panel-budget-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '-5' } });
+    fireEvent.click(screen.getByTestId('ai-employee-panel-save-budget'));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/non-negative/i);
+    const patchCalls = fetchSpy.mock.calls.filter(
+      ([url]) =>
+        typeof url === 'string' && url.includes('/budget') && !url.includes('increment'),
+    );
+    expect(patchCalls).toHaveLength(0);
+  });
 });

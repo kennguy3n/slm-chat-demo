@@ -8,11 +8,13 @@ import type {
   Task,
   TaskStatus,
 } from '../../types/kapps';
+import type { AIEmployee } from '../../types/aiEmployee';
 import { TaskCard } from './TaskCard';
 import { ApprovalCard } from './ApprovalCard';
 import { ArtifactCard } from './ArtifactCard';
 import { EventCard } from './EventCard';
 import { FormCard } from './FormCard';
+import { AIEmployeeModeBadge } from '../ai/AIEmployeeModeBadge';
 
 // CardAction is the union of every callback parents can hook into. Phase 3
 // renders cards as live KApp objects (status transitions, approve / reject,
@@ -40,6 +42,11 @@ interface Props {
   // this, form cards fall back to a minimal 1-column grid using the
   // field names that exist on Form.fields.
   formTemplateLookup?: (templateId: string) => FormFieldDef[] | undefined;
+  // Phase 4 — when the card was produced by an AI Employee, the
+  // renderer wraps the child card with a header row containing the
+  // employee's mode badge. Parents pass in the full employee record
+  // (not just an id) so the badge doesn't have to fetch.
+  aiEmployee?: AIEmployee;
 }
 
 // KAppCardRenderer is the dispatcher referenced in ARCHITECTURE.md section
@@ -51,7 +58,43 @@ export function KAppCardRenderer({
   onAction,
   mode = 'full',
   formTemplateLookup,
+  aiEmployee,
 }: Props) {
+  const inner = renderChild({ card, onAction, mode, formTemplateLookup });
+  if (inner && aiEmployee) {
+    return (
+      <div
+        className="kapp-card-renderer kapp-card-renderer--ai"
+        data-testid="kapp-card-renderer"
+      >
+        <div
+          className="kapp-card-renderer__header"
+          data-testid="kapp-card-renderer-ai-header"
+        >
+          <AIEmployeeModeBadge
+            mode={aiEmployee.mode}
+            employeeName={aiEmployee.name}
+            size="md"
+          />
+        </div>
+        {inner}
+      </div>
+    );
+  }
+  return inner;
+}
+
+function renderChild({
+  card,
+  onAction,
+  mode,
+  formTemplateLookup,
+}: {
+  card: KAppCard;
+  onAction?: (action: CardAction) => void;
+  mode: 'full' | 'compact';
+  formTemplateLookup?: (templateId: string) => FormFieldDef[] | undefined;
+}) {
   switch (card.kind) {
     case 'task':
       if (!card.task) return null;

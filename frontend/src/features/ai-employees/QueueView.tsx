@@ -15,6 +15,11 @@ interface Props {
   // through the network path; when omitted the component fetches on
   // mount / aiEmployeeId change.
   initialRuns?: RecipeRun[];
+  // onReviewRun is invoked when a completed run is clicked. The
+  // parent uses this to open the RecipeOutputGate in the right rail
+  // so the user can Accept / Edit / Discard the run's output before
+  // anything is persisted (Phase 4 human-approval gate).
+  onReviewRun?: (run: RecipeRun) => void;
 }
 
 function statusLabel(s: RecipeRunStatus): string {
@@ -48,6 +53,7 @@ export function QueueView({
   channels,
   recipeCatalog,
   initialRuns,
+  onReviewRun,
 }: Props) {
   const [runs, setRuns] = useState<RecipeRun[]>(initialRuns ?? []);
   const [loading, setLoading] = useState(false);
@@ -118,10 +124,11 @@ export function QueueView({
           {sorted.map((r) => {
             const recipe = recipeCatalog[r.recipeId];
             const channel = channels.find((c) => c.id === r.channelId);
+            const reviewable = r.status === 'completed' && !!onReviewRun;
             return (
               <li
                 key={r.id}
-                className="queue-view__item"
+                className={`queue-view__item${reviewable ? ' queue-view__item--reviewable' : ''}`}
                 data-testid={`queue-view-item-${r.id}`}
               >
                 <div className="queue-view__row">
@@ -145,6 +152,16 @@ export function QueueView({
                 </div>
                 {r.resultSummary && (
                   <p className="queue-view__summary">{r.resultSummary}</p>
+                )}
+                {reviewable && (
+                  <button
+                    type="button"
+                    className="queue-view__review"
+                    onClick={() => onReviewRun?.(r)}
+                    data-testid={`queue-view-review-${r.id}`}
+                  >
+                    Review output
+                  </button>
                 )}
               </li>
             );

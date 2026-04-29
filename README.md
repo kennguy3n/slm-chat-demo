@@ -218,11 +218,11 @@ slm-chat-demo/
 │   │   │   ├── memory/          (AIMemoryPage + memoryStore — local-only IndexedDB-backed second brain)
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer, TasksKApp, CreateTaskForm, CreateApprovalForm, FormCard, AuditLogPanel, OutputReview)
 │   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections)
-│   │   │   ├── ai-employees/    (AIEmployeeList, AIEmployeePanel, QueueView, recipeCatalog)
-│   │   │   └── knowledge/       (placeholder)
+│   │   │   ├── ai-employees/    (AIEmployeeList, AIEmployeePanel, QueueView, RecipeOutputGate, recipeCatalog)
+│   │   │   └── knowledge/       (SourcePicker — Phase 5 channel/thread/file scoping)
 │   │   ├── stores/              (workspaceStore, chatStore*, aiStore*, useKAppsStore)
 │   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, recipeRunApi, electronBridge)
-│   │   ├── types/               (chat, ai, kapps, workspace, audit, aiEmployee, electron.d.ts)
+│   │   ├── types/               (chat, ai, kapps, workspace, audit, aiEmployee, knowledge, electron.d.ts)
 │   │   ├── router.tsx
 │   │   ├── styles.css
 │   │   └── main.tsx
@@ -319,7 +319,74 @@ go test ./...
   `e4bLoaded`, `hasE4B`) reflect what actually ran. The
   `DeviceCapabilityPanel` shows both tiers side-by-side.
 
-## Phase 4 — in progress
+## Phase 5 — in progress
+
+- **Source picker UI** — new `features/knowledge/SourcePicker.tsx`
+  + `types/knowledge.ts` (`SelectedSource`, `SelectedSourceKind`,
+  `ThreadSummary`) lets B2B users scope which channels, threads, and
+  files an AI Employee may read before running a knowledge intent.
+  Three tabs (Channels / Threads / Files — Files shows a "Coming
+  soon" placeholder for Phase 5 connectors), a chip list with
+  per-chip × removal, Confirm / Cancel buttons, and optional
+  `initialSelected` seeding. The picker fetches channels via
+  `workspaceApi.fetchWorkspaceChannels` and derives per-channel
+  threads by grouping channel messages on `threadId` (the backend
+  has no dedicated thread listing endpoint yet, so the picker pulls
+  `fetchChannelMessages` and groups client-side). Wired into
+  `ActionLauncher` via new `workspaceId` + `intentsRequiringSources`
+  props — the B2B Create / Analyze / Plan intents now route through
+  the picker before firing `onAction`, and the callback receives a
+  second `sources` argument. `ArtifactDraftCard` accepts a
+  `pickedSources` prop and renders them in a "Context" details strip
+  next to the existing source attribution.
+
+## Phase 4 — complete
+
+- **Budget controls (token / compute limits)** —
+  `AIEmployeeService.UpdateBudget(id, maxTokensPerDay)`,
+  `IncrementUsage(id, tokensUsed)` (atomic — returns
+  `ErrBudgetExceeded` when a run would exceed `MaxTokensPerDay`),
+  and `ResetDailyUsage()` live in
+  `backend/internal/services/ai_employees.go`.
+  `PATCH /api/ai-employees/{id}/budget` and
+  `POST /api/ai-employees/{id}/budget/increment` (returns
+  **429 Too Many Requests** with the employee payload on overrun)
+  are wired in `api/router.go`. Frontend ships
+  `updateAIEmployeeBudget` / `incrementAIEmployeeBudgetUsage` (with a
+  typed `BudgetExceededError`) in `src/api/aiEmployeeApi.ts`, an
+  inline "Edit budget" editor in `AIEmployeePanel` with optimistic
+  update + rollback, and a pre-execution budget charge in the
+  Electron `runRecipe` handler (`electron/ipc-handlers.ts`) that
+  calls `POST …/budget/increment` *before* executing and refuses
+  with `{ status: 'refused', reason: 'budget exceeded' }` when the
+  backend returns 429. Falls open on transport errors so a broken
+  proxy can't hard-block a demo.
+- **Human approval before publish gate** — new
+  `features/ai-employees/RecipeOutputGate.tsx` wraps the existing
+  `OutputReview` review surface and stands between a recipe run and
+  any KApp persistence. The gate pretty-prints recipe-specific
+  output shapes (PRD prompts verbatim, `extract_tasks` as a numbered
+  list, `prefill_approval` as labelled fields), exposes
+  Accept / Edit / Discard with `allowEdit=false` for status
+  transitions (`prefill_approval`), and renders a non-interactive
+  refusal banner when `RecipeResult.status === 'refused'`.
+  `QueueView` now exposes an `onReviewRun` callback and
+  `AIEmployeePanel` tracks `pendingReview` state so clicking a
+  completed run opens the gate in the right rail before anything is
+  written.
+- **Auto mode badge + Inline mode badge** — new
+  `features/ai/AIEmployeeModeBadge.tsx` renders a small pill
+  (`⚡ Auto · {name}` or `👤 Inline · {name}`) with
+  `data-testid="ai-employee-mode-badge"` + one of
+  `ai-employee-mode-badge-auto` / `ai-employee-mode-badge-inline`
+  and a descriptive `aria-label`. Wired into `MessageBubble`
+  (renders below a message when `message.aiEmployeeId` is set and
+  the parent passes the employee), `KAppCardRenderer` (wraps
+  AI-generated cards with a header that shows the badge), and
+  `AIEmployeeList` (shows the badge next to each employee name in
+  the sidebar).
+
+## Phase 4 — earlier deliverables
 
 - **AI Employee profiles (Kara Ops AI, Nina PM AI, Mika Sales AI)** —
   backend defines `models/ai_employee.go` (`AIEmployee` struct with
