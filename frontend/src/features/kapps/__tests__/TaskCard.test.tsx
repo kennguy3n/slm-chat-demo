@@ -41,4 +41,72 @@ describe('TaskCard', () => {
     await userEvent.click(screen.getByRole('button', { name: /view source message/i }));
     expect(onOpenSource).toHaveBeenCalledWith('msg_fam_1');
   });
+
+  it('renders status transition buttons when onStatusChange is provided', async () => {
+    const onStatusChange = vi.fn();
+    render(<TaskCard task={baseTask} onStatusChange={onStatusChange} />);
+    await userEvent.click(screen.getByTestId('task-card-transition-in_progress'));
+    expect(onStatusChange).toHaveBeenCalledWith('in_progress');
+  });
+
+  it('only offers Reopen from a done task', () => {
+    render(
+      <TaskCard
+        task={{ ...baseTask, status: 'done' }}
+        onStatusChange={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('task-card-transition-open')).toBeInTheDocument();
+    expect(screen.queryByTestId('task-card-transition-in_progress')).toBeNull();
+  });
+
+  it('drives inline edit and emits a patch on save', async () => {
+    const onEdit = vi.fn();
+    render(<TaskCard task={baseTask} onEdit={onEdit} />);
+    await userEvent.click(screen.getByTestId('task-card-edit-toggle'));
+    const input = screen.getByTestId('task-card-edit-title');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Reschedule field trip');
+    await userEvent.click(screen.getByTestId('task-card-edit-save'));
+    expect(onEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Reschedule field trip' }),
+    );
+  });
+
+  it('sets clearDueDate when an existing due date is wiped, so the Go handler honours the change', async () => {
+    const onEdit = vi.fn();
+    render(<TaskCard task={baseTask} onEdit={onEdit} />);
+    await userEvent.click(screen.getByTestId('task-card-edit-toggle'));
+    const due = screen.getByTestId('task-card-edit-due') as HTMLInputElement;
+    await userEvent.clear(due);
+    await userEvent.click(screen.getByTestId('task-card-edit-save'));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    const patch = onEdit.mock.calls[0][0] as Record<string, unknown>;
+    expect(patch.clearDueDate).toBe(true);
+    expect(patch.dueDate).toBeNull();
+  });
+
+  it('does not set clearDueDate when the task had no due date to begin with', async () => {
+    const onEdit = vi.fn();
+    render(<TaskCard task={{ ...baseTask, dueDate: undefined }} onEdit={onEdit} />);
+    await userEvent.click(screen.getByTestId('task-card-edit-toggle'));
+    await userEvent.click(screen.getByTestId('task-card-edit-save'));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    const patch = onEdit.mock.calls[0][0] as Record<string, unknown>;
+    expect(patch.clearDueDate).toBeUndefined();
+  });
+
+  it('hides actions and meta in compact mode', () => {
+    render(
+      <TaskCard
+        task={baseTask}
+        mode="compact"
+        onStatusChange={() => {}}
+        onEdit={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('task-card')).toHaveAttribute('data-mode', 'compact');
+    expect(screen.queryByTestId('task-card-transition-in_progress')).toBeNull();
+    expect(screen.queryByTestId('task-card-edit-toggle')).toBeNull();
+  });
 });

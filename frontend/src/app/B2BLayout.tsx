@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { Channel, User, Workspace } from '../types/workspace';
 import { ChatSurface } from '../features/chat/ChatSurface';
 import { ThreadPanel } from '../features/chat/ThreadPanel';
 import { DeviceCapabilityPanel } from '../features/ai/DeviceCapabilityPanel';
+import { TasksKApp } from '../features/kapps/TasksKApp';
+
 
 interface Props {
   workspace?: Workspace;
@@ -14,11 +16,19 @@ interface Props {
   currentUserId?: string;
 }
 
-// B2BLayout renders the workspace -> domain -> channel hierarchy in the sidebar
-// (PROPOSAL.md section 4.1) plus the main chat and a thread placeholder right
-// panel. Channels with no domain fall under a "Direct messages" section.
+// B2BLayout renders the workspace -> domain -> channel hierarchy in the
+// sidebar (PROPOSAL.md §4.1, Phase 3). Each domain is a collapsible
+// section; channels with no domain fall under "Direct messages".
+// Phase 3 added a "Tasks" right-panel tab that mounts TasksKApp.
 export function B2BLayout({ workspace, channels, users, currentUserId }: Props) {
-  const { selectedChatId, setSelectedChatId } = useWorkspaceStore();
+  const {
+    selectedChatId,
+    setSelectedChatId,
+    selectedDomainId,
+    setSelectedDomainId,
+    expandedDomainIds,
+    toggleDomainExpanded,
+  } = useWorkspaceStore();
 
   const grouped = useMemo(() => {
     const byDomain = new Map<string, Channel[]>();
@@ -34,31 +44,83 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
     return { byDomain, dms };
   }, [channels]);
 
+  // Auto-expand every domain on first mount so demo users always see
+  // the full tree. Honours user collapses afterwards because the store
+  // tracks expansion state explicitly.
+  useEffect(() => {
+    if (!workspace) return;
+    if (expandedDomainIds.length > 0) return;
+    for (const d of workspace.domains) {
+      if (!expandedDomainIds.includes(d.id)) {
+        toggleDomainExpanded(d.id);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace?.id]);
+
   const selected = channels.find((c) => c.id === selectedChatId) ?? null;
+
+  // Clicking a channel sets the chat AND selects its parent domain so
+  // the right-panel "Tasks" tab can default to that scope.
+  function handleChannelClick(c: Channel) {
+    setSelectedChatId(c.id);
+    if (c.domainId) setSelectedDomainId(c.domainId);
+  }
 
   return (
     <div className="layout layout--b2b" data-testid="b2b-layout">
       <aside className="sidebar" aria-label="B2B sidebar">
         <h2 className="sidebar__workspace">{workspace?.name ?? 'Workspace'}</h2>
-        {workspace?.domains.map((d) => (
-          <div className="sidebar__section" key={d.id}>
-            <h3 className="sidebar__heading">{d.name}</h3>
-            <ul className="sidebar__list">
-              {(grouped.byDomain.get(d.id) ?? []).map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    className={`sidebar__item${c.id === selectedChatId ? ' sidebar__item--active' : ''}`}
-                    onClick={() => setSelectedChatId(c.id)}
-                  >
-                    # {c.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {!grouped.byDomain.get(d.id) && <p className="sidebar__empty">No channels</p>}
-          </div>
-        ))}
+        {workspace?.domains.map((d) => {
+          const expanded = expandedDomainIds.includes(d.id);
+          const domainChannels = grouped.byDomain.get(d.id) ?? [];
+          return (
+            <div className="sidebar__section" key={d.id} data-testid={`sidebar-domain-${d.id}`}>
+              <h3
+                className={`sidebar__heading${
+                  d.id === selectedDomainId ? ' sidebar__heading--active' : ''
+                }`}
+              >
+                <button
+                  type="button"
+                  className="sidebar__heading-toggle"
+                  aria-expanded={expanded}
+                  aria-controls={`sidebar-domain-${d.id}-list`}
+                  onClick={() => {
+                    toggleDomainExpanded(d.id);
+                    setSelectedDomainId(d.id);
+                  }}
+                  data-testid={`sidebar-domain-toggle-${d.id}`}
+                >
+                  <span aria-hidden className="sidebar__chevron">
+                    {expanded ? '▾' : '▸'}
+                  </span>
+                  {d.name}
+                </button>
+              </h3>
+              {expanded && (
+                <ul className="sidebar__list" id={`sidebar-domain-${d.id}-list`}>
+                  {domainChannels.length === 0 && (
+                    <li>
+                      <p className="sidebar__empty">No channels</p>
+                    </li>
+                  )}
+                  {domainChannels.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        className={`sidebar__item${c.id === selectedChatId ? ' sidebar__item--active' : ''}`}
+                        onClick={() => handleChannelClick(c)}
+                      >
+                        # {c.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
         <div className="sidebar__section">
           <h3 className="sidebar__heading">Direct messages</h3>
           {grouped.dms.length === 0 ? (
@@ -70,7 +132,7 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
                   <button
                     type="button"
                     className={`sidebar__item${c.id === selectedChatId ? ' sidebar__item--active' : ''}`}
-                    onClick={() => setSelectedChatId(c.id)}
+                    onClick={() => handleChannelClick(c)}
                   >
                     {c.name}
                   </button>
@@ -88,6 +150,7 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
       <aside className="rightpanel" aria-label="Right panel">
         <DeviceCapabilityPanel />
         <ThreadPanel channel={selected} />
+        <TasksKApp channelId={selected?.id ?? null} />
       </aside>
     </div>
   );

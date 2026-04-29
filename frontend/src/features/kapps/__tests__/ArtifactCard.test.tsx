@@ -23,21 +23,34 @@ describe('ArtifactCard', () => {
     render(<ArtifactCard artifact={baseArtifact} />);
     expect(screen.getByText('PRD')).toBeInTheDocument();
     expect(screen.getByText('Inline translation PRD')).toBeInTheDocument();
-    expect(screen.getByText('v2')).toBeInTheDocument();
+    expect(screen.getByTestId('artifact-card-version')).toHaveTextContent('v2');
     expect(screen.getByText('Draft')).toBeInTheDocument();
     expect(screen.getByText('user_alice')).toBeInTheDocument();
     expect(screen.getByText('Second draft')).toBeInTheDocument();
   });
 
-  it('renders an em dash when there are no versions', () => {
+  it('renders v0 when there are no versions', () => {
     render(<ArtifactCard artifact={{ ...baseArtifact, versions: [] }} />);
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByTestId('artifact-card-version')).toHaveTextContent('v0');
   });
 
-  it('calls onOpen with the artifact when the button is clicked', async () => {
+  it('calls onOpen with the artifact when the View button is clicked', async () => {
     const onOpen = vi.fn();
     render(<ArtifactCard artifact={baseArtifact} onOpen={onOpen} />);
-    await userEvent.click(screen.getByRole('button', { name: /open artifact/i }));
+    await userEvent.click(screen.getByTestId('artifact-card-view'));
     expect(onOpen).toHaveBeenCalledWith(baseArtifact);
+  });
+
+  it('toggles the version history list when more than one version exists', async () => {
+    render(<ArtifactCard artifact={baseArtifact} />);
+    expect(screen.queryByTestId('artifact-card-history')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('artifact-card-history-toggle'));
+    expect(screen.getByTestId('artifact-card-history')).toBeInTheDocument();
+  });
+
+  it('hides actions in compact mode', () => {
+    render(<ArtifactCard artifact={baseArtifact} mode="compact" />);
+    expect(screen.queryByTestId('artifact-card-view')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('artifact-card-history-toggle')).not.toBeInTheDocument();
   });
 });

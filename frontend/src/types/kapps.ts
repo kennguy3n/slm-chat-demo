@@ -104,6 +104,10 @@ export type CardKind = 'task' | 'approval' | 'artifact' | 'event';
 
 export interface KAppCard {
   kind: CardKind;
+  // threadId is the denormalized back-link a card inherits from its
+  // originating thread. Phase 3's `/api/threads/{id}/linked-objects`
+  // queries on this field.
+  threadId?: string;
   task?: Task;
   approval?: Approval;
   artifact?: Artifact;

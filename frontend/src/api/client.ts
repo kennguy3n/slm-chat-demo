@@ -28,5 +28,15 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     const text = await res.text().catch(() => '');
     throw new ApiError(res.status, `${res.status} ${res.statusText}: ${text}`);
   }
-  return (await res.json()) as T;
+  // 204 No Content (and any empty-body 2xx response) has nothing to parse.
+  // Calling res.json() on such a response throws SyntaxError, which used to
+  // make every DELETE caller (e.g. closeTask) fail after a successful round-
+  // trip. Return undefined for those cases — callers that expect a void
+  // response are typed `Promise<void>` and won't read the value.
+  if (res.status === 204) return undefined as T;
+  const contentLength = res.headers.get('Content-Length');
+  if (contentLength === '0') return undefined as T;
+  const text = await res.text();
+  if (text.length === 0) return undefined as T;
+  return JSON.parse(text) as T;
 }

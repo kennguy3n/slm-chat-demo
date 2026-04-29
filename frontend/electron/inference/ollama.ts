@@ -35,6 +35,10 @@ interface OllamaPsResponse {
   models?: { name?: string; model?: string; size?: number }[];
 }
 
+interface OllamaTagsResponse {
+  models?: { name?: string; model?: string }[];
+}
+
 export interface OllamaAdapterOptions {
   baseURL?: string;
   model?: string;
@@ -151,6 +155,17 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     if (!res.ok) throw new Error(`ollama: ping HTTP ${res.status}`);
   }
 
+  // listModels returns the names of every locally pulled model. Used by
+  // the bootstrap to decide whether the E4B adapter should be wired
+  // separately or aliased to E2B.
+  async listModels(signal?: AbortSignal): Promise<string[]> {
+    const res = await this.fetchImpl(`${this.baseURL}/api/tags`, { signal });
+    if (!res.ok) throw new Error(`ollama: tags HTTP ${res.status}`);
+    const body = (await res.json()) as OllamaTagsResponse;
+    const models = body.models ?? [];
+    return models.map((m) => m.name || m.model || '').filter((n) => n.length > 0);
+  }
+
   async status(signal?: AbortSignal): Promise<ModelStatus> {
     let res: Response;
     try {
@@ -163,15 +178,30 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     }
     const ps = (await res.json()) as OllamaPsResponse;
     const models = ps.models ?? [];
-    const loaded = models.length > 0;
-    let model = this.model;
-    let ramMB = 0;
-    if (loaded) {
-      const first = models[0];
-      model = first.name || first.model || this.model;
-      ramMB = Math.floor((first.size ?? 0) / (1024 * 1024));
+    // Two adapter instances (E2B / E4B) share the same daemon, so each one
+    // must report only on the model it represents — finding any other model
+    // in /api/ps does NOT mean this adapter's model is loaded. Strip Ollama's
+    // optional `:tag` suffix (e.g. "gemma-4-e2b:q4_k_m") on BOTH sides of the
+    // comparison: users may set E2B_MODEL / E4B_MODEL to a tagged name and
+    // the daemon may report a different tag, but matching bare-vs-bare lets
+    // us track the model regardless of quantisation without confusing two
+    // distinct base models.
+    const wanted = this.model.toLowerCase().split(':')[0];
+    const match = models.find((m) => {
+      const raw = (m.name || m.model || '').toLowerCase();
+      const bare = raw.split(':')[0];
+      return bare === wanted;
+    });
+    if (!match) {
+      return { loaded: false, model: this.model, quant: 'q4_k_m', ramUsageMB: 0, sidecar: 'running' };
     }
-    return { loaded, model, quant: 'q4_k_m', ramUsageMB: ramMB, sidecar: 'running' };
+    return {
+      loaded: true,
+      model: match.name || match.model || this.model,
+      quant: 'q4_k_m',
+      ramUsageMB: Math.floor((match.size ?? 0) / (1024 * 1024)),
+      sidecar: 'running',
+    };
   }
 
   async load(model: string, signal?: AbortSignal): Promise<void> {

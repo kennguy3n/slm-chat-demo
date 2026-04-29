@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { KAppCardRenderer } from '../KAppCardRenderer';
 import type { KAppCard } from '../../../types/kapps';
 
@@ -86,5 +87,33 @@ describe('KAppCardRenderer', () => {
       <KAppCardRenderer card={{ kind: 'task' } as KAppCard} />,
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('forwards task transitions via onAction', async () => {
+    const onAction = vi.fn();
+    render(
+      <KAppCardRenderer
+        card={cases[0].card}
+        onAction={onAction}
+      />,
+    );
+    await userEvent.click(screen.getByTestId('task-card-transition-in_progress'));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'task:status', status: 'in_progress' }),
+    );
+  });
+
+  it('forwards artifact view via onAction', async () => {
+    const onAction = vi.fn();
+    render(<KAppCardRenderer card={cases[2].card} onAction={onAction} />);
+    await userEvent.click(screen.getByTestId('artifact-card-view'));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'artifact:view' }),
+    );
+  });
+
+  it('passes through compact mode to the child card', () => {
+    render(<KAppCardRenderer card={cases[0].card} mode="compact" />);
+    expect(screen.getByTestId('task-card')).toHaveAttribute('data-mode', 'compact');
   });
 });

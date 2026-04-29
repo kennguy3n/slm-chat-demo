@@ -35,15 +35,41 @@ export function taskPreference(t: TaskType): Tier {
   }
 }
 
+export interface RouterOptions {
+  // hasRealE4B distinguishes "a real E4B-class adapter is wired" from
+  // "the E4B slot is aliased to the E2B adapter". When false, the
+  // router reports decisions for E4B-preferred tasks as fallbacks even
+  // if `adapters.e4b` is populated, so the UI / privacy strip can show
+  // the user that they are running on E2B.
+  hasRealE4B?: boolean;
+}
+
 export class InferenceRouter implements Adapter {
   private adapters: Partial<Record<Tier, Adapter>> = {};
   private fallback: Adapter | null;
   private last: Decision = { allow: false, model: '', reason: '' };
+  private realE4B: boolean;
 
-  constructor(e2b: Adapter | null, e4b: Adapter | null, fallback: Adapter | null) {
+  constructor(
+    e2b: Adapter | null,
+    e4b: Adapter | null,
+    fallback: Adapter | null,
+    opts: RouterOptions = {},
+  ) {
     if (e2b) this.adapters.e2b = e2b;
     if (e4b) this.adapters.e4b = e4b;
     this.fallback = fallback;
+    // Default to "real E4B" when an explicit e4b adapter was passed,
+    // unless the caller overrides. The bootstrap always sets the flag
+    // explicitly so existing callers (tests) keep their semantics.
+    this.realE4B = opts.hasRealE4B ?? Boolean(e4b);
+  }
+
+  // hasE4B reports whether the router can route to a real E4B-class
+  // adapter (not an alias of the E2B adapter). The IPC `model:status`
+  // handler and DeviceCapabilityPanel use this to drive UI state.
+  hasE4B(): boolean {
+    return this.realE4B && Boolean(this.adapters.e4b);
   }
 
   name(): string {
@@ -77,6 +103,16 @@ export class InferenceRouter implements Adapter {
   private pick(pref: Tier, task: TaskType): { adapter: Adapter; tier: Tier; reason: string } | null {
     const direct = this.adapters[pref];
     if (direct) {
+      // When the e4b slot is aliased to the e2b adapter (no real E4B
+      // model pulled), route through the e2b tier so the privacy strip
+      // and `model:status` reflect what really ran.
+      if (pref === 'e4b' && !this.realE4B) {
+        return {
+          adapter: direct,
+          tier: 'e2b',
+          reason: `Wanted E4B for "${task}" but device only has E2B; fallback to E2B.`,
+        };
+      }
       const reason =
         pref === 'e4b'
           ? `Routed "${task}" to E4B for stronger reasoning.`

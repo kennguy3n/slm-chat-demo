@@ -54,3 +54,26 @@ func (h *Workspace) Channels(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"channels": h.workspaces.Channels(wsID, ctx)})
 }
+
+// Domains returns the domains under a workspace. Phase 3 added domain as a
+// first-class navigation level; previously the frontend hand-grouped channels
+// by their DomainID field.
+func (h *Workspace) Domains(w http.ResponseWriter, r *http.Request) {
+	wsID := chi.URLParam(r, "id")
+	if _, ok := h.workspaces.Get(wsID); !ok {
+		writeJSONError(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"domains": h.workspaces.Domains(wsID)})
+}
+
+// DomainChannels returns the channels under a single domain. Resolves the
+// domain by ID across all workspaces.
+func (h *Workspace) DomainChannels(w http.ResponseWriter, r *http.Request) {
+	domainID := chi.URLParam(r, "id")
+	if _, _, ok := h.workspaces.FindDomain(domainID); !ok {
+		writeJSONError(w, http.StatusNotFound, "domain not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"channels": h.workspaces.ChannelsForDomain(domainID)})
+}

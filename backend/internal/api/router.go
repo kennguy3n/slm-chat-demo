@@ -56,15 +56,25 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/users", wsH.Users)
 		r.Get("/workspaces", wsH.List)
 		r.Get("/workspaces/{id}/channels", wsH.Channels)
+		r.Get("/workspaces/{id}/domains", wsH.Domains)
+		r.Get("/domains/{id}/channels", wsH.DomainChannels)
 
 		// Chats / messages / threads.
 		r.Get("/chats", chatH.List)
 		r.Get("/chats/{chatId}/messages", chatH.Messages)
 		r.Get("/threads/{threadId}/messages", chatH.ThreadMessages)
+		r.Get("/threads/{threadId}/linked-objects", kH.LinkedObjects)
 
-		// KApps — seed cards only. Inference-driven flows (extract tasks,
-		// approval prefill) moved to the Electron main process.
+		// KApps — seed cards plus Phase 3 task lifecycle + approval
+		// decisions. Inference-driven flows (extract tasks, approval
+		// prefill, artifact draft) still live in the Electron main process.
 		r.Get("/kapps/cards", kH.Cards)
+		r.Get("/kapps/tasks", kH.ListTasks)
+		r.Post("/kapps/tasks", kH.CreateTask)
+		r.Patch("/kapps/tasks/{id}", kH.UpdateTask)
+		r.Patch("/kapps/tasks/{id}/status", kH.UpdateTaskStatus)
+		r.Delete("/kapps/tasks/{id}", kH.DeleteTask)
+		r.Post("/kapps/approvals/{id}/decide", kH.SubmitApprovalDecision)
 
 		// Privacy preview is still hosted here since it's a static
 		// declaration about the on-device guarantee.

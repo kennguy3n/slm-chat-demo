@@ -7,6 +7,12 @@ export interface ModelStatus {
   quant: string;
   ramUsageMB: number;
   sidecar: string;
+  // Phase 3 — E4B routing completion. When `hasE4B` is true the
+  // bootstrap wired a real E4B adapter; the renderer surfaces both
+  // tiers in the device-capability panel.
+  e4bModel?: string;
+  e4bLoaded?: boolean;
+  hasE4B?: boolean;
 }
 
 export type ComputeLocation = 'on_device' | 'confidential_server' | 'shared_server';

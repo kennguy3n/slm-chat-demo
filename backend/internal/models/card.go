@@ -15,8 +15,14 @@ const (
 // Exactly one of Task / Approval / Artifact / Event is populated, matched by
 // Kind. The wrapper exists so the frontend can render heterogeneous lists
 // (mixed task / approval / artifact / event) without per-kind endpoints.
+//
+// ThreadID is a denormalised back-link so the linked-objects endpoint can
+// return every card attached to a thread without scanning every embedded
+// payload. It mirrors the Task.SourceThreadID / Approval.SourceThreadID /
+// Artifact source refs so the existing demo cards remain wire-compatible.
 type Card struct {
 	Kind     CardKind  `json:"kind"`
+	ThreadID string    `json:"threadId,omitempty"`
 	Task     *Task     `json:"task,omitempty"`
 	Approval *Approval `json:"approval,omitempty"`
 	Artifact *Artifact `json:"artifact,omitempty"`
