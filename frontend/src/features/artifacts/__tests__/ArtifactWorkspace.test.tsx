@@ -11,9 +11,8 @@ function makeArtifact(overrides: Partial<Artifact> = {}): Artifact {
     type: 'PRD',
     title: 'Inline translation PRD',
     status: 'draft',
-    author: 'user_alice',
     aiGenerated: false,
-    sourceThreadId: 'thr_1',
+    sourceRefs: [{ kind: 'thread', id: 'thr_1' }],
     versions: [
       {
         version: 1,
@@ -32,8 +31,6 @@ function makeArtifact(overrides: Partial<Artifact> = {}): Artifact {
         ],
       },
     ],
-    createdAt: '2026-04-29T00:00:00Z',
-    updatedAt: '2026-04-29T00:00:00Z',
     ...overrides,
   };
 }
