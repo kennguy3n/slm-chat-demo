@@ -69,6 +69,14 @@ describe('OutputReview', () => {
     // is the "Save edits" action — it fires onEdit and exits edit mode.
     await userEvent.click(screen.getByTestId('output-review-edit'));
     expect(onEdit).toHaveBeenCalledWith('Edited then saved');
+    // The read-only body must show the edited draft, not the original
+    // prop value, otherwise the displayed and submitted content diverge.
+    expect(screen.getByTestId('output-review-content')).toHaveTextContent(
+      'Edited then saved',
+    );
+    expect(screen.getByTestId('output-review-content')).not.toHaveTextContent(
+      'Original body',
+    );
     await userEvent.click(screen.getByTestId('output-review-accept'));
     // Accept must use the edited draft, not the original content, even
     // though the edit-mode flag has been toggled back to false.

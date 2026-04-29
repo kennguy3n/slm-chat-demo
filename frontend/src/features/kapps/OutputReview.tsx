@@ -150,7 +150,7 @@ export function OutputReview({
             rows={Math.min(20, Math.max(6, draft.split('\n').length))}
           />
         ) : (
-          <pre className="output-review__body">{content}</pre>
+          <pre className="output-review__body">{draft}</pre>
         )}
       </div>
 
