@@ -1,6 +1,6 @@
 # KChat SLM Demo — Progress Tracker
 
-Last updated: 2026-04-29 (Source-code alignment for the Ternary-Bonsai-8B model swap: `router.ts`, `bootstrap.ts`, `models/`, `scripts/setup-models.sh`, recipes, skills, and tests now match the Phase-6 single-tier `'local' | 'server'` architecture documented in PR #29. PROGRESS.md now tracks 5 new Phase-6 tasks covering the model swap, tier collapse, router model-name threading, single-tier UI, and setup-script refresh; Phase 6 status bumped to ~55%. Phase 5 deliverables and the original Phase-6 confidential-server / redaction / egress work remain unchanged.)
+Last updated: 2026-04-29 (Documentation alignment: added 5 new Phase 6 development tasks — confidential server periodic health check, redaction audit trail integration, server-tier recipe routing, egress budget enforcement, and `ConfidentialServerAdapter` retry with backoff — to PROGRESS.md. Updated README.md project structure to surface the Phase 6 inference files (`confidential-server.ts`, `redaction.ts`, `egress-tracker.ts`) and the Phase 6 renderer components (`EgressSummaryPanel.tsx`, `useEgressSummary.ts`, `formatEgressBytes.ts`, `AIEmployeeModeBadge.tsx`). Phase 6 status adjusted to ~52% to reflect the expanded task list. ARCHITECTURE.md component tree and IPC table already cover these additions and require no updates.)
 
 ---
 
@@ -14,7 +14,7 @@ Last updated: 2026-04-29 (Source-code alignment for the Ternary-Bonsai-8B model 
 | Phase 3: B2B KApps MVP | Complete | 100% |
 | Phase 4: AI Employees and recipe engine | Complete | 100% |
 | Phase 5: Connectors and knowledge graph | Complete | 100% |
-| Phase 6: Confidential server mode | In progress | ~65% |
+| Phase 6: Confidential server mode | In progress | ~52% |
 
 ---
 
@@ -142,6 +142,11 @@ Last updated: 2026-04-29 (Source-code alignment for the Ternary-Bonsai-8B model 
 - [x] Router model-name threading — `RouterOptions` accepts `defaultModel` so env-var overrides (`MODEL_NAME`) propagate to `decide()` reason strings and downstream adapter calls; privacy strip and `model:status` IPC always report the resolved alias.
 - [x] DeviceCapabilityPanel single-tier UI — panel shows one on-device row instead of two; `InferenceStack` no longer exposes `e4bStatus` / `e4bLoader` / `hasE4B`.
 - [x] Setup script + Modelfile refresh — `setup-models.sh` reads `MODEL_NAME` only (no `E2B_MODEL` / `E4B_MODEL`); creates one Ollama alias from `Modelfile.bonsai8b`.
+- [ ] Confidential server periodic health check — add a recurring health probe (e.g. every 30 s) to the router that detects when the confidential server goes down mid-session and updates `hasServer()` accordingly; `model:status` and `DeviceCapabilityPanel` reflect real-time availability. Tests: health-check interval mock, failover assertion in `router.test.ts`.
+- [ ] Redaction audit trail integration — wire `RedactionEngine` tokenization events into the existing `AuditService` so every server-routed inference records `{ redactionCount, categories, channelId }` in the immutable audit log; `GET /api/audit` supports filtering by redaction events. Tests: audit entry creation on redacted inference, category breakdown accuracy.
+- [ ] Server-tier recipe routing — extend the recipe registry's `execute()` path to honour `preferredTier: 'server'` when the confidential server is available and policy allows, with automatic redaction and egress tracking. Tests: recipe routes to server when preferred, falls back to local when server unavailable, egress recorded.
+- [ ] Egress budget enforcement — add a per-workspace daily egress byte ceiling to the policy engine; the router refuses server-routed inference when the ceiling is hit and surfaces the reason in the privacy strip. Tests: enforcement at limit, reset on new day, refusal reason propagation.
+- [ ] ConfidentialServerAdapter retry with backoff — add configurable retry logic (exponential backoff, max 3 attempts) to `ConfidentialServerAdapter.run()` and `stream()` for transient network errors (5xx, timeout). Tests: retry on 503, no retry on 4xx, backoff timing in `confidential-server.test.ts`.
 - [ ] No-content server logging
 - [ ] Policy admin controls (per-workspace AI compute rules)
 - [ ] Audit exports
@@ -157,6 +162,7 @@ Last updated: 2026-04-29 (Source-code alignment for the Ternary-Bonsai-8B model 
 
 | Date | Change |
 |------|--------|
+| 2026-04-29 | Documentation alignment: added 5 new Phase 6 development tasks (periodic health check, redaction audit trail, server-tier recipe routing, egress budget enforcement, adapter retry with backoff) to PROGRESS.md. Updated README.md project structure to include Phase 6 files (`confidential-server.ts`, `redaction.ts`, `egress-tracker.ts`, `EgressSummaryPanel.tsx`, `useEgressSummary.ts`, `formatEgressBytes.ts`, `AIEmployeeModeBadge.tsx`). Phase 6 status adjusted to ~52% to reflect the expanded task list. |
 | 2026-04-29 | Phase 6 progress: added 5 granular development tasks (EgressSummaryPanel UI, TopBar live badge, router redaction+egress integration, bootstrap server probe, Phase 6 test suite) to PROGRESS.md. Updated ARCHITECTURE.md component tree and IPC table with Phase 6 additions. Phase 6 status bumped to ~65%. |
 | 2026-04-29 | Phase 6 progress update: added 5 development tasks from the Ternary-Bonsai-8B model swap and tier-collapse work (PR #29). Fixed stale source files (`router.ts`, `bootstrap.ts`, `models/`, `scripts/setup-models.sh`) that still referenced the old Gemma 4 E2B/E4B architecture despite docs being updated. Phase 6 status bumped to ~55%. |
 | 2026-04-29 | **Collapse two-tier E2B/E4B architecture to a single on-device model.** Following the swap to Ternary-Bonsai-8B (see entry below), the two-tier `Tier = 'e2b' \| 'e4b' \| 'server'` split is gone. `Tier` is now `'local' \| 'server'`; `bootstrap.ts` wires a single `OllamaAdapter` pointing at `ternary-bonsai-8b` (honours `MODEL_NAME`); `router.ts` drops `taskPreference()` and tier-preference logic; `DeviceCapabilityPanel` shows one on-device row (not two); `InferenceStack` no longer exposes `e4bStatus` / `e4bLoader` / `defaultE4BModel` / `hasE4B`; `setup-models.sh` no longer reads `E2B_MODEL` / `E4B_MODEL`. Recipes (`summarize` / `draft_prd` / `create_qbr` / `prefill_approval` / `extract_tasks` / `draft_proposal`) and skills (`trip-planner`, `guardrail-rewrite`) all advertise `preferredTier: 'local'`. Tests rewritten across the inference layer, recipe suite, and UI cards. |
