@@ -138,6 +138,19 @@ describe('OllamaAdapter.status', () => {
     expect(s.ramUsageMB).toBe(0);
   });
 
+  it('matches even when the adapter is configured with a tagged model name (E4B_MODEL=gemma-4-e4b:q4_k_m)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ models: [{ name: 'gemma-4-e4b', size: 3 * 1024 * 1024 * 1024 }] }),
+    );
+    const ad = new OllamaAdapter({
+      model: 'gemma-4-e4b:q4_k_m',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const s = await ad.status();
+    expect(s.loaded).toBe(true);
+    expect(s.model).toBe('gemma-4-e4b');
+  });
+
   it('matches the adapter model when an Ollama tag suffix is present', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({

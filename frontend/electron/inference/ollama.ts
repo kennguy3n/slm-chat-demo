@@ -178,17 +178,17 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     }
     const ps = (await res.json()) as OllamaPsResponse;
     const models = ps.models ?? [];
-    // Two adapter instances (E2B / E4B) share the same daemon. Each one
-    // must report only on the model it represents — finding any other
-    // model in /api/ps does NOT mean this adapter's model is loaded.
-    // Match permissively (Ollama tag suffixes like ":latest" / ":q4_k_m"
-    // shouldn't change the answer).
-    const wanted = this.model.toLowerCase();
+    // Two adapter instances (E2B / E4B) share the same daemon, so each one
+    // must report only on the model it represents — finding any other model
+    // in /api/ps does NOT mean this adapter's model is loaded. Strip Ollama's
+    // optional `:tag` suffix (e.g. "gemma-4-e2b:q4_k_m") on BOTH sides of the
+    // comparison: users may set E2B_MODEL / E4B_MODEL to a tagged name and
+    // the daemon may report a different tag, but matching bare-vs-bare lets
+    // us track the model regardless of quantisation without confusing two
+    // distinct base models.
+    const wanted = this.model.toLowerCase().split(':')[0];
     const match = models.find((m) => {
       const raw = (m.name || m.model || '').toLowerCase();
-      // Strip Ollama's optional `:tag` suffix (e.g. "gemma-4-e2b:q4_k_m") and
-      // compare bare names. This lets us match a model regardless of which
-      // quantisation the user pulled, but never confuses two distinct models.
       const bare = raw.split(':')[0];
       return bare === wanted;
     });
