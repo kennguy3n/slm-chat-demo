@@ -117,6 +117,53 @@ func Seed(m *Memory) {
 
 	// Phase 3 — seeded form templates that back the Forms intake KApp.
 	seedFormTemplates(m)
+
+	// Phase 4 — seeded AI Employee profiles (Kara Ops AI, Nina PM AI,
+	// Mika Sales AI). Each employee is scoped to a specific subset of
+	// B2B channels and a short recipe list.
+	seedAIEmployees(m, now)
+}
+
+// seedAIEmployees loads the three Phase 4 demo AI Employees. The
+// allowed-channels + recipes lists map directly to the task spec in
+// PROPOSAL.md §3.6 and PROGRESS.md Phase 4.
+func seedAIEmployees(m *Memory, now time.Time) {
+	m.PutAIEmployee(models.AIEmployee{
+		ID:          models.KaraOpsAI,
+		Name:        "Kara Ops AI",
+		Role:        models.AIEmployeeRoleOps,
+		AvatarColor: "#0ea5e9",
+		Description: "Operations copilot. Keeps vendor-management and general channels moving: summarises threads, extracts action items, and prefills approvals for human review.",
+		AllowedChannelIDs: []string{"ch_general", "ch_vendor_management"},
+		Recipes:           []string{"summarize", "extract_tasks", "prefill_approval"},
+		Budget:            models.AIEmployeeBudget{MaxTokensPerDay: 200000},
+		Mode:              models.AIEmployeeModeInline,
+		CreatedAt:         now,
+	})
+	m.PutAIEmployee(models.AIEmployee{
+		ID:          models.NinaPMAI,
+		Name:        "Nina PM AI",
+		Role:        models.AIEmployeeRolePM,
+		AvatarColor: "#7c3aed",
+		Description: "Product-management copilot for engineering channels. Summarises threads, extracts tasks, and drafts PRDs for a human to edit before publish.",
+		AllowedChannelIDs: []string{"ch_engineering"},
+		Recipes:           []string{"summarize", "extract_tasks", "draft_prd"},
+		Budget:            models.AIEmployeeBudget{MaxTokensPerDay: 250000},
+		Mode:              models.AIEmployeeModeInline,
+		CreatedAt:         now,
+	})
+	m.PutAIEmployee(models.AIEmployee{
+		ID:          models.MikaSalesAI,
+		Name:        "Mika Sales AI",
+		Role:        models.AIEmployeeRoleSales,
+		AvatarColor: "#16a34a",
+		Description: "Sales copilot for vendor-management. Summarises threads, extracts follow-ups, and drafts proposals for human review before anything leaves the workspace.",
+		AllowedChannelIDs: []string{"ch_vendor_management"},
+		Recipes:           []string{"summarize", "extract_tasks", "draft_proposal"},
+		Budget:            models.AIEmployeeBudget{MaxTokensPerDay: 200000},
+		Mode:              models.AIEmployeeModeInline,
+		CreatedAt:         now,
+	})
 }
 
 // seedFormTemplates loads the three intake templates surfaced by the demo

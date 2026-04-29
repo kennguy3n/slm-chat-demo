@@ -1,10 +1,18 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { Channel, User, Workspace } from '../types/workspace';
 import { ChatSurface } from '../features/chat/ChatSurface';
 import { ThreadPanel } from '../features/chat/ThreadPanel';
 import { DeviceCapabilityPanel } from '../features/ai/DeviceCapabilityPanel';
 import { TasksKApp } from '../features/kapps/TasksKApp';
+import { fetchAIEmployees } from '../api/aiEmployeeApi';
+import type { AIEmployee } from '../types/aiEmployee';
+import {
+  AI_EMPLOYEE_RECIPES,
+  AIEmployeeList,
+  AIEmployeePanel,
+} from '../features/ai-employees';
 
 
 interface Props {
@@ -16,10 +24,19 @@ interface Props {
   currentUserId?: string;
 }
 
+type RightRailTab = 'tasks' | 'ai-employees';
+
+const RIGHT_TABS: { id: RightRailTab; label: string }[] = [
+  { id: 'tasks', label: 'Tasks' },
+  { id: 'ai-employees', label: 'AI Employees' },
+];
+
 // B2BLayout renders the workspace -> domain -> channel hierarchy in the
 // sidebar (PROPOSAL.md §4.1, Phase 3). Each domain is a collapsible
 // section; channels with no domain fall under "Direct messages".
 // Phase 3 added a "Tasks" right-panel tab that mounts TasksKApp.
+// Phase 4 adds an "AI Employees" tab + a compact list of seeded
+// employees under the channel tree.
 export function B2BLayout({ workspace, channels, users, currentUserId }: Props) {
   const {
     selectedChatId,
@@ -29,6 +46,28 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
     expandedDomainIds,
     toggleDomainExpanded,
   } = useWorkspaceStore();
+
+  const [rightTab, setRightTab] = useState<RightRailTab>('tasks');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+
+  const queryClient = useQueryClient();
+  const aiEmployeesQ = useQuery({
+    queryKey: ['ai-employees'],
+    queryFn: fetchAIEmployees,
+  });
+  const aiEmployees = useMemo(
+    () => aiEmployeesQ.data ?? [],
+    [aiEmployeesQ.data],
+  );
+
+  useEffect(() => {
+    if (selectedEmployeeId) return;
+    if (aiEmployees.length === 0) return;
+    setSelectedEmployeeId(aiEmployees[0].id);
+  }, [aiEmployees, selectedEmployeeId]);
+
+  const selectedEmployee =
+    aiEmployees.find((e) => e.id === selectedEmployeeId) ?? null;
 
   const grouped = useMemo(() => {
     const byDomain = new Map<string, Channel[]>();
@@ -65,6 +104,16 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
   function handleChannelClick(c: Channel) {
     setSelectedChatId(c.id);
     if (c.domainId) setSelectedDomainId(c.domainId);
+  }
+
+  function handleEmployeeChange(updated: AIEmployee) {
+    // Optimistically update the cached list so both the sidebar cards
+    // and the right-rail panel reflect the pending channel/recipe edit
+    // before the refetch settles.
+    queryClient.setQueryData<AIEmployee[]>(
+      ['ai-employees'],
+      (prev) => prev?.map((e) => (e.id === updated.id ? updated : e)) ?? [updated],
+    );
   }
 
   return (
@@ -141,6 +190,14 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
             </ul>
           )}
         </div>
+        <AIEmployeeList
+          employees={aiEmployees}
+          selectedId={selectedEmployeeId}
+          onSelect={(id) => {
+            setSelectedEmployeeId(id);
+            setRightTab('ai-employees');
+          }}
+        />
       </aside>
 
       <main className="main" aria-label="Main chat">
@@ -150,7 +207,41 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
       <aside className="rightpanel" aria-label="Right panel">
         <DeviceCapabilityPanel />
         <ThreadPanel channel={selected} />
-        <TasksKApp channelId={selected?.id ?? null} />
+        <nav
+          className="rightpanel__tabs"
+          role="tablist"
+          aria-label="B2B right rail"
+          data-testid="b2b-right-tabs"
+        >
+          {RIGHT_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={rightTab === t.id}
+              className={
+                'rightpanel__tab' + (rightTab === t.id ? ' rightpanel__tab--active' : '')
+              }
+              onClick={() => setRightTab(t.id)}
+              data-testid={`b2b-right-tab-${t.id}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        <div className="rightpanel__body" data-testid={`b2b-right-body-${rightTab}`}>
+          <div role="tabpanel" hidden={rightTab !== 'tasks'}>
+            <TasksKApp channelId={selected?.id ?? null} />
+          </div>
+          <div role="tabpanel" hidden={rightTab !== 'ai-employees'}>
+            <AIEmployeePanel
+              employee={selectedEmployee}
+              channels={channels}
+              recipeCatalog={AI_EMPLOYEE_RECIPES}
+              onChange={handleEmployeeChange}
+            />
+          </div>
+        </div>
       </aside>
     </div>
   );

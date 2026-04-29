@@ -33,6 +33,12 @@ import {
   runGuardrailRewrite,
   type RunGuardrailArgs,
 } from './inference/skills/guardrail-rewrite.js';
+import {
+  getRecipe,
+  type RecipeContext,
+  type RecipeResult,
+} from './inference/recipes/index.js';
+import type { InferenceRouter } from './inference/router.js';
 import type {
   DraftArtifactRequest,
   EventRSVPRequest,
@@ -184,6 +190,21 @@ export function registerIPCHandlers(): void {
     return runGuardrailRewrite(router, req);
   });
 
+  // Phase 4 — generic AI-Employee recipe runner. All recipes share
+  // this channel; the renderer identifies which one to run by id and
+  // passes the caller's allowed-recipes list so the main process can
+  // refuse recipes the AI Employee is not authorised for.
+  ipcMain.handle(
+    'ai:recipe:run',
+    async (
+      _e,
+      req: RecipeContext & { recipeId: string; allowedRecipes?: string[] },
+    ): Promise<RecipeResult> => {
+      const { router } = await getStack();
+      return runRecipe(router, req);
+    },
+  );
+
   ipcMain.handle('model:status', async () => {
     const stack = await getStack();
     const { status, e4bStatus, defaultModel, defaultE4BModel, defaultQuant, hasE4B } = stack;
@@ -234,6 +255,42 @@ export function registerIPCHandlers(): void {
     const m = model || stack.defaultModel;
     await stack.loader.unload(m);
     return { loaded: false, model: m };
+  });
+}
+
+// runRecipe looks the recipe up, validates the AI Employee is
+// authorised to run it, and returns a `refused` envelope (instead of
+// throwing) when authorisation fails so the renderer can render the
+// refusal uniformly. Exported for direct unit-testing without going
+// through ipcMain.
+export async function runRecipe(
+  router: InferenceRouter,
+  req: RecipeContext & { recipeId: string; allowedRecipes?: string[] },
+): Promise<RecipeResult> {
+  const recipe = getRecipe(req.recipeId);
+  if (!recipe) {
+    return {
+      status: 'refused',
+      output: null,
+      model: '',
+      tier: 'e2b',
+      reason: `recipe "${req.recipeId}" is not registered`,
+    };
+  }
+  if (req.allowedRecipes && !req.allowedRecipes.includes(req.recipeId)) {
+    return {
+      status: 'refused',
+      output: null,
+      model: '',
+      tier: recipe.preferredTier,
+      reason: `AI Employee "${req.aiEmployeeId}" is not authorised to run recipe "${req.recipeId}"`,
+    };
+  }
+  return recipe.execute(router, {
+    aiEmployeeId: req.aiEmployeeId,
+    channelId: req.channelId,
+    threadId: req.threadId,
+    messages: req.messages,
   });
 }
 

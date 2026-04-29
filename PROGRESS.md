@@ -1,6 +1,6 @@
 # KChat SLM Demo — Progress Tracker
 
-Last updated: 2026-04-29 (Phase 3 complete — audit log, human review gates, Action Launcher integration)
+Last updated: 2026-04-29 (Phase 4 in progress — AI Employee profiles, allowed-channel config, recipe registry + summarize / extract_tasks recipes)
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: 2026-04-29 (Phase 3 complete — audit log, human review gates, Ac
 | Phase 1: Local LLM MVP | Complete | 100% |
 | Phase 2: B2C second-brain demo | Complete | 100% |
 | Phase 3: B2B KApps MVP | Complete | 100% |
-| Phase 4: AI Employees and recipe engine | Not started | 0% |
+| Phase 4: AI Employees and recipe engine | In progress | ~55% |
 | Phase 5: Connectors and knowledge graph | Not started | 0% |
 | Phase 6: Confidential server mode | Not started | 0% |
 
@@ -93,11 +93,11 @@ Last updated: 2026-04-29 (Phase 3 complete — audit log, human review gates, Ac
 
 ## Phase 4 — AI Employees and recipe engine
 
-- [ ] AI Employee profiles (Kara Ops AI, Nina PM AI, Mika Sales AI)
-- [ ] Allowed channels configuration per AI Employee
-- [ ] Recipe registry
-- [ ] Recipe: summarize
-- [ ] Recipe: extract_tasks
+- [x] AI Employee profiles (Kara Ops AI, Nina PM AI, Mika Sales AI) — `AIEmployee` model + store + seed (`backend/internal/models/ai_employee.go`, `seed.go`) plus `AIEmployeeService` + `GET /api/ai-employees`, `GET /api/ai-employees/{id}` endpoints; `AIEmployeeList` sidebar and `AIEmployeePanel` right-rail panel in `B2BLayout` render all three seeded employees with role / mode badges and budget usage.
+- [x] Allowed channels configuration per AI Employee — `PATCH /api/ai-employees/{id}/channels` validates every channel id against the workspace store and returns 400 on unknown; `AIEmployeePanel` ships an inline multi-select picker with Save / Cancel and optimistic refresh through the TanStack Query cache.
+- [x] Recipe registry — `frontend/electron/inference/recipes/registry.ts` defines `RecipeDefinition` / `RecipeContext` / `RecipeResult` plus `RECIPE_REGISTRY` + `registerRecipe` / `getRecipe` / `listRecipes`; generic `ai:recipe:run` IPC channel looks recipes up by id and refuses recipes the AI Employee is not authorised for. Intentionally separate from the AI Skills Framework — skills own low-level prompts + guardrails, recipes compose existing task helpers into AI-Employee-scoped actions.
+- [x] Recipe: summarize — `recipes/summarize.ts` wraps `buildThreadSummary` with a short-thread heuristic (`preferredTierForThread`, E2B ≤ 8 msgs, E4B otherwise) and returns prompt + sources + message count.
+- [x] Recipe: extract_tasks — `recipes/extract-tasks.ts` wraps `runKAppsExtractTasks`, preserves per-task source provenance (`sourceMessageId`), and returns a `refused` envelope for empty threads without crashing.
 - [ ] Recipe: draft_prd
 - [ ] Recipe: draft_proposal
 - [ ] Recipe: create_qbr
@@ -148,6 +148,7 @@ Last updated: 2026-04-29 (Phase 3 complete — audit log, human review gates, Ac
 
 | Date | Change |
 |------|--------|
+| 2026-04-29 | Phase 4 kickoff: shipped AI Employee profiles (Kara Ops AI, Nina PM AI, Mika Sales AI) with `AIEmployee` model + RWMutex-guarded store, seed, `AIEmployeeService`, `GET /api/ai-employees`, `GET /api/ai-employees/{id}`, `PATCH /api/ai-employees/{id}/channels`, `PATCH /api/ai-employees/{id}/recipes`. Frontend adds `AIEmployeeList` (B2B sidebar) and `AIEmployeePanel` (B2B right-rail "AI Employees" tab) with an inline channel picker backed by optimistic TanStack Query cache updates. Added `frontend/electron/inference/recipes/registry.ts` recipe registry (`RecipeDefinition` / `RecipeContext` / `RecipeResult` + `registerRecipe` / `getRecipe` / `listRecipes`), canonical `summarize` and `extract_tasks` recipes that compose existing `buildThreadSummary` / `runKAppsExtractTasks` helpers, and a generic `ai:recipe:run` IPC channel with authorisation refusal. |
 | 2026-04-29 | Phase 3 complete: shipped audit log (`AuditService` + `GET /api/audit`), `OutputReview` human review gate with `allowEdit` prop, and full Action Launcher integration for Create/Analyze/Plan/Approve B2B flows. All 12 Phase 3 deliverables now checked off. PR #21. |
 | 2026-04-29 | Added `demo/` directory with B2C and B2B screenshots and video walkthroughs of key user journeys running on real Gemma 4 E2B/E4B models via Ollama. |
 | 2026-04-29 | Phase 1 follow-up: shipped `models/Modelfile.e2b` + `models/Modelfile.e4b` + `models/README.md` + `scripts/setup-models.sh` so `./scripts/setup-models.sh` pulls `gemma4:e2b` / `gemma4:e4b` (verified against [ollama.com/library/gemma4/tags](https://ollama.com/library/gemma4/tags)) and creates the `gemma-4-e2b` / `gemma-4-e4b` aliases the bootstrap defaults to. Added `prefill_form` to `MockAdapter` + `taskPreference` test coverage, a Modelfile / setup-script existence test, and an opt-in (`OLLAMA_INTEGRATION=1`) live `OllamaAdapter` smoke test. README "Optional: run with a real local model" section rewritten to drive the script + alias flow. |

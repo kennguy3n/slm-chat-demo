@@ -127,6 +127,11 @@ frontend/
 │       ├── skills/
 │       │   ├── trip-planner.ts       (Phase 2: B2C trip / event planning skill)
 │       │   └── guardrail-rewrite.ts  (Phase 2: PII / tone / unverified-claim review + rewrite)
+│       ├── recipes/                  (Phase 4: AI-Employee-scoped wrappers around existing task helpers)
+│       │   ├── registry.ts           (RecipeDefinition + RECIPE_REGISTRY + register / get / list)
+│       │   ├── summarize.ts          (wraps buildThreadSummary; E2B short / E4B long via preferredTierForThread)
+│       │   ├── extract-tasks.ts      (wraps runKAppsExtractTasks; source provenance + empty-thread refusal)
+│       │   └── index.ts              (barrel — side-effect registers canonical recipes)
 │       └── bootstrap.ts              (pings Ollama; chooses real vs. mock adapter set; instantiates SearchService)
 └── src/
     ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
@@ -136,11 +141,11 @@ frontend/
     │   ├── memory/ (AIMemoryPage, memoryStore) — Phase 2: local-only IndexedDB-backed second brain (DB `kchat-slm-memory`, store `facts`) with an in-memory fallback for jsdom / SSR; the AI never auto-writes — every fact passes through the AIMemoryPage UI
     │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)  — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation. — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation.
     │   ├── artifacts/ (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections) — Phase 3 right-rail viewer for full artifacts: section split, inline source pins, version history, line-by-line diff, status transitions.
-    │   ├── ai-employees/ (AIEmployeePanel)                                   — Phase 4
+    │   ├── ai-employees/ (AIEmployeeList, AIEmployeePanel, recipeCatalog) — Phase 4 (B2B sidebar cards + right-rail profile panel with inline channel picker + recipe list; `recipeCatalog.ts` is the renderer-side display map for recipe ids)
     │   └── knowledge/ (SourcePicker)                                         — Phase 5
     ├── stores/ (chatStore, aiStore, workspaceStore, kappsStore — Phase 3 task/approval CRUD with optimistic merge)
-    ├── api/ (client, aiApi, chatApi, kappsApi, workspaceApi — Phase 3 navigation, streamAI, electronBridge)
-    ├── types/ (chat, ai, kapps, workspace, electron.d.ts)
+    ├── api/ (client, aiApi, chatApi, kappsApi, workspaceApi — Phase 3 navigation, streamAI, aiEmployeeApi — Phase 4, electronBridge)
+    ├── types/ (chat, ai, kapps, workspace, aiEmployee, electron.d.ts)
     ├── router.tsx
     ├── styles.css
     └── main.tsx
@@ -215,6 +220,57 @@ latencyMs }` for every successful AI call. `MetricsDashboard`
 subscribes to it and surfaces the per-day summary on the B2C
 right-rail "Stats" tab.
 
+### 2.5 Recipe Registry (Phase 4)
+
+The Recipe Registry at
+`frontend/electron/inference/recipes/registry.ts` is a second
+registry that sits *above* the Skills Framework. It exists so the
+Phase 4 AI Employees (Kara Ops, Nina PM, Mika Sales) can be bound
+to a small, auditable set of named actions (`summarize`,
+`extract_tasks`, `prefill_approval`, `draft_prd`,
+`draft_proposal`, …) without duplicating the prompt / guardrail /
+parser contracts already owned by skills or task helpers.
+
+The split is deliberate:
+
+- **Skills** (§2.4) are low-level inference contracts. They own
+  prompt construction, `INSUFFICIENT` handling, pre- and
+  post-inference guardrails, and output parsing. They know nothing
+  about AI Employees, channels, or budgets.
+- **Recipes** are higher-level, AI-Employee-scoped wrappers. Each
+  one picks an existing task helper (`buildThreadSummary`,
+  `runKAppsExtractTasks`, `buildDraftArtifact`, …), binds it to
+  the caller's `{ channelId, threadId?, messages, aiEmployeeId }`
+  context, and returns a uniform `RecipeResult`
+  (`status: 'ok' | 'refused'`, `output`, `model`, `tier`,
+  `reason`). They are the natural unit that the
+  `AIEmployee.recipes[]` array references.
+
+A `RecipeDefinition` declares `id`, `name`, `description`,
+`taskType`, `preferredTier`, and an `execute(router, context)`
+function. Recipes self-register into `RECIPE_REGISTRY` at module
+load via `registerRecipe`; `getRecipe(id)` and `listRecipes()`
+expose the registry to the dispatcher. The canonical dispatcher is
+the `ai:recipe:run` IPC channel (see §3.3b): it looks the recipe
+up by id, refuses recipes the caller's AI Employee is not
+authorised for, and delegates to `recipe.execute`. Authorisation
+is currently enforced by passing the AI Employee's
+`allowedRecipes[]` through the request payload (loaded from the Go
+backend in the renderer). Phase 4 ships two canonical recipes:
+`summarize` (wraps `buildThreadSummary`, E2B for ≤ 8 messages and
+E4B otherwise via `preferredTierForThread`) and `extract_tasks`
+(wraps `runKAppsExtractTasks`, preserves per-task source
+provenance through `sourceMessageId`, returns a `refused` envelope
+for empty threads rather than throwing).
+
+The renderer also ships a display-only catalogue in
+`src/features/ai-employees/recipeCatalog.ts` — it maps recipe ids
+to human-readable name + description strings so the
+`AIEmployeePanel` can render assigned recipes even for ids the
+Electron registry does not own yet (e.g. `prefill_approval`,
+`draft_prd`, `draft_proposal`). The executor lives in the main
+process; the renderer never imports the registry directly.
+
 ---
 
 ## 3. Go backend services
@@ -250,14 +306,18 @@ backend/
 │   │   ├── router.go             (data routes only)
 │   │   ├── middleware.go
 │   │   ├── handlers/             (chat.go, workspace.go, kapps.go, privacy.go,
-│   │   │                          artifacts.go, audit.go [Phase 3])
+│   │   │                          artifacts.go, audit.go [Phase 3],
+│   │   │                          ai_employees.go [Phase 4])
 │   │   └── userctx/              (request-scoped user helpers)
 │   ├── services/                 (identity.go, workspace.go, chat.go, kapps.go,
-│   │                              audit.go [Phase 3])
+│   │                              audit.go [Phase 3],
+│   │                              ai_employees.go [Phase 4])
 │   ├── models/                   (user.go, workspace.go, message.go, task.go,
 │   │                              approval.go, artifact.go, event.go, card.go,
-│   │                              audit.go [Phase 3])
-│   └── store/                    (memory.go + seed.go; Phase 6+ adds postgres.go)
+│   │                              audit.go [Phase 3],
+│   │                              ai_employee.go [Phase 4])
+│   └── store/                    (memory.go + seed.go + seedAIEmployees;
+│                                   Phase 6+ adds postgres.go)
 └── go.mod
 ```
 
@@ -318,6 +378,10 @@ GET    /api/kapps/form-templates                          (Phase 3)
 GET    /api/kapps/forms (?channelId=…)                    (Phase 3)
 POST   /api/kapps/forms                                   (Phase 3)
 GET    /api/audit (?objectId=…&objectKind=…&channelId=…)  (Phase 3)
+GET    /api/ai-employees                                  (Phase 4)
+GET    /api/ai-employees/{id}                             (Phase 4)
+PATCH  /api/ai-employees/{id}/channels                    (Phase 4)
+PATCH  /api/ai-employees/{id}/recipes                     (Phase 4)
 GET    /api/privacy/egress-preview
 ```
 
@@ -353,6 +417,7 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:event-rsvp`        | `eventRSVP(req)`                          | `runEventRSVP` (B2C community chat → up to 4 events with title / when / location / RSVP-by, E2B) |
 | `ai:trip-plan`         | `tripPlan(req)`                           | `runTripPlanner` in `skills/trip-planner.ts` — pulls weather / events / attractions from `MockSearchService`, reads `location` / `member` / `community-detail` AI Memory facts, and returns a structured day-by-day itinerary with per-item source attribution (E4B preferred). |
 | `ai:guardrail-check`   | `guardrailCheck(req)`                     | `runGuardrailRewrite` in `skills/guardrail-rewrite.ts` — combines a deterministic PII regex pre-pass with an SLM tone / unverified-claim review and returns `{ safe, findings, rewrite?, rationale }` (E2B). |
+| `ai:recipe:run`        | `recipeRun(req)` (Phase 4)                | `runRecipe` in `electron/ipc-handlers.ts` — generic AI-Employee recipe dispatcher. Takes `{ recipeId, aiEmployeeId, channelId, threadId?, messages, allowedRecipes? }`, looks the recipe up in `RECIPE_REGISTRY` (`electron/inference/recipes/`), refuses when the AI Employee is not authorised for the recipe, and returns a uniform `RecipeResult` (`status: 'ok' | 'refused'`, `output`, `model`, `tier`, `reason`). Canonical recipes registered today: `summarize`, `extract_tasks`. |
 | `model:status`         | `modelStatus()`                           | `OllamaAdapter.status()` (or stub when Ollama is offline) |
 | `model:load`           | `loadModel(name)`                         | `OllamaAdapter.load()` |
 | `model:unload`         | `unloadModel(name)`                       | `OllamaAdapter.unload()` |

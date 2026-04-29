@@ -258,6 +258,30 @@ interface ElectronAIBridge {
   guardrailCheck(req: {
     input: { text: string; channelId?: string };
   }): Promise<GuardrailSkillResult>;
+  // Phase 4 — generic AI-Employee recipe runner. The renderer
+  // supplies the AI Employee's allowed recipe ids so the main process
+  // can refuse recipes the employee is not authorised for. Output
+  // shape is recipe-specific (`unknown`); the renderer narrows via
+  // `recipeId` at the call site.
+  recipeRun(req: {
+    recipeId: string;
+    aiEmployeeId: string;
+    channelId: string;
+    threadId?: string;
+    messages: Array<{
+      id: string;
+      channelId: string;
+      senderId: string;
+      content: string;
+    }>;
+    allowedRecipes?: string[];
+  }): Promise<{
+    status: 'ok' | 'refused';
+    output: unknown;
+    model: string;
+    tier: 'e2b' | 'e4b';
+    reason: string;
+  }>;
   modelStatus(): Promise<ModelStatus>;
   loadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
   unloadModel(model?: string): Promise<{ loaded: boolean; model: string }>;

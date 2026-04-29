@@ -61,6 +61,7 @@ const api: ElectronAI = {
   eventRSVP: (req) => ipcRenderer.invoke('ai:event-rsvp', req),
   tripPlan: (req) => ipcRenderer.invoke('ai:trip-plan', req),
   guardrailCheck: (req) => ipcRenderer.invoke('ai:guardrail-check', req),
+  recipeRun: (req) => ipcRenderer.invoke('ai:recipe:run', req),
   modelStatus: () => ipcRenderer.invoke('model:status'),
   loadModel: (model) => ipcRenderer.invoke('model:load', { model }),
   unloadModel: (model) => ipcRenderer.invoke('model:unload', { model }),
