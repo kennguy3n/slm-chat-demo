@@ -152,7 +152,7 @@ export class InferenceRouter implements Adapter {
     const model = req.model || this.defaultModel;
     const reason =
       adapter === this.local
-        ? `Routed "${req.taskType}" to on-device Ternary-Bonsai-8B.`
+        ? `Routed "${req.taskType}" to on-device ${model}.`
         : `No real local adapter; using ${adapter.name()} fallback.`;
     return { allow: true, model, tier: 'local', reason };
   }
