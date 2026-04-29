@@ -25,6 +25,7 @@ type Memory struct {
 	connectors    map[string]models.Connector
 	connectorFiles []models.ConnectorFile
 	retrievalChunks []models.RetrievalChunk
+	knowledgeEntities []models.KnowledgeEntity
 }
 
 // NewMemory returns an empty Memory store. Call Seed to populate it with the
@@ -44,6 +45,7 @@ func NewMemory() *Memory {
 		connectors:     map[string]models.Connector{},
 		connectorFiles: []models.ConnectorFile{},
 		retrievalChunks: []models.RetrievalChunk{},
+		knowledgeEntities: []models.KnowledgeEntity{},
 	}
 }
 
@@ -799,4 +801,67 @@ func (m *Memory) ListAllChannelMessages(channelID string) []models.Message {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
 	return out
+}
+
+// ---- Knowledge graph (Phase 5) ----
+
+// AppendKnowledgeEntity records a new entity in the knowledge graph.
+// The graph is append-only at the store level — re-extraction in the
+// service layer drops prior entities for the channel before
+// re-appending.
+func (m *Memory) AppendKnowledgeEntity(e models.KnowledgeEntity) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.knowledgeEntities = append(m.knowledgeEntities, e)
+}
+
+// ListKnowledgeEntities returns entities filtered by channel and
+// optionally by kind. Empty `channelID` returns every entity. Empty
+// `kind` returns every kind.
+func (m *Memory) ListKnowledgeEntities(channelID string, kind string) []models.KnowledgeEntity {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []models.KnowledgeEntity{}
+	for _, e := range m.knowledgeEntities {
+		if channelID != "" && e.ChannelID != channelID {
+			continue
+		}
+		if kind != "" && string(e.Kind) != kind {
+			continue
+		}
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// GetKnowledgeEntity returns a single entity by ID.
+func (m *Memory) GetKnowledgeEntity(id string) (models.KnowledgeEntity, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, e := range m.knowledgeEntities {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return models.KnowledgeEntity{}, false
+}
+
+// ClearKnowledgeEntitiesForChannel removes every entity scoped to
+// `channelID`. The knowledge service calls this before each
+// re-extraction so stale entities don't accumulate across runs.
+func (m *Memory) ClearKnowledgeEntitiesForChannel(channelID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if channelID == "" {
+		return
+	}
+	kept := m.knowledgeEntities[:0]
+	for _, e := range m.knowledgeEntities {
+		if e.ChannelID == channelID {
+			continue
+		}
+		kept = append(kept, e)
+	}
+	m.knowledgeEntities = kept
 }

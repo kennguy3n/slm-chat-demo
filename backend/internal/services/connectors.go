@@ -59,10 +59,15 @@ func (s *ConnectorService) ListFilesByChannel(channelID string) []models.Connect
 }
 
 // AttachToChannel adds `channelID` to the connector's attached
-// channels. Idempotent: re-attaching the same channel is a no-op.
-// Returns ErrUnknownChannel if the channel does not exist, and
-// ErrConnectorChannelMismatch if the channel belongs to a different
-// workspace from the connector.
+// channels. Idempotent: re-attaching the same channel is a no-op,
+// even under concurrent calls. Returns ErrUnknownChannel if the
+// channel does not exist, and ErrConnectorChannelMismatch if the
+// channel belongs to a different workspace from the connector.
+//
+// The dup check runs *inside* the UpdateConnector callback so it
+// reads the current channel list under the store's write lock —
+// otherwise two concurrent attaches with the same channelID could
+// both pass a stale snapshot check and double-append.
 func (s *ConnectorService) AttachToChannel(connectorID, channelID string) (models.Connector, error) {
 	c, ok := s.store.GetConnector(connectorID)
 	if !ok {
@@ -75,12 +80,12 @@ func (s *ConnectorService) AttachToChannel(connectorID, channelID string) (model
 	if ch.WorkspaceID != c.WorkspaceID {
 		return models.Connector{}, ErrConnectorChannelMismatch
 	}
-	for _, cid := range c.ChannelIDs {
-		if cid == channelID {
-			return c, nil
-		}
-	}
 	updated, _ := s.store.UpdateConnector(connectorID, func(cc *models.Connector) {
+		for _, cid := range cc.ChannelIDs {
+			if cid == channelID {
+				return
+			}
+		}
 		cc.ChannelIDs = append(cc.ChannelIDs, channelID)
 	})
 	return updated, nil

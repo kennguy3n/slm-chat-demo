@@ -176,10 +176,10 @@ slm-chat-demo/
 │   │   ├── api/
 │   │   │   ├── router.go        (data-only routes)
 │   │   │   ├── middleware.go
-│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts, audit, ai_employees, recipe_runs)
+│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts, audit, ai_employees, recipe_runs, connectors, retrieval, knowledge)
 │   │   │   └── userctx/         (request-scoped user helpers)
-│   │   ├── services/            (identity, workspace, chat, kapps, audit, ai_employees, recipe_runs)
-│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card, audit, ai_employee, recipe_run)
+│   │   ├── services/            (identity, workspace, chat, kapps, audit, ai_employees, recipe_runs, connectors, retrieval, knowledge)
+│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card, audit, ai_employee, recipe_run, connector, retrieval, knowledge)
 │   │   └── store/               (memory store + Phase-0 seed + Phase-4 AI Employee seed)
 │   └── go.mod
 ├── frontend/
@@ -219,10 +219,10 @@ slm-chat-demo/
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer, TasksKApp, CreateTaskForm, CreateApprovalForm, FormCard, AuditLogPanel, OutputReview)
 │   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections)
 │   │   │   ├── ai-employees/    (AIEmployeeList, AIEmployeePanel, QueueView, RecipeOutputGate, recipeCatalog)
-│   │   │   └── knowledge/       (SourcePicker, ConnectorPanel, PermissionPreview, CitationChip, CitationRenderer — Phase 5 channel/thread/file scoping, mock connector attach, egress-aware permission preview, inline citation rendering)
+│   │   │   └── knowledge/       (SourcePicker, ConnectorPanel, PermissionPreview, CitationChip, CitationRenderer, KnowledgeGraphPanel — Phase 5 channel/thread/file scoping, mock connector attach, egress-aware permission preview, inline citation rendering, workspace knowledge-graph extraction)
 │   │   ├── stores/              (workspaceStore, chatStore*, aiStore*, useKAppsStore)
-│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, recipeRunApi, connectorApi, retrievalContext, electronBridge)
-│   │   ├── types/               (chat, ai, kapps, workspace, audit, aiEmployee, knowledge — includes Connector, ConnectorFile, RetrievalChunk, RetrievalResult — electron.d.ts)
+│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, recipeRunApi, connectorApi, knowledgeApi, retrievalContext, electronBridge)
+│   │   ├── types/               (chat, ai, kapps, workspace, audit, aiEmployee, knowledge — includes Connector, ConnectorFile, RetrievalChunk, RetrievalResult, KnowledgeEntity — electron.d.ts)
 │   │   ├── router.tsx
 │   │   ├── styles.css
 │   │   └── main.tsx
@@ -379,6 +379,28 @@ go test ./...
   `ApprovalPrefillCard`, and `RecipeOutputGate` so any AI body
   containing markers renders inline chips + a footer attribution
   list while marker-free bodies fall back to the existing rendering.
+- **Workspace knowledge graph** — backend `models/knowledge.go`
+  (`KnowledgeEntity`, `KnowledgeEntityKind`, `KnowledgeEntityStatus`),
+  `services.KnowledgeService` with `ExtractEntities` (heuristic
+  keyword extraction over channel messages), `List`, and `Get`. Five
+  entity kinds — `decision`, `owner`, `risk`, `requirement`,
+  `deadline` — each linked back to its `sourceMessageId` for thread
+  attribution. Endpoints
+  `POST /api/channels/{channelId}/knowledge/extract`,
+  `GET /api/channels/{channelId}/knowledge?kind=`, and
+  `GET /api/knowledge/{id}` are wired in `api/router.go`. Frontend
+  `knowledgeApi.ts` mirrors the three endpoints; the new
+  `features/knowledge/KnowledgeGraphPanel.tsx` mounts in the B2B
+  right-rail "Knowledge" tab and renders five collapsible sections
+  with extract action, source-message links, confidence badges,
+  actor pills (for owners), and due-date chips (for deadlines).
+- **TOCTOU fix in `ConnectorService.AttachToChannel`** — the
+  idempotency check now runs *inside* the `UpdateConnector` callback
+  under the store's write lock, so two concurrent attaches with the
+  same channelId can no longer pass a stale snapshot and
+  double-append (regression covered by
+  `TestAttachIsIdempotentForRepeatedChannel` in
+  `backend/internal/api/handlers/connectors_test.go`).
 
 ## Phase 4 — complete
 
