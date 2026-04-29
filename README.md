@@ -176,10 +176,12 @@ slm-chat-demo/
 │   │   ├── api/
 │   │   │   ├── router.go        (data-only routes)
 │   │   │   ├── middleware.go
-│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts, audit, ai_employees, recipe_runs, connectors, retrieval, knowledge)
+│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts, audit, ai_employees, recipe_runs, connectors, retrieval, knowledge, policy, scim, encryption, tenant_storage)
+│   │   │   ├── middleware_logging.go  (Phase 6: StructuralLogger + SanitizeLogFields)
+│   │   │   ├── middleware_sso.go      (Phase 6: stub Authorization: Bearer SSO middleware)
 │   │   │   └── userctx/         (request-scoped user helpers)
-│   │   ├── services/            (identity, workspace, chat, kapps, audit, ai_employees, recipe_runs, connectors, retrieval, knowledge)
-│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card, audit, ai_employee, recipe_run, connector, retrieval, knowledge)
+│   │   ├── services/            (identity, workspace, chat, kapps, audit, ai_employees, recipe_runs, connectors, retrieval, knowledge, policy, encryption, tenant_storage)
+│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card, audit, ai_employee, recipe_run, connector, retrieval, knowledge, policy, sso, encryption, tenant_storage)
 │   │   └── store/               (memory store + Phase-0 seed + Phase-4 AI Employee seed)
 │   └── go.mod
 ├── frontend/
@@ -200,6 +202,8 @@ slm-chat-demo/
 │   │       ├── confidential-server.ts  (Phase 6: ConfidentialServerAdapter for server-tier inference)
 │   │       ├── redaction.ts            (Phase 6: RedactionEngine — tokenize/redact/detokenize PII)
 │   │       ├── egress-tracker.ts       (Phase 6: EgressTracker singleton for privacy UI)
+│   │       ├── logging.ts              (Phase 6: sanitizeForLog / logInference — strips bodies/prompts/outputs)
+│   │       ├── aicore-bridge.ts        (Phase 6: AICoreBridge interface + StubAICoreBridge for the Android port)
 │   │       ├── skills/
 │   │       │   ├── trip-planner.ts       (B2C trip / event planning skill)
 │   │       │   └── guardrail-rewrite.ts  (PII / tone / unverified-claim detection + rewrite)
@@ -217,14 +221,14 @@ slm-chat-demo/
 │   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
 │   │   ├── features/
 │   │   │   ├── chat/            (ChatSurface, ThreadPanel, MessageList, MessageBubble, Composer, launcherDispatch)
-│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, AIEmployeeModeBadge, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, activityLog, formatEgressBytes, useEgressSummary)
+│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, AIEmployeeModeBadge, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, activityLog, formatEgressBytes, useEgressSummary, PolicyAdminPanel)
 │   │   │   ├── memory/          (AIMemoryPage + memoryStore — local-only IndexedDB-backed second brain)
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer, TasksKApp, CreateTaskForm, CreateApprovalForm, FormCard, AuditLogPanel, OutputReview)
 │   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections)
 │   │   │   ├── ai-employees/    (AIEmployeeList, AIEmployeePanel, QueueView, RecipeOutputGate, recipeCatalog)
 │   │   │   └── knowledge/       (SourcePicker, ConnectorPanel, PermissionPreview, CitationChip, CitationRenderer, KnowledgeGraphPanel — Phase 5 channel/thread/file scoping, mock connector attach, egress-aware permission preview, inline citation rendering, workspace knowledge-graph extraction)
 │   │   ├── stores/              (workspaceStore, chatStore*, aiStore*, useKAppsStore)
-│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, recipeRunApi, connectorApi, knowledgeApi, retrievalContext, electronBridge)
+│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, recipeRunApi, connectorApi, knowledgeApi, retrievalContext, electronBridge, policyApi)
 │   │   ├── types/               (chat, ai, kapps, workspace, audit, aiEmployee, knowledge — includes Connector, ConnectorFile, RetrievalChunk, RetrievalResult, KnowledgeEntity — electron.d.ts)
 │   │   ├── router.tsx
 │   │   ├── styles.css
@@ -317,7 +321,85 @@ go test ./...
   strip and `model:status` (`model`, `loaded`) reflect what actually
   ran. The `DeviceCapabilityPanel` shows the on-device model status.
 
-## Phase 6 — in progress
+## Phase 6 — complete
+
+The remaining 8 enterprise-hardening deliverables ship in the same
+release as the confidential-server adapter / redaction engine /
+egress tracker described below.
+
+- **No-content server logging** — `backend/internal/api/middleware_logging.go`
+  installs a `StructuralLogger` that records only
+  `method`, `path`, `status`, `bytes`, `latency`, `reqID`, `userID`
+  for every HTTP request. The same file exports
+  `SanitizeLogFields(map[string]any)` which strips known sensitive
+  keys (`body`, `content`, `prompt`, `output`, `fields`, `text`,
+  `messages`, `chunk`, …) before any structured log call. On the
+  Electron side `frontend/electron/inference/logging.ts` ships
+  `sanitizeForLog` and `logInference(label, meta)` — the IPC layer
+  and inference router run every debug print through them so prompts
+  and outputs never appear in the main-process log.
+- **Per-workspace AI compute policy** — `backend/internal/models/policy.go`
+  introduces `WorkspacePolicy { AllowServerCompute, ServerAllowedTasks,
+  ServerDeniedTasks, MaxEgressBytesPerDay, RequireRedaction, … }`. The
+  new `PolicyService` exposes `Get` / `Update`, and
+  `GET / PATCH /api/workspaces/{id}/policy` is wired into the router.
+  The renderer adds `frontend/src/features/ai/PolicyAdminPanel.tsx`
+  in the new B2B right-rail "Policy" tab — toggles for the master
+  switch, redaction requirement, max-daily-egress, and per-`TaskType`
+  allow / deny checkboxes. The default policy seeded for `ws_acme`
+  has `AllowServerCompute: false` and `RequireRedaction: true`.
+- **Audit log JSON / CSV export** — `GET /api/audit/export?format=json|csv`
+  reuses the existing `objectId` / `objectKind` / `channelId` filters,
+  emits a `Content-Disposition: attachment; filename="audit-export.<fmt>"`
+  header, and returns either the same `[]AuditEntry` array or a CSV
+  with columns `id, timestamp, eventType, objectKind, objectId, actor,
+  details` (details rendered as a JSON string). `AuditLogPanel` gained
+  Export JSON / Export CSV buttons that hit the new endpoint and
+  trigger a hidden `<a download>`.
+- **Stub SSO middleware** — `backend/internal/api/middleware_sso.go`
+  decodes a base64 JWT-style payload `{ sub, email }` from
+  `Authorization: Bearer …`, validates the email domain against
+  `cfg.AllowedDomains`, and falls back to `MockAuth` when there is
+  no Bearer header or `cfg.Enabled == false`. The router opts in via
+  `SSO_ENABLED=true` env var. A default `SSOConfig` is seeded for
+  `ws_acme` (`Enabled: false`, `AllowedDomains: ["acme.example.com"]`).
+- **SCIM v2 user provisioning** — `backend/internal/api/handlers/scim.go`
+  implements `GET /api/scim/v2/Users`, `GET /api/scim/v2/Users/{id}`,
+  `POST /api/scim/v2/Users`, `PATCH /api/scim/v2/Users/{id}`, and
+  `DELETE /api/scim/v2/Users/{id}` with the SCIM core schema
+  (`urn:ietf:params:scim:schemas:core:2.0:User`, `userName`, `emails`,
+  `active`). The user model gained `Active` and `Email`, the store
+  gained `CreateUser` / `DeactivateUser`, and the `/api/scim/v2`
+  routes are mounted outside the MockAuth pipeline because real IdPs
+  authenticate with their own bearer tokens.
+- **Per-tenant encryption keys** — `backend/internal/models/encryption.go`
+  defines `TenantEncryptionKey { WorkspaceID, KeyID, Algorithm,
+  CreatedAt, RotatedAt, Active }`. `EncryptionKeyService` exposes
+  `GenerateKey` / `GetActiveKey` / `RotateKey` / `ListKeys` and a
+  stub `EncryptStub` that logs `would encrypt with key X`
+  (real encryption is deferred to the PostgreSQL phase). HTTP surface:
+  `GET / POST /api/workspaces/{id}/encryption-keys` and
+  `POST /api/workspaces/{id}/encryption-keys/rotate`. A default key
+  (`key_acme_seed`, AES-256-GCM) is seeded for `ws_acme`.
+- **Tenant storage configuration** —
+  `backend/internal/models/tenant_storage.go` defines
+  `TenantStorageConfig { DatabaseRegion, StorageBucket, Dedicated,
+  EncryptionKeyID, … }`. `TenantStorageService` exposes `Get` /
+  `Update`, and `GET / PATCH /api/workspaces/{id}/storage` is wired
+  in. Default for `ws_acme`: `us-east-1`, shared (`Dedicated: false`),
+  bound to `key_acme_seed`. Physical isolation is deferred to the
+  PostgreSQL / S3 phase; this ships the model, service, and surface.
+- **Android AICore bridge stub** —
+  `frontend/electron/inference/aicore-bridge.ts` exports the
+  `AICoreBridge` interface (a strict superset of the existing
+  `Adapter` interface, with `initialize` / `isAvailable` /
+  `getSupportedModels` lifecycle hooks) plus a
+  `StubAICoreBridge` class that throws
+  `"Android AICore not available in Electron"` for every method.
+  This is the contract the React Native / native Android port will
+  implement against Google AICore (ML Kit GenAI).
+
+## Phase 6 — confidential-server building blocks (already shipped before this release)
 
 - **Confidential server compute mode** —
   `frontend/electron/inference/confidential-server.ts` adds a third

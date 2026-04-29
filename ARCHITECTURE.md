@@ -81,6 +81,7 @@ Meilisearch land in later phases.
 | 15 | `CitationChip` / `CitationRenderer` | Phase 5 — inline citation rendering. `CitationRenderer` parses `[source:id]` markers in streamed AI output, renders chips numbered in citation order (repeated cites reuse the same index), and emits a "Sources (N)" footer with full attribution. `CitationChip` exposes per-chip hover tooltip and click-through to `#message-{id}` or the connector URL. Wired into `ThreadSummaryCard`, `ArtifactDraftCard`, `ApprovalPrefillCard`, and `RecipeOutputGate`. |
 | 16 | `KnowledgeGraphPanel` | Phase 5 — B2B right-rail "Knowledge" tab. Renders five collapsible sections (Decisions, Owners, Risks, Requirements, Deadlines), each listing extracted `KnowledgeEntity` cards with title, description snippet, source-message link (`#message-{sourceMessageId}`), confidence badge, optional actor pills (owners) and due-date chip (deadlines). The `Extract` button calls `POST /api/channels/{channelId}/knowledge/extract` and refreshes the list. Empty state: "No entities extracted yet. Click Extract to scan this channel." |
 | 17 | `EgressSummaryPanel` | Phase 6 — renders total egress bytes (prominent "0 B" zero-state), per-channel and per-model breakdowns, a recent-activity timeline, and a Reset button. Reads from the `EgressTracker` singleton via `useEgressSummary` hook and `egress:summary` IPC. The TopBar "Egress" badge also reads from this hook. |
+| 18 | `PolicyAdminPanel` | Phase 6 — renders the per-workspace AI compute policy in the new B2B right-rail "Policy" tab. Backed by `policyApi` (`fetchWorkspacePolicy` / `updateWorkspacePolicy`) hitting `GET / PATCH /api/workspaces/{id}/policy`. Surfaces toggles for the master `allowServerCompute` switch, `requireRedaction`, `maxEgressBytesPerDay`, and per-`TaskType` allow / deny checkboxes. The Save button PATCHes the policy and is disabled until the form is dirty. |
 
 ### 2.2 Frontend stack
 
@@ -338,7 +339,10 @@ are the data services that persist Phase-0+ state and stream events.
 | 8 | `connector-service` | Drive / OneDrive / GitHub mock connectors with channel-scoped attachment. Phase 5 ships `services.ConnectorService` with `List` / `Get` / `ListFiles` / `ListFilesByChannel` / `AttachToChannel` / `DetachFromChannel`; one seeded Google Drive connector (`conn_gdrive_acme`) attached to `ch_vendor_management`. `AttachToChannel`'s idempotency check runs **inside** the `UpdateConnector` callback under the store's write lock so concurrent attaches with the same channelId can't double-append. |
 | 8a | `knowledge-service` | Phase 5 — workspace knowledge graph. `services.KnowledgeService.ExtractEntities` scans every message in a channel via `store.ListAllChannelMessages` and emits five kinds of `KnowledgeEntity` (decision / owner / risk / requirement / deadline) using keyword + regex heuristics; each entity references its `sourceMessageId` for thread attribution. `List(channelId, kind)` returns filtered entities and `Get(id)` returns a single one. Re-extraction is idempotent (existing entities for the channel are dropped before each run via `ClearKnowledgeEntitiesForChannel`). |
 | 9 | `event-service` | NATS JetStream event publication and subscriptions. |
-| 10 | `audit-service` | Immutable append-only event log for all KApp mutations (task, approval, artifact, form lifecycle events). In-memory store (Phase 0); persisted in later phases. |
+| 10 | `audit-service` | Immutable append-only event log for all KApp mutations (task, approval, artifact, form lifecycle events). In-memory store (Phase 0); persisted in later phases. Phase 6 adds a JSON / CSV export endpoint (`GET /api/audit/export?format=…`). |
+| 11 | `policy-service` | Phase 6 — per-workspace AI compute policy. `services.PolicyService.Get(workspaceID)` and `Update(workspaceID, patch)` wrap the in-memory `WorkspacePolicy` (allow-server-compute master switch, server-allowed / server-denied `TaskType` lists, max daily egress bytes, require-redaction flag). `Update` stamps `UpdatedAt` / `UpdatedBy` from the request. Default for `ws_acme`: `AllowServerCompute: false`, `RequireRedaction: true`. |
+| 12 | `encryption-service` | Phase 6 — per-tenant AES-256-GCM key management. `services.EncryptionKeyService.GenerateKey(workspaceID)` mints a fresh `TenantEncryptionKey` (32-byte random material kept in-memory), `GetActiveKey(workspaceID)` returns the most-recent active one, `RotateKey(workspaceID)` demotes the current active key to inactive and generates a successor, `ListKeys(workspaceID)` returns history. `EncryptStub(workspaceID, plaintext)` logs `would encrypt with key X` — real envelope encryption is deferred to the PostgreSQL phase. |
+| 13 | `tenant-storage-service` | Phase 6 — per-tenant storage configuration model. `services.TenantStorageService.Get(workspaceID)` / `Update(workspaceID, patch)` wraps `TenantStorageConfig { DatabaseRegion, StorageBucket, Dedicated, EncryptionKeyID }`. Physical isolation is deferred to the PostgreSQL / S3 phase; this ships the model, service, and HTTP surface. |
 
 ### 3.2 Directory structure
 
@@ -350,12 +354,18 @@ backend/
 │   │   ├── router.go             (data routes only)
 │   │   ├── middleware.go
 │   │   ├── handlers/             (chat.go, workspace.go, kapps.go, privacy.go,
-│   │   │                          artifacts.go, audit.go [Phase 3],
+│   │   │                          artifacts.go, audit.go [Phase 3 + Phase 6 export],
 │   │   │                          ai_employees.go [Phase 4],
 │   │   │                          recipe_runs.go [Phase 4],
 │   │   │                          connectors.go [Phase 5],
 │   │   │                          retrieval.go [Phase 5],
-│   │   │                          knowledge.go [Phase 5])
+│   │   │                          knowledge.go [Phase 5],
+│   │   │                          policy.go [Phase 6],
+│   │   │                          scim.go [Phase 6],
+│   │   │                          encryption.go [Phase 6],
+│   │   │                          tenant_storage.go [Phase 6])
+│   │   ├── middleware_logging.go  [Phase 6 — StructuralLogger + SanitizeLogFields]
+│   │   ├── middleware_sso.go      [Phase 6 — Authorization: Bearer SSO middleware]
 │   │   └── userctx/              (request-scoped user helpers)
 │   ├── services/                 (identity.go, workspace.go, chat.go, kapps.go,
 │   │                              audit.go [Phase 3],
@@ -363,7 +373,10 @@ backend/
 │   │                              recipe_runs.go [Phase 4],
 │   │                              connectors.go [Phase 5],
 │   │                              retrieval.go [Phase 5],
-│   │                              knowledge.go [Phase 5])
+│   │                              knowledge.go [Phase 5],
+│   │                              policy.go [Phase 6],
+│   │                              encryption.go [Phase 6],
+│   │                              tenant_storage.go [Phase 6])
 │   ├── models/                   (user.go, workspace.go, message.go, task.go,
 │   │                              approval.go, artifact.go, event.go, card.go,
 │   │                              audit.go [Phase 3],
@@ -371,7 +384,11 @@ backend/
 │   │                              recipe_run.go [Phase 4],
 │   │                              connector.go [Phase 5],
 │   │                              retrieval.go [Phase 5],
-│   │                              knowledge.go [Phase 5])
+│   │                              knowledge.go [Phase 5],
+│   │                              policy.go [Phase 6],
+│   │                              sso.go [Phase 6],
+│   │                              encryption.go [Phase 6],
+│   │                              tenant_storage.go [Phase 6])
 │   └── store/                    (memory.go + seed.go + seedAIEmployees;
 │                                   Phase 6+ adds postgres.go)
 └── go.mod
@@ -454,6 +471,19 @@ POST   /api/channels/{channelId}/knowledge/extract        (Phase 5 — extract k
 GET    /api/channels/{channelId}/knowledge?kind=          (Phase 5 — list entities, optional kind filter: decision/owner/risk/requirement/deadline)
 GET    /api/knowledge/{id}                                (Phase 5 — fetch a single KnowledgeEntity)
 GET    /api/privacy/egress-preview
+GET    /api/audit/export?format=json|csv                  (Phase 6 — same filters as /api/audit; emits Content-Disposition)
+GET    /api/workspaces/{id}/policy                        (Phase 6 — WorkspacePolicy)
+PATCH  /api/workspaces/{id}/policy                        (Phase 6)
+GET    /api/workspaces/{id}/encryption-keys               (Phase 6)
+POST   /api/workspaces/{id}/encryption-keys               (Phase 6 — generate)
+POST   /api/workspaces/{id}/encryption-keys/rotate        (Phase 6)
+GET    /api/workspaces/{id}/storage                       (Phase 6 — TenantStorageConfig)
+PATCH  /api/workspaces/{id}/storage                       (Phase 6)
+GET    /api/scim/v2/Users                                 (Phase 6 — SCIM v2; mounted outside MockAuth)
+GET    /api/scim/v2/Users/{id}                            (Phase 6)
+POST   /api/scim/v2/Users                                 (Phase 6)
+PATCH  /api/scim/v2/Users/{id}                            (Phase 6)
+DELETE /api/scim/v2/Users/{id}                            (Phase 6 — soft-deactivates: sets Active=false)
 ```
 
 All endpoints honour the `MockAuth` middleware (Phase 0) which extracts
@@ -644,6 +674,33 @@ are too uneven across browsers and devices today.
   default model for both slots until a dedicated mobile-class model is
   available.
 
+### 4.3b Android AICore bridge (Phase 6 — interface stub)
+
+The future Android port targets Google AICore (ML Kit GenAI Prompt
+API). To pin the contract before the port lands,
+`frontend/electron/inference/aicore-bridge.ts` exports an
+`AICoreBridge` interface that is a strict superset of the existing
+`Adapter` (`name`, `run`, `stream`) plus three Android-specific
+lifecycle hooks:
+
+- `initialize(): Promise<void>` — installs / activates AICore (the
+  Android shell calls this once on launch; on a real device it can
+  trigger the AICore service install or the model download).
+- `isAvailable(): Promise<AICoreCapabilities>` — returns
+  `{ available, models, reason? }`. The Android settings screen polls
+  this so users can see AICore status (installed, model-not-loaded,
+  device-unsupported) just like the Electron build surfaces Ollama
+  status today.
+- `getSupportedModels(): Promise<string[]>` — the model list AICore
+  currently has loaded. Empty array when AICore is not present.
+
+The Electron build ships a `StubAICoreBridge` that throws
+`"Android AICore not available in Electron"` from every method so
+accidentally importing it in the desktop renderer fails loudly. The
+React Native / native Android port replaces it with a real
+implementation backed by an Expo / JSI module that calls the AICore
+Java SDK.
+
 ---
 
 ## 5. AI policy engine
@@ -651,6 +708,30 @@ are too uneven across browsers and devices today.
 The AI policy engine runs on every AI call and decides which model to use, where
 to run it, what to redact, and which sources are allowed. It is invoked by
 `POST /api/ai/route` and inlined ahead of `/api/ai/run` and `/api/ai/stream`.
+
+Phase 6 grounds this in a **per-workspace `WorkspacePolicy`** persisted
+on the Go side (`backend/internal/models/policy.go`,
+`services.PolicyService`). The policy carries:
+
+- `AllowServerCompute bool` — master switch for the confidential
+  server tier.
+- `ServerAllowedTasks []TaskType` — explicit allow-list of `TaskType`s
+  that may dispatch to the server tier when the master switch is on.
+- `ServerDeniedTasks []TaskType` — explicit deny-list (takes
+  precedence over the allow-list).
+- `MaxEgressBytesPerDay int64` — daily egress ceiling enforced against
+  `EgressTracker.summary().totalBytes`.
+- `RequireRedaction bool` — forces the `RedactionEngine` into the
+  request path even if the workspace would otherwise opt out.
+- `UpdatedAt` / `UpdatedBy` audit fields.
+
+`PolicyService.Get(workspaceID)` and `PolicyService.Update(workspaceID,
+patch)` back the `GET / PATCH /api/workspaces/{id}/policy` endpoints,
+which the renderer's `PolicyAdminPanel` (B2B right-rail "Policy" tab)
+calls. The default policy seeded for `ws_acme` has
+`AllowServerCompute: false` and `RequireRedaction: true` — so the
+on-device path remains the default, and admins must explicitly opt in
+to the server tier per workspace.
 
 ### 5.1 Input schema
 
@@ -865,3 +946,34 @@ when the tracker is empty (the privacy-positive default), then totals
 button when populated. The TopBar's existing "Egress" badge now reads
 from the live tracker via `useEgressSummary` instead of the previous
 hardcoded `0 B`.
+
+### 7.2 No-content logging (Phase 6)
+
+Rule 4 ("structural metadata only") is enforced by the new logging
+shim that lands in Phase 6.
+
+On the Go side, `backend/internal/api/middleware_logging.go` ships a
+`StructuralLogger` middleware that runs after `MockAuth` /
+`SSOAuth`. For every HTTP request it logs only `method`, `path`,
+`status`, `bytes`, `latency`, `reqID`, `userID` — never the request
+body, never the response body. The same file exports
+`SanitizeLogFields(map[string]any) map[string]any`, a helper that
+strips known sensitive keys (`body`, `content`, `prompt`, `output`,
+`fields`, `text`, `messages`, `chunk`, …) before any structured
+`log.Printf` call. Services that choose to log details about an
+operation are expected to pipe their `details` map through
+`SanitizeLogFields` first — `audit.Record` already does, and any
+future service handler that wants to log structured context should
+follow suit.
+
+On the Electron side, `frontend/electron/inference/logging.ts`
+exports a parallel pair: `sanitizeForLog(obj)` (same redaction set
+plus `messages` / `chunk`) and `logInference(label, meta)` which
+sanitises before printing through `console.log`. The IPC layer and
+the inference router run every debug print through them so prompts
+and outputs never appear in the main-process log, even when the
+operator runs Electron with `--inspect` or attaches a debugger.
+
+Together these guarantee that even if log shipping is misconfigured
+or someone tails `kubectl logs` over a coffee, the surface area of
+the leak is bounded to operational metadata.

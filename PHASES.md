@@ -131,16 +131,16 @@ Each phase has a goal, a list of deliverables, and explicit exit criteria. The i
 
 **Deliverables:**
 
-- Confidential server mode
-- Redaction/tokenization before egress
-- Data egress summary
-- No-content logging
-- Policy admin controls
-- Audit exports
-- SSO / SCIM
-- Per-tenant encryption keys
-- Optional dedicated DB/storage/region
-- Android native local inference path
+- Confidential server mode (`ConfidentialServerAdapter`, three-tier router, NDJSON streaming, bootstrap probe gated on `CONFIDENTIAL_SERVER_POLICY=allow`)
+- Redaction / tokenization before egress (`RedactionEngine` with reversible `tokenize` / `detokenize` + non-reversible `redact`; PII categories: emails, phones, SSNs, two-word names, custom patterns)
+- Data egress summary (`EgressTracker` singleton + `egress:summary` / `egress:reset` IPC + `EgressSummaryPanel` + live TopBar badge)
+- No-content logging (`StructuralLogger` middleware + `SanitizeLogFields` on the Go side; `sanitizeForLog` / `logInference` on the Electron main side)
+- Policy admin controls (`WorkspacePolicy` model, `PolicyService`, `GET / PATCH /api/workspaces/{id}/policy`, `PolicyAdminPanel` mounted in the B2B right-rail "Policy" tab)
+- Audit exports (`GET /api/audit/export?format=json|csv` with Content-Disposition headers; `AuditLogPanel` "Export JSON" / "Export CSV" buttons)
+- SSO / SCIM (stub `SSOAuth` middleware decoding base64 `Authorization: Bearer` payloads with email-domain validation; SCIM v2 user provisioning at `/api/scim/v2/Users` — List / Get / Create / Patch / Delete)
+- Per-tenant encryption keys (`TenantEncryptionKey` + `EncryptionKeyService` with `GenerateKey` / `GetActiveKey` / `RotateKey` / `ListKeys`; AES-256-GCM 32-byte material; HTTP surface under `/api/workspaces/{id}/encryption-keys`)
+- Optional dedicated DB / storage / region (`TenantStorageConfig` + `TenantStorageService`; `GET / PATCH /api/workspaces/{id}/storage`; physical isolation deferred to the PostgreSQL phase)
+- Android native local inference path (`AICoreBridge` interface + `StubAICoreBridge` in `frontend/electron/inference/aicore-bridge.ts`; the contract the React Native / native Android port will implement against Google AICore / ML Kit GenAI)
 
 **Exit criteria:** Workspace admins can define which AI tasks run on-device, which may use confidential server compute, and which are refused.
 

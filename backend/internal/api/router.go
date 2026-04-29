@@ -2,29 +2,38 @@ package api
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/api/handlers"
+	"github.com/kennguy3n/slm-chat-demo/backend/internal/models"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/services"
+	"github.com/kennguy3n/slm-chat-demo/backend/internal/store"
 )
 
 // Deps bundles the services every handler needs. The Phase 0 backend is
 // intentionally data-only: AI inference now lives in the Electron main
 // process (frontend/electron/inference/) and reaches Ollama directly.
 type Deps struct {
-	Identity    *services.Identity
-	Workspaces  *services.Workspace
-	Chat        *services.Chat
-	KApps       *services.KApps
-	Audit       *services.AuditService
-	AIEmployees *services.AIEmployeeService
-	RecipeRuns  *services.RecipeRunService
-	Connectors  *services.ConnectorService
-	Retrieval   *services.RetrievalService
-	Knowledge   *services.KnowledgeService
+	Identity      *services.Identity
+	Workspaces    *services.Workspace
+	Chat          *services.Chat
+	KApps         *services.KApps
+	Audit         *services.AuditService
+	AIEmployees   *services.AIEmployeeService
+	RecipeRuns    *services.RecipeRunService
+	Connectors    *services.ConnectorService
+	Retrieval     *services.RetrievalService
+	Knowledge     *services.KnowledgeService
+	Policy        *services.PolicyService
+	Encryption    *services.EncryptionKeyService
+	TenantStorage *services.TenantStorageService
+	// Store is needed by the SCIM handler for direct user CRUD that
+	// sits outside the Identity service's resolution semantics.
+	Store *store.Memory
 }
 
 // NewRouter wires the chi router with CORS, JSON content-type, mock auth, and
@@ -57,13 +66,48 @@ func NewRouter(d Deps) http.Handler {
 	connH := handlers.NewConnectors(d.Connectors)
 	retH := handlers.NewRetrieval(d.Retrieval)
 	kgH := handlers.NewKnowledge(d.Knowledge)
+	polH := handlers.NewPolicy(d.Policy)
+	encH := handlers.NewEncryption(d.Encryption)
+	tsH := handlers.NewTenantStorage(d.TenantStorage)
+	scimH := handlers.NewSCIM(d.Store)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// Phase 6 — SCIM v2 user provisioning. Mounted outside the
+	// MockAuth-protected `/api` group because SCIM clients
+	// authenticate with their own bearer token in production.
+	r.Route("/api/scim/v2", func(r chi.Router) {
+		r.Get("/Users", scimH.List)
+		r.Post("/Users", scimH.Create)
+		r.Get("/Users/{id}", scimH.Get)
+		r.Patch("/Users/{id}", scimH.Patch)
+		r.Put("/Users/{id}", scimH.Patch)
+		r.Delete("/Users/{id}", scimH.Delete)
+	})
+
 	r.Route("/api", func(r chi.Router) {
-		r.Use(MockAuth(d.Identity))
+		// Phase 6 — when SSO_ENABLED=true, swap MockAuth for the
+		// Bearer-token SSO stub. The stub falls back to MockAuth when
+		// no Authorization header is supplied so the demo flows
+		// continue to work without SSO setup.
+		if os.Getenv("SSO_ENABLED") == "true" {
+			cfg := models.SSOConfig{Enabled: true}
+			if d.Store != nil {
+				if c, ok := d.Store.GetSSOConfig("ws_acme"); ok {
+					cfg = c
+					cfg.Enabled = true
+				}
+			}
+			r.Use(SSOAuth(d.Identity, cfg))
+		} else {
+			r.Use(MockAuth(d.Identity))
+		}
+		// Phase 6 §7.2 — structural-only request logging. Records
+		// method, path, status, latency, request id, user id; never
+		// logs request or response bodies.
+		r.Use(StructuralLogger)
 
 		// Identity / workspaces / channels.
 		r.Get("/users/me", wsH.Me)
@@ -115,6 +159,8 @@ func NewRouter(d Deps) http.Handler {
 		// single object; ?channelId=… returns all entries for
 		// objects in the channel.
 		r.Get("/audit", auH.List)
+		// Phase 6 — JSON / CSV download for compliance exports.
+		r.Get("/audit/export", auH.Export)
 
 		// AI Employees — Phase 4 workspace-scoped personas
 		// (Kara Ops AI, Nina PM AI, Mika Sales AI) with allowed
@@ -159,6 +205,20 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/channels/{channelId}/knowledge/extract", kgH.Extract)
 		r.Get("/channels/{channelId}/knowledge", kgH.List)
 		r.Get("/knowledge/{id}", kgH.Get)
+
+		// Phase 6 — per-workspace AI compute policy (server tier
+		// allow/deny lists, redaction enforcement, daily egress cap).
+		r.Get("/workspaces/{id}/policy", polH.Get)
+		r.Patch("/workspaces/{id}/policy", polH.Update)
+
+		// Phase 6 — per-tenant encryption keys (AES-256-GCM stub).
+		r.Get("/workspaces/{id}/encryption-keys", encH.List)
+		r.Post("/workspaces/{id}/encryption-keys", encH.Generate)
+		r.Post("/workspaces/{id}/encryption-keys/rotate", encH.Rotate)
+
+		// Phase 6 — per-tenant storage config stub.
+		r.Get("/workspaces/{id}/storage", tsH.Get)
+		r.Patch("/workspaces/{id}/storage", tsH.Update)
 	})
 
 	return r

@@ -14,6 +14,7 @@ import {
   AIEmployeePanel,
 } from '../features/ai-employees';
 import { ConnectorPanel, KnowledgeGraphPanel } from '../features/knowledge';
+import { PolicyAdminPanel } from '../features/ai/PolicyAdminPanel';
 
 
 interface Props {
@@ -29,13 +30,15 @@ type RightRailTab =
   | 'tasks'
   | 'ai-employees'
   | 'connectors'
-  | 'knowledge';
+  | 'knowledge'
+  | 'policy';
 
 const RIGHT_TABS: { id: RightRailTab; label: string }[] = [
   { id: 'tasks', label: 'Tasks' },
   { id: 'ai-employees', label: 'AI Employees' },
   { id: 'connectors', label: 'Connectors' },
   { id: 'knowledge', label: 'Knowledge' },
+  { id: 'policy', label: 'Policy' },
 ];
 
 // B2BLayout renders the workspace -> domain -> channel hierarchy in the
@@ -270,6 +273,15 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
             ) : (
               <p className="knowledge-graph-panel__empty">
                 Select a channel to view its knowledge graph.
+              </p>
+            )}
+          </div>
+          <div role="tabpanel" hidden={rightTab !== 'policy'}>
+            {workspace ? (
+              <PolicyAdminPanel workspaceId={workspace.id} />
+            ) : (
+              <p className="policy-admin-panel__empty">
+                Select a workspace to view its AI policy.
               </p>
             )}
           </div>

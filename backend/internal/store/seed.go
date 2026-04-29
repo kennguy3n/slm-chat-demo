@@ -15,11 +15,11 @@ func Seed(m *Memory) {
 
 	// Users.
 	users := []models.User{
-		{ID: "user_alice", DisplayName: "Alice Chen", Email: "alice@example.com", AvatarColor: "#7c3aed"},
-		{ID: "user_bob", DisplayName: "Bob Martinez", Email: "bob@example.com", AvatarColor: "#0ea5e9"},
-		{ID: "user_carol", DisplayName: "Carol Kim", Email: "carol@example.com", AvatarColor: "#16a34a"},
-		{ID: "user_dave", DisplayName: "Dave Wilson", Email: "dave@example.com", AvatarColor: "#f97316"},
-		{ID: "user_eve", DisplayName: "Eve Johnson", Email: "eve@example.com", AvatarColor: "#dc2626"},
+		{ID: "user_alice", DisplayName: "Alice Chen", Email: "alice@example.com", AvatarColor: "#7c3aed", Active: true},
+		{ID: "user_bob", DisplayName: "Bob Martinez", Email: "bob@example.com", AvatarColor: "#0ea5e9", Active: true},
+		{ID: "user_carol", DisplayName: "Carol Kim", Email: "carol@example.com", AvatarColor: "#16a34a", Active: true},
+		{ID: "user_dave", DisplayName: "Dave Wilson", Email: "dave@example.com", AvatarColor: "#f97316", Active: true},
+		{ID: "user_eve", DisplayName: "Eve Johnson", Email: "eve@example.com", AvatarColor: "#dc2626", Active: true},
 	}
 	for _, u := range users {
 		m.PutUser(u)
@@ -127,6 +127,50 @@ func Seed(m *Memory) {
 	// Corp's vendor-management channel, plus a small library of
 	// realistic files the SourcePicker / retrieval index can show.
 	seedConnectors(m, now)
+
+	// Phase 6 — confidential server mode + enterprise hardening.
+	// Default workspace policy keeps server compute disabled so the
+	// out-of-the-box demo never silently routes off-device.
+	seedPhase6(m, now)
+}
+
+// seedPhase6 wires the default per-workspace policy, SSO config,
+// encryption key, and tenant-storage config for `ws_acme`. Each is the
+// minimum set of records the Phase 6 admin handlers expect to find on
+// boot.
+func seedPhase6(m *Memory, now time.Time) {
+	m.PutWorkspacePolicy(models.WorkspacePolicy{
+		WorkspaceID:          "ws_acme",
+		AllowServerCompute:   false,
+		ServerAllowedTasks:   []string{"draft_artifact", "prefill_approval"},
+		ServerDeniedTasks:    []string{},
+		MaxEgressBytesPerDay: 50_000_000,
+		RequireRedaction:     true,
+		UpdatedAt:            now,
+		UpdatedBy:            "user_alice",
+	})
+	m.PutSSOConfig(models.SSOConfig{
+		WorkspaceID:    "ws_acme",
+		Enabled:        false,
+		Issuer:         "https://sso.acme.example.com",
+		ClientID:       "kchat-slm-demo",
+		AllowedDomains: []string{"acme.example.com"},
+	})
+	m.PutEncryptionKey(models.TenantEncryptionKey{
+		WorkspaceID: "ws_acme",
+		KeyID:       "key_acme_seed",
+		Algorithm:   "aes-256-gcm",
+		CreatedAt:   now,
+		Active:      true,
+	})
+	m.PutTenantStorageConfig(models.TenantStorageConfig{
+		WorkspaceID:     "ws_acme",
+		DatabaseRegion:  "us-east-1",
+		StorageBucket:   "kchat-slm-demo-acme",
+		Dedicated:       false,
+		EncryptionKeyID: "key_acme_seed",
+		UpdatedAt:       now,
+	})
 }
 
 // seedConnectors loads the Phase 5 demo connector data: a single
