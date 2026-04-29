@@ -39,6 +39,7 @@ import {
   type RecipeResult,
 } from './inference/recipes/index.js';
 import type { InferenceRouter } from './inference/router.js';
+import { globalEgressTracker } from './inference/egress-tracker.js';
 import type {
   DraftArtifactRequest,
   EventRSVPRequest,
@@ -93,14 +94,20 @@ export function registerIPCHandlers(): void {
         reason: d.reason,
       };
     }
+    const computeLocation: RouteDecision['computeLocation'] =
+      d.tier === 'server' ? 'confidential_server' : 'on_device';
     return {
       decision: 'allow',
       allow: true,
       model: d.model,
       tier: d.tier,
       quant: defaultQuant,
-      computeLocation: 'on_device',
-      redactionRequired: false,
+      computeLocation,
+      // Server-routed requests will be tokenized by the redaction
+      // engine before dispatch; the actual byte count is recorded by
+      // the egress tracker after dispatch. The route decision itself
+      // only signals that redaction is required.
+      redactionRequired: d.tier === 'server',
       dataEgressBytes: 0,
       sourcesAllowed: [],
       reason: d.reason,
@@ -211,7 +218,17 @@ export function registerIPCHandlers(): void {
 
   ipcMain.handle('model:status', async () => {
     const stack = await getStack();
-    const { status, e4bStatus, defaultModel, defaultE4BModel, defaultQuant, hasE4B } = stack;
+    const {
+      status,
+      e4bStatus,
+      defaultModel,
+      defaultE4BModel,
+      defaultQuant,
+      hasE4B,
+      hasServer,
+      defaultServerModel,
+      serverUrl,
+    } = stack;
     let base;
     if (!status) {
       base = {
@@ -242,7 +259,25 @@ export function registerIPCHandlers(): void {
       e4bModel: e4bModelName,
       e4bLoaded,
       hasE4B,
+      // Phase 6 — confidential-server reporting. `serverAvailable`
+      // means the bootstrap successfully pinged the server AND the
+      // workspace policy currently permits its use; the server
+      // section in DeviceCapabilityPanel renders only when this is
+      // true.
+      serverModel: defaultServerModel,
+      serverAvailable: hasServer,
+      serverUrl: serverUrl ?? '',
     };
+  });
+
+  // Phase 6 — egress tracker. The router records into the global
+  // tracker on every server-routed inference; the renderer reads
+  // the running summary here for the EgressSummaryPanel and TopBar
+  // badge.
+  ipcMain.handle('egress:summary', () => globalEgressTracker.summary());
+  ipcMain.handle('egress:reset', () => {
+    globalEgressTracker.reset();
+    return globalEgressTracker.summary();
   });
 
   ipcMain.handle('model:load', async (_e, { model }: { model?: string }) => {

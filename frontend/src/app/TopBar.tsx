@@ -2,6 +2,8 @@ import { useNavigate } from '@tanstack/react-router';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { Workspace } from '../types/workspace';
 import { ModelStatusBadge } from '../features/ai/ModelStatusBadge';
+import { useEgressSummary } from '../features/ai/useEgressSummary';
+import { formatEgressBytes } from '../features/ai/formatEgressBytes';
 
 interface Props {
   workspaces: Workspace[];
@@ -14,6 +16,7 @@ interface Props {
 export function TopBar({ workspaces }: Props) {
   const { context, workspaceId, setWorkspaceId } = useWorkspaceStore();
   const navigate = useNavigate();
+  const egress = useEgressSummary();
 
   const switchContext = () => {
     const next = context === 'b2c' ? '/b2b' : '/b2c';
@@ -62,8 +65,12 @@ export function TopBar({ workspaces }: Props) {
         <span className="topbar__badge topbar__badge--secure" title="End-to-end encrypted">
           E2EE
         </span>
-        <span className="topbar__badge" title="Bytes leaving the device">
-          Egress 0 B
+        <span
+          className="topbar__badge"
+          title="Bytes leaving the device"
+          data-testid="topbar-egress-badge"
+        >
+          Egress {formatEgressBytes(egress?.totalBytes ?? 0)}
         </span>
         <button
           type="button"

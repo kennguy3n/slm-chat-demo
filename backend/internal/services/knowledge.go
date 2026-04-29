@@ -149,7 +149,7 @@ func extractFromMessage(msg models.Message) []models.KnowledgeEntity {
 	// "assigned to" first, then `@mention + action verb` shapes.
 	actors := extractActors(body)
 	switch {
-	case len(actors) > 0 && (containsAny(lower, ownerPatterns) || mentionActionRe.MatchString(body)):
+	case len(actors) > 0 && containsAny(lower, ownerPatterns):
 		out = append(out, makeEntity(msg, models.KnowledgeEntityKindOwner, "owner", body, actors, 0.75))
 	case len(actors) > 0 && hasActionMention(body):
 		out = append(out, makeEntity(msg, models.KnowledgeEntityKindOwner, "owner", body, actors, 0.6))
@@ -213,12 +213,18 @@ func titleFor(kind models.KnowledgeEntityKind, hit, description string) string {
 	return truncate(description, 60)
 }
 
+// truncate trims `s` and clips it to at most `max` runes (not bytes),
+// appending an ellipsis when content was dropped. Operating on runes
+// keeps multi-byte UTF-8 characters (emoji, CJK) intact rather than
+// splitting them in half — the byte-slice version produced invalid
+// UTF-8 when the cut landed inside a multi-byte rune.
 func truncate(s string, max int) string {
 	s = strings.TrimSpace(s)
-	if len(s) <= max {
+	runes := []rune(s)
+	if len(runes) <= max {
 		return s
 	}
-	return strings.TrimSpace(s[:max]) + "…"
+	return strings.TrimSpace(string(runes[:max])) + "…"
 }
 
 func matchAny(lower string, patterns []string) (bool, string) {

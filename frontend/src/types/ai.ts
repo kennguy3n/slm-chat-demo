@@ -13,6 +13,14 @@ export interface ModelStatus {
   e4bModel?: string;
   e4bLoaded?: boolean;
   hasE4B?: boolean;
+  // Phase 6 — confidential-server tier reporting. `serverAvailable`
+  // means the bootstrap successfully pinged the server AND the
+  // workspace policy currently permits its use; the
+  // DeviceCapabilityPanel renders the "Server" section only when this
+  // is true. `serverUrl` is shown for transparency.
+  serverModel?: string;
+  serverAvailable?: boolean;
+  serverUrl?: string;
 }
 
 export type ComputeLocation = 'on_device' | 'confidential_server' | 'shared_server';
@@ -57,6 +65,14 @@ export interface PrivacyStripData {
     kind: 'message' | 'thread';
     id: string;
     label: string;
+  };
+  // Phase 6 — redaction summary, populated only for server-routed
+  // outputs. The strip surfaces this as "3 items redacted (2 names,
+  // 1 email)" so the user can see what was rewritten before being
+  // sent across the wire.
+  redactionSummary?: {
+    totalRedactions: number;
+    byKind?: Record<string, number>;
   };
 }
 

@@ -66,6 +66,8 @@ const api: ElectronAI = {
   loadModel: (model) => ipcRenderer.invoke('model:load', { model }),
   unloadModel: (model) => ipcRenderer.invoke('model:unload', { model }),
   route: (req: InferenceRequest) => ipcRenderer.invoke('ai:route', req),
+  egressSummary: () => ipcRenderer.invoke('egress:summary'),
+  egressReset: () => ipcRenderer.invoke('egress:reset'),
 };
 
 contextBridge.exposeInMainWorld('electronAI', api);

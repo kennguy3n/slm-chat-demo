@@ -100,4 +100,28 @@ describe('PrivacyStrip', () => {
     renderWithProviders(<PrivacyStrip data={data} />);
     expect(screen.queryByTestId('privacy-why-toggle')).toBeNull();
   });
+
+  it('renders a redaction summary row for confidential-server outputs', () => {
+    const serverData: PrivacyStripData = {
+      ...data,
+      computeLocation: 'confidential_server',
+      dataEgressBytes: 312,
+      modelName: 'confidential-large',
+      redactionSummary: {
+        totalRedactions: 3,
+        byKind: { name: 2, email: 1 },
+      },
+    };
+    renderWithProviders(<PrivacyStrip data={serverData} />);
+    expect(screen.getByTestId('privacy-compute')).toHaveTextContent('Confidential server');
+    expect(screen.getByTestId('privacy-redaction')).toHaveTextContent(
+      /3 items redacted \(2 names, 1 email\)/,
+    );
+    expect(screen.getByTestId('privacy-egress')).toHaveTextContent('312 B');
+  });
+
+  it('does NOT render the redaction row for on-device outputs', () => {
+    renderWithProviders(<PrivacyStrip data={data} />);
+    expect(screen.queryByTestId('privacy-redaction')).toBeNull();
+  });
 });

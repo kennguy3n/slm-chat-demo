@@ -94,6 +94,51 @@ describe('DeviceCapabilityPanel', () => {
     });
   });
 
+  it('renders the confidential server section when serverAvailable=true', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse({
+        loaded: true,
+        model: 'gemma-4-e2b',
+        quant: 'q4_k_m',
+        ramUsageMB: 100,
+        sidecar: 'running',
+        serverAvailable: true,
+        serverUrl: 'http://localhost:8090',
+        serverModel: 'confidential-large',
+      }),
+    );
+    renderWithProviders(<DeviceCapabilityPanel />);
+    await waitFor(() => {
+      expect(screen.getByTestId('device-capability-server-section')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('device-capability-server-url')).toHaveTextContent(
+      'http://localhost:8090',
+    );
+    expect(screen.getByTestId('device-capability-server-model')).toHaveTextContent(
+      'confidential-large',
+    );
+    expect(screen.getByTestId('device-capability-server-status')).toHaveTextContent(
+      'Available',
+    );
+  });
+
+  it('omits the confidential server section when serverAvailable is unset', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse({
+        loaded: true,
+        model: 'gemma-4-e2b',
+        quant: 'q4_k_m',
+        ramUsageMB: 100,
+        sidecar: 'running',
+      }),
+    );
+    renderWithProviders(<DeviceCapabilityPanel />);
+    await waitFor(() => {
+      expect(screen.getByTestId('device-capability-model')).toHaveTextContent('gemma-4-e2b');
+    });
+    expect(screen.queryByTestId('device-capability-server-section')).not.toBeInTheDocument();
+  });
+
   it('clicking "Unload model" POSTs to /api/model/unload', async () => {
     fetchSpy
       .mockResolvedValueOnce(

@@ -93,6 +93,44 @@ describe('PermissionPreview', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it('renders ACL details for files when the connector file carries an acl array', () => {
+    const filesWithACL: ConnectorFile[] = [
+      {
+        ...FILES[0],
+        acl: ['user_alice', 'user_bob', 'user_dave'],
+      },
+    ];
+    render(
+      <PermissionPreview
+        sources={SOURCES}
+        connectorFiles={filesWithACL}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const aclLine = screen.getByTestId(
+      'permission-preview-acl-f-file_acme_q3_prd',
+    );
+    expect(aclLine).toHaveTextContent(/3 users/);
+    expect(aclLine).toHaveTextContent(/user_alice/);
+    expect(aclLine).toHaveTextContent(/user_bob/);
+  });
+
+  it('renders an "ungated" ACL hint when the file ACL is the empty array', () => {
+    const filesUngated: ConnectorFile[] = [{ ...FILES[0], acl: [] }];
+    render(
+      <PermissionPreview
+        sources={SOURCES}
+        connectorFiles={filesUngated}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByTestId('permission-preview-acl-f-file_acme_q3_prd'),
+    ).toHaveTextContent(/ungated/);
+  });
+
   it('confirm is disabled when there are no sources', () => {
     render(
       <PermissionPreview

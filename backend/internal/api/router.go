@@ -143,6 +143,7 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/connectors/{id}/channels", connH.Attach)
 		r.Delete("/connectors/{id}/channels/{channelId}", connH.Detach)
 		r.Get("/channels/{channelId}/connector-files", connH.ChannelFiles)
+		r.Post("/connectors/{id}/sync-acl", connH.SyncACL)
 
 		// Retrieval — Phase 5 per-channel keyword index. The
 		// renderer (re-)indexes a channel before running an AI

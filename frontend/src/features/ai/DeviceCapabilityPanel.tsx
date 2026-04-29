@@ -99,6 +99,35 @@ export function DeviceCapabilityPanel() {
         <dt>WebGPU</dt>
         <dd data-testid="device-capability-webgpu">{webgpu}</dd>
       </dl>
+      {s.serverAvailable && (
+        <section
+          className="device-capability-panel__server"
+          data-testid="device-capability-server-section"
+        >
+          <h4 className="device-capability-panel__subtitle">
+            Confidential server
+          </h4>
+          <dl className="device-capability-panel__grid">
+            <dt>Server URL</dt>
+            <dd data-testid="device-capability-server-url">
+              {s.serverUrl || 'unknown'}
+            </dd>
+            <dt>Server model</dt>
+            <dd data-testid="device-capability-server-model">
+              {s.serverModel ?? '—'}
+            </dd>
+            <dt>Status</dt>
+            <dd>
+              <span
+                className="device-capability-panel__badge device-capability-panel__badge--loaded"
+                data-testid="device-capability-server-status"
+              >
+                Available
+              </span>
+            </dd>
+          </dl>
+        </section>
+      )}
       <div className="device-capability-panel__actions">
         <button
           type="button"

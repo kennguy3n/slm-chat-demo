@@ -17,6 +17,10 @@ interface SummaryRow {
   kind: 'channel' | 'thread' | 'file';
   label: string;
   detail?: string;
+  // For 'file' rows we surface the file's machine-readable ACL so
+  // the user can see *who else* will be able to read the file when
+  // it gets fed to the AI Employee. Empty list means "ungated".
+  acl?: string[];
 }
 
 // PermissionPreview renders the "AI will read from…" sheet that fires
@@ -67,6 +71,7 @@ export function PermissionPreview({
           kind: 'file',
           label: s.name,
           detail: connectorName,
+          acl: file?.acl,
         });
       }
     }
@@ -111,6 +116,18 @@ export function PermissionPreview({
             <span className="permission-preview__label">{r.label}</span>
             {r.detail && (
               <span className="permission-preview__detail">{r.detail}</span>
+            )}
+            {r.kind === 'file' && r.acl !== undefined && (
+              <span
+                className="permission-preview__acl"
+                data-testid={`permission-preview-acl-${r.key}`}
+              >
+                {r.acl.length === 0
+                  ? 'ACL: ungated (sync to gate)'
+                  : `ACL: ${r.acl.length} ${
+                      r.acl.length === 1 ? 'user' : 'users'
+                    } — ${r.acl.join(', ')}`}
+              </span>
             )}
           </li>
         ))}

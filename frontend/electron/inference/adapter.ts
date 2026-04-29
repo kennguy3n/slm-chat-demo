@@ -31,6 +31,12 @@ export interface InferenceRequest {
   prompt?: string;
   channelId?: string;
   maxTokens?: number;
+  // Phase 6 — explicit tier selection so the dispatcher can ask for
+  // server compute (e.g. user-toggled "Confidential Server" mode).
+  // The router gates this on workspace policy + adapter availability;
+  // requests for a tier the router cannot satisfy refuse with a clear
+  // reason rather than silently downgrading.
+  tier?: Tier;
 }
 
 export interface InferenceResponse {
@@ -54,9 +60,15 @@ export interface ModelStatus {
   quant: string;
   ramUsageMB: number;
   sidecar: string;
+  // Phase 6 — confidential-server tier reporting. Populated by the
+  // model-status IPC handler when the bootstrap successfully pinged
+  // the server. Renderer reads these via `window.electronAI.modelStatus`.
+  serverModel?: string;
+  serverAvailable?: boolean;
+  serverUrl?: string;
 }
 
-export type Tier = 'e2b' | 'e4b';
+export type Tier = 'e2b' | 'e4b' | 'server';
 
 export interface RouteDecision {
   decision: 'allow' | 'deny';
@@ -73,11 +85,20 @@ export interface RouteDecision {
 
 // Adapter is the contract every inference backend implements. The
 // router (`router.ts`) is itself an Adapter, dispatching to a tier-
-// specific concrete adapter (`OllamaAdapter` or `MockAdapter`).
+// specific concrete adapter (`OllamaAdapter`, `MockAdapter`, or the
+// Phase 6 `ConfidentialServerAdapter`).
 export interface Adapter {
   name(): string;
   run(req: InferenceRequest, signal?: AbortSignal): Promise<InferenceResponse>;
   stream(req: InferenceRequest, signal?: AbortSignal): AsyncGenerator<StreamChunk, void, void>;
+}
+
+// ConfidentialServerAdapter is the optional capability surface a
+// Phase 6 server-tier adapter exposes. It carries the configured
+// server URL so the router / privacy strip can show *where* data
+// would go before the user confirms a server-bound action.
+export interface ConfidentialServerAdapter extends Adapter {
+  readonly serverURL: string;
 }
 
 // Optional capability surfaces — implemented by adapters that can
@@ -434,4 +455,28 @@ export interface ElectronAI {
   loadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
   unloadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
   route(req: InferenceRequest): Promise<RouteDecision>;
+  // Phase 6 — running tally of bytes that have left the device for
+  // the confidential server. The renderer's `EgressSummaryPanel` and
+  // the TopBar egress badge both read from here. Falls back to a
+  // zero-state value when no Electron bridge is present.
+  egressSummary(): Promise<EgressSummaryResult>;
+  egressReset(): Promise<EgressSummaryResult>;
+}
+
+export interface EgressSummaryEntry {
+  timestamp: number;
+  taskType: TaskType;
+  egressBytes: number;
+  redactionCount: number;
+  model: string;
+  channelId?: string;
+}
+
+export interface EgressSummaryResult {
+  totalBytes: number;
+  totalRequests: number;
+  totalRedactions: number;
+  byChannel: Record<string, { bytes: number; requests: number }>;
+  byModel: Record<string, { bytes: number; requests: number }>;
+  recent: EgressSummaryEntry[];
 }

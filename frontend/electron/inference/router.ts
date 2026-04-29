@@ -17,6 +17,13 @@ import type {
   TaskType,
   Tier,
 } from './adapter.js';
+import { globalEgressTracker, type EgressTracker } from './egress-tracker.js';
+import {
+  DefaultRedactionPolicy,
+  RedactionEngine,
+  type RedactionPolicy,
+  type TokenizedText,
+} from './redaction.js';
 
 export interface Decision {
   allow: boolean;
@@ -43,6 +50,19 @@ export interface RouterOptions {
   // if `adapters.e4b` is populated, so the UI / privacy strip can show
   // the user that they are running on E2B.
   hasRealE4B?: boolean;
+  // Phase 6 — workspace policy gate for the confidential-server tier.
+  // Even if a server adapter is wired, the router refuses to route
+  // server-bound requests when this is false. Default false.
+  policyAllowsServer?: boolean;
+  // Default model name reported when a server-routed request does not
+  // specify one. Set by the bootstrap to mirror the server's advertised
+  // model.
+  defaultServerModel?: string;
+  // Optional overrides for the redaction engine + egress tracker.
+  // Tests inject a fresh tracker / engine to avoid global state.
+  redactionEngine?: RedactionEngine;
+  redactionPolicy?: RedactionPolicy;
+  egressTracker?: EgressTracker;
 }
 
 export class InferenceRouter implements Adapter {
@@ -50,6 +70,11 @@ export class InferenceRouter implements Adapter {
   private fallback: Adapter | null;
   private last: Decision = { allow: false, model: '', reason: '' };
   private realE4B: boolean;
+  private policyAllowsServer: boolean;
+  private defaultServerModel: string;
+  private redaction: RedactionEngine;
+  private redactionPolicy: RedactionPolicy;
+  private egressTracker: EgressTracker;
 
   constructor(
     e2b: Adapter | null,
@@ -64,6 +89,21 @@ export class InferenceRouter implements Adapter {
     // unless the caller overrides. The bootstrap always sets the flag
     // explicitly so existing callers (tests) keep their semantics.
     this.realE4B = opts.hasRealE4B ?? Boolean(e4b);
+    this.policyAllowsServer = opts.policyAllowsServer ?? false;
+    this.defaultServerModel = opts.defaultServerModel ?? 'confidential-large';
+    this.redaction = opts.redactionEngine ?? new RedactionEngine();
+    this.redactionPolicy = opts.redactionPolicy ?? DefaultRedactionPolicy;
+    this.egressTracker = opts.egressTracker ?? globalEgressTracker;
+  }
+
+  // attachServer wires a Phase 6 ConfidentialServerAdapter as the
+  // third tier. Bootstrap calls this after a successful health-ping
+  // so the router only exposes a server tier when the host is
+  // reachable AND workspace policy permits it.
+  attachServer(adapter: Adapter, opts: { policyAllows?: boolean; model?: string } = {}): void {
+    this.adapters.server = adapter;
+    if (opts.policyAllows !== undefined) this.policyAllowsServer = opts.policyAllows;
+    if (opts.model) this.defaultServerModel = opts.model;
   }
 
   // hasE4B reports whether the router can route to a real E4B-class
@@ -71,6 +111,14 @@ export class InferenceRouter implements Adapter {
   // handler and DeviceCapabilityPanel use this to drive UI state.
   hasE4B(): boolean {
     return this.realE4B && Boolean(this.adapters.e4b);
+  }
+
+  // hasServer reports whether the router has a confidential-server
+  // adapter wired AND the workspace policy currently permits its
+  // use. Both conditions must hold before any server-bound request
+  // will be allowed.
+  hasServer(): boolean {
+    return Boolean(this.adapters.server) && this.policyAllowsServer;
   }
 
   name(): string {
@@ -82,8 +130,41 @@ export class InferenceRouter implements Adapter {
   }
 
   decide(req: InferenceRequest): Decision {
+    // Server-tier gate: an explicit `tier === 'server'` (set by the
+    // "Confidential Server" UI mode) or a model hint mentioning
+    // 'confidential' both target the server. The router refuses
+    // server-bound requests when no server adapter is wired or when
+    // workspace policy does not permit server compute.
+    const wantsServer =
+      req.tier === 'server' ||
+      Boolean(req.model && req.model.toLowerCase().includes('confidential'));
+    if (wantsServer) {
+      if (!this.adapters.server) {
+        return {
+          allow: false,
+          model: req.model ?? '',
+          reason: 'confidential server unreachable; refusing to route',
+        };
+      }
+      if (!this.policyAllowsServer) {
+        return {
+          allow: false,
+          model: req.model ?? '',
+          reason: 'workspace policy does not allow confidential-server compute',
+        };
+      }
+      return {
+        allow: true,
+        model: req.model || this.defaultServerModel,
+        tier: 'server',
+        reason: `Routed "${req.taskType}" to confidential server (policy permits server compute).`,
+      };
+    }
+
     let pref = taskPreference(req.taskType);
-    if (req.model) {
+    if (req.tier === 'e2b' || req.tier === 'e4b') {
+      pref = req.tier;
+    } else if (req.model) {
       pref = req.model.toLowerCase().includes('e4b') ? 'e4b' : 'e2b';
     }
 
@@ -139,6 +220,7 @@ export class InferenceRouter implements Adapter {
 
   private resolveAdapter(d: Decision): Adapter | null {
     if (!d.tier) return null;
+    if (d.tier === 'server') return this.adapters.server ?? null;
     return this.adapters[d.tier] || (d.tier === 'e4b' ? this.adapters.e2b : null) || this.fallback;
   }
 
@@ -148,6 +230,20 @@ export class InferenceRouter implements Adapter {
     if (!d.allow) throw new Error(d.reason);
     const adapter = this.resolveAdapter(d);
     if (!adapter) throw new Error('router: no adapter resolved');
+    if (d.tier === 'server') {
+      // Server-routed: tokenize prompt before dispatch, detokenize
+      // response, record egress entry. The tokenized prompt is the
+      // ONLY representation that ever crosses the network.
+      const tok = this.redaction.tokenize(req.prompt ?? '', this.redactionPolicy);
+      const resp = await adapter.run(
+        { ...req, model: d.model, prompt: tok.text },
+        signal,
+      );
+      if (!resp.model) resp.model = d.model;
+      resp.output = this.redaction.detokenize(resp.output ?? '', tok.mapping);
+      this.recordServerEgress(req, d.model, tok);
+      return resp;
+    }
     const resp = await adapter.run({ ...req, model: d.model }, signal);
     if (!resp.model) resp.model = d.model;
     return resp;
@@ -162,6 +258,42 @@ export class InferenceRouter implements Adapter {
     if (!d.allow) throw new Error(d.reason);
     const adapter = this.resolveAdapter(d);
     if (!adapter) throw new Error('router: no adapter resolved');
+    if (d.tier === 'server') {
+      // Stream variant: tokenize once, detokenize each chunk's
+      // delta as it arrives. Tokens are short and unique so a
+      // simple split/join is safe.
+      const tok = this.redaction.tokenize(req.prompt ?? '', this.redactionPolicy);
+      this.recordServerEgress(req, d.model, tok);
+      for await (const chunk of adapter.stream(
+        { ...req, model: d.model, prompt: tok.text },
+        signal,
+      )) {
+        if (chunk.delta) {
+          chunk.delta = this.redaction.detokenize(chunk.delta, tok.mapping);
+        }
+        yield chunk;
+      }
+      return;
+    }
     yield* adapter.stream({ ...req, model: d.model }, signal);
+  }
+
+  // recordServerEgress writes a single entry to the egress tracker
+  // describing exactly what wire bytes left the device. The router
+  // uses this for both run() and stream() so the privacy strip's
+  // "egress" counter never undercounts streaming dispatches.
+  private recordServerEgress(
+    req: InferenceRequest,
+    model: string,
+    tok: TokenizedText,
+  ): void {
+    this.egressTracker.record({
+      timestamp: Date.now(),
+      taskType: req.taskType,
+      egressBytes: tok.egressBytes,
+      redactionCount: tok.redactions.length,
+      model,
+      channelId: req.channelId,
+    });
   }
 }

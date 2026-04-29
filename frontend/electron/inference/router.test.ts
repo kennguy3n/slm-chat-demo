@@ -163,4 +163,115 @@ describe('InferenceRouter', () => {
     expect(dec.tier).toBe('e4b');
     expect(dec.reason).toContain('E4B');
   });
+
+  describe('confidential server tier', () => {
+    it('refuses server-bound requests when no server adapter is wired', () => {
+      const e2b = new StubAdapter('e2b-stub');
+      const router = new InferenceRouter(e2b, e2b, null, { hasRealE4B: false });
+      expect(router.hasServer()).toBe(false);
+      const dec = router.decide({ taskType: 'summarize', tier: 'server' });
+      expect(dec.allow).toBe(false);
+      expect(dec.reason).toMatch(/unreachable/i);
+    });
+
+    it('refuses server-bound requests when policy denies even if adapter is wired', () => {
+      const e2b = new StubAdapter('e2b-stub');
+      const server = new StubAdapter('server-stub');
+      const router = new InferenceRouter(e2b, e2b, null, { hasRealE4B: false });
+      router.attachServer(server, { policyAllows: false });
+      expect(router.hasServer()).toBe(false);
+      const dec = router.decide({ taskType: 'summarize', tier: 'server' });
+      expect(dec.allow).toBe(false);
+      expect(dec.reason).toMatch(/policy/i);
+    });
+
+    it('routes server-bound requests when adapter wired AND policy allows', async () => {
+      const e2b = new StubAdapter('e2b-stub');
+      const server = new StubAdapter('server-stub');
+      const router = new InferenceRouter(e2b, e2b, null, {
+        hasRealE4B: false,
+        policyAllowsServer: true,
+        defaultServerModel: 'confidential-large',
+      });
+      router.attachServer(server, { policyAllows: true });
+      expect(router.hasServer()).toBe(true);
+      const dec = router.decide({ taskType: 'summarize', tier: 'server' });
+      expect(dec.allow).toBe(true);
+      expect(dec.tier).toBe('server');
+      expect(dec.model).toBe('confidential-large');
+      expect(dec.reason).toMatch(/confidential server/i);
+    });
+
+    it('tokenizes prompt before dispatch and detokenizes the response', async () => {
+      const server = new StubAdapter('server-stub');
+      // Override server stub to echo prompt → output so we can
+      // observe what the adapter actually saw.
+      server.run = async (req: InferenceRequest): Promise<InferenceResponse> => {
+        server.lastReq = req;
+        return {
+          taskType: req.taskType,
+          model: req.model || 'server',
+          output: req.prompt ?? '',
+          tokensUsed: 1,
+          latencyMs: 1,
+          onDevice: false,
+        };
+      };
+      const router = new InferenceRouter(null, null, null, {
+        hasRealE4B: false,
+        policyAllowsServer: true,
+      });
+      router.attachServer(server, { policyAllows: true });
+
+      const resp = await router.run({
+        taskType: 'summarize',
+        tier: 'server',
+        prompt: 'Email me at alice@acme.com please',
+      });
+
+      // The wire (server.lastReq) should have contained the
+      // tokenized form, NOT the original email.
+      expect(server.lastReq?.prompt).not.toContain('alice@acme.com');
+      expect(server.lastReq?.prompt).toMatch(/\[EMAIL_1\]/);
+      // The response (which echoes the prompt) should have been
+      // detokenized back to the original.
+      expect(resp.output).toContain('alice@acme.com');
+    });
+
+    it('records an egress entry into the supplied tracker on every server-routed run', async () => {
+      const { EgressTracker } = await import('./egress-tracker.js');
+      const tracker = new EgressTracker();
+      const server = new StubAdapter('server-stub');
+      const router = new InferenceRouter(null, null, null, {
+        hasRealE4B: false,
+        policyAllowsServer: true,
+        egressTracker: tracker,
+      });
+      router.attachServer(server, { policyAllows: true });
+
+      await router.run({
+        taskType: 'summarize',
+        tier: 'server',
+        channelId: 'ch_engineering',
+        prompt: 'no PII here',
+      });
+      const sum = tracker.summary();
+      expect(sum.totalRequests).toBe(1);
+      expect(sum.totalBytes).toBeGreaterThan(0);
+      expect(sum.byChannel.ch_engineering.requests).toBe(1);
+    });
+
+    it('falls through to local tier when request does not request server', () => {
+      const e2b = new StubAdapter('e2b-stub');
+      const server = new StubAdapter('server-stub');
+      const router = new InferenceRouter(e2b, e2b, null, {
+        hasRealE4B: false,
+        policyAllowsServer: true,
+      });
+      router.attachServer(server, { policyAllows: true });
+      const dec = router.decide({ taskType: 'summarize', prompt: 'hello' });
+      expect(dec.allow).toBe(true);
+      expect(dec.tier).toBe('e2b');
+    });
+  });
 });

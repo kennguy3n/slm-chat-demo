@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/kennguy3n/slm-chat-demo/backend/internal/api/userctx"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/services"
 )
 
@@ -27,10 +28,17 @@ func NewRetrieval(s *services.RetrievalService) *Retrieval {
 	return &Retrieval{svc: s}
 }
 
-// Index handles POST /api/channels/{channelId}/index.
+// Index handles POST /api/channels/{channelId}/index. The retrieval
+// index gates connector-file chunks on the authenticated user's ACL
+// so re-indexing as a different user produces a different visible
+// chunk set.
 func (h *Retrieval) Index(w http.ResponseWriter, r *http.Request) {
 	channelID := chi.URLParam(r, "channelId")
-	count, err := h.svc.IndexChannel(channelID)
+	userID := ""
+	if u, ok := userctx.From(r.Context()); ok {
+		userID = u.ID
+	}
+	count, err := h.svc.IndexChannel(channelID, userID)
 	if err != nil {
 		h.mapError(w, err)
 		return
@@ -51,7 +59,11 @@ func (h *Retrieval) Search(w http.ResponseWriter, r *http.Request) {
 			topK = n
 		}
 	}
-	results, err := h.svc.Search(channelID, query, topK)
+	userID := ""
+	if u, ok := userctx.From(r.Context()); ok {
+		userID = u.ID
+	}
+	results, err := h.svc.Search(channelID, query, userID, topK)
 	if err != nil {
 		h.mapError(w, err)
 		return

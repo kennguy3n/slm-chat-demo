@@ -67,6 +67,21 @@ export async function attachConnectorToChannel(
   return data.connector;
 }
 
+// syncConnectorACL refreshes the machine-readable ACL on every file
+// in the connector. Phase 5 ships a mock that derives ACL from the
+// human-readable permission strings; real OAuth sync ships in
+// Phase 6+. The handler returns the updated file list so the
+// PermissionPreview can re-render without a follow-up fetch.
+export async function syncConnectorACL(
+  connectorId: string,
+): Promise<ConnectorFile[]> {
+  const data = await apiFetch<{ connectorId: string; files: ConnectorFile[] }>(
+    `/api/connectors/${encodeURIComponent(connectorId)}/sync-acl`,
+    { method: 'POST' },
+  );
+  return data.files;
+}
+
 export async function detachConnectorFromChannel(
   connectorId: string,
   channelId: string,

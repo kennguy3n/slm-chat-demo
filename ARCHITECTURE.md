@@ -586,6 +586,45 @@ Unsloth Studio, or a confidential server runtime in later phases.
 Works on any laptop with enough RAM for E2B/E4B and does not depend
 on browser GPU support.
 
+### 4.1b Confidential server tier (Phase 6)
+
+Phase 6 adds a third tier to the router. `ConfidentialServerAdapter`
+(`frontend/electron/inference/confidential-server.ts`) implements the
+same `Adapter` contract as `OllamaAdapter` but POSTs to a configurable
+`CONFIDENTIAL_SERVER_URL` (default `http://localhost:8090`) instead of
+the local Ollama daemon. Streams use NDJSON like the Ollama path; every
+response carries `onDevice: false` so the renderer can flag the egress.
+
+The router tracks server availability with a private `serverAdapter` slot
+plus a `policyAllowsServer` flag. `decide()` selects the server tier when
+the request explicitly asks for it (`req.tier === 'server'` or
+`req.model` contains "confidential") AND `hasServer()` returns true
+(both adapter wired AND policy allows). When either gate fails, the
+router refuses with a clear reason — never a silent local fallback —
+because PROPOSAL.md §4.3 requires the user to know whenever data is
+about to leave the device.
+
+`bootstrap.ts` pings `${url}/v1/health` on startup with a 500 ms timeout.
+Probing is gated behind `CONFIDENTIAL_SERVER_POLICY=allow`; without that
+env var the bootstrap skips the probe and the server tier stays
+unavailable. The probe is wired through an injectable `pingServer`
+override so unit tests can drive both reachable and unreachable
+branches.
+
+Before dispatching to the server, the router calls
+`RedactionEngine.tokenize(prompt, policy)`. The wire prompt only ever
+carries `[EMAIL_n]` / `[PHONE_n]` / `[SSN_n]` / `[NAME_n]` placeholders;
+the original PII never leaves the device. The response is
+`detokenize`d before being returned to the renderer, and stream deltas
+are detokenized chunk-by-chunk. After every server-routed run / stream,
+the router records an `EgressEntry` into `globalEgressTracker` with
+`{ timestamp, taskType, egressBytes, redactionCount, model, channelId }`,
+where `egressBytes` is the UTF-8 byte length of the tokenized prompt.
+
+The `model:status` IPC reports `serverModel` / `serverAvailable` /
+`serverUrl`; `DeviceCapabilityPanel` renders a "Confidential server"
+sub-section behind that flag.
+
 ### 4.2 Browser-local path (future)
 
 WebGPU inference where supported. Gemma 4 is designed for browser deployment, so
@@ -648,6 +687,30 @@ to run it, what to redact, and which sources are allowed. It is invoked by
 stricter compute location, or a reduced source set. `data_egress_bytes` is `0`
 when the call is fully on-device and is shown to the user via `PrivacyStrip`
 before they run the action.
+
+### 5.3 Redaction engine (Phase 6)
+
+`frontend/electron/inference/redaction.ts` implements the redaction
+component of the policy engine. The `RedactionEngine` exposes three
+operations: `tokenize` (reversible — replaces detected PII with
+numbered placeholder tokens like `[EMAIL_1]` and stores a
+`Record<token, original>` mapping), `redact` (non-reversible — replaces
+detections with a flat `[REDACTED]` literal), and `detokenize`
+(restores originals using the mapping). The engine ships built-in
+patterns for emails, US phone numbers, SSN-shaped strings, and
+two-word capitalized names; a `RedactionPolicy` lets callers turn each
+category on or off independently and add `customPatterns` for tenant-
+specific spans (e.g. account IDs).
+
+The router (4.1b) is the only consumer: every server-routed run or
+stream tokenizes the prompt before dispatch and detokenizes the
+response on the way back. Because the response can shuffle token order
+or interleave them with new text, `detokenize` walks the mapping in
+descending token-length order so `[EMAIL_10]` is never accidentally
+clobbered by a substring match against `[EMAIL_1]`. UTF-8 byte length
+(`utf8ByteLength`) drives the egress-byte counter so reported bytes
+match wire bytes — JS code units would over-count for multi-byte
+content like Japanese.
 
 ---
 
@@ -771,3 +834,31 @@ satisfy all eight.
 8. **Keep server plaintext out of logs.** Logs redact message bodies, artifact
    contents, and AI prompts/outputs; only structural metadata (IDs, sizes,
    model names, decisions) is logged.
+
+### 7.1 Egress tracker (Phase 6)
+
+`frontend/electron/inference/egress-tracker.ts` makes rule 5 auditable
+in the UI. The `EgressTracker` is a process-wide singleton
+(`globalEgressTracker`) that the router writes to on every server-
+routed inference. Each `EgressEntry` carries
+`{ timestamp, taskType, egressBytes, redactionCount, model, channelId }`,
+where `egressBytes` is the UTF-8 byte length of the *tokenized* prompt
+— i.e. the bytes that actually went on the wire, not the bytes the
+user typed.
+
+`summary()` returns a snapshot with running totals plus aggregated
+breakdowns by channel and by model, and a newest-first `recent`
+window (the last 100 entries). `reset()` clears the state, gated
+behind an explicit user click in the panel. The tracker caps internal
+storage at four times the recent window so a long-running session
+doesn't grow unbounded.
+
+The renderer reads via two new IPC channels — `egress:summary` and
+`egress:reset` — exposed on the preload bridge as
+`window.electronAI.egressSummary()` and `egressReset()`. The
+`EgressSummaryPanel` component renders a prominent "0 B" zero-state
+when the tracker is empty (the privacy-positive default), then totals
++ per-channel + per-model + a recent-activity timeline + a Reset
+button when populated. The TopBar's existing "Egress" badge now reads
+from the live tracker via `useEgressSummary` instead of the previous
+hardcoded `0 B`.
