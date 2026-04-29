@@ -142,6 +142,8 @@ export async function bootstrapInference(
     hasRealE4B: hasE4B,
     policyAllowsServer,
     defaultServerModel: serverModel,
+    defaultE2BModel: e2bModel,
+    defaultE4BModel: e4bModel,
   });
 
   // Probe the confidential server. Reachable AND policy-allowed →

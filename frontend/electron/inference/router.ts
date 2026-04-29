@@ -58,6 +58,14 @@ export interface RouterOptions {
   // specify one. Set by the bootstrap to mirror the server's advertised
   // model.
   defaultServerModel?: string;
+  // Default model names reported in `decide()` when the request does
+  // not specify one. The bootstrap passes the env-resolved
+  // `E2B_MODEL` / `E4B_MODEL` values so an operator-configured alias
+  // (e.g. `E4B_MODEL=my-custom-alias`) is reflected in the router's
+  // decision and therefore in the adapter request, rather than being
+  // silently overwritten by a hard-coded default.
+  defaultE2BModel?: string;
+  defaultE4BModel?: string;
   // Optional overrides for the redaction engine + egress tracker.
   // Tests inject a fresh tracker / engine to avoid global state.
   redactionEngine?: RedactionEngine;
@@ -72,6 +80,8 @@ export class InferenceRouter implements Adapter {
   private realE4B: boolean;
   private policyAllowsServer: boolean;
   private defaultServerModel: string;
+  private defaultE2BModel: string;
+  private defaultE4BModel: string;
   private redaction: RedactionEngine;
   private redactionPolicy: RedactionPolicy;
   private egressTracker: EgressTracker;
@@ -91,6 +101,8 @@ export class InferenceRouter implements Adapter {
     this.realE4B = opts.hasRealE4B ?? Boolean(e4b);
     this.policyAllowsServer = opts.policyAllowsServer ?? false;
     this.defaultServerModel = opts.defaultServerModel ?? 'confidential-large';
+    this.defaultE2BModel = opts.defaultE2BModel ?? 'ternary-bonsai-8b';
+    this.defaultE4BModel = opts.defaultE4BModel ?? this.defaultE2BModel;
     this.redaction = opts.redactionEngine ?? new RedactionEngine();
     this.redactionPolicy = opts.redactionPolicy ?? DefaultRedactionPolicy;
     this.egressTracker = opts.egressTracker ?? globalEgressTracker;
@@ -175,7 +187,7 @@ export class InferenceRouter implements Adapter {
     const { tier, reason } = picked;
     let model = req.model;
     if (!model) {
-      model = 'ternary-bonsai-8b';
+      model = tier === 'e4b' ? this.defaultE4BModel : this.defaultE2BModel;
     }
     return { allow: true, model, tier, reason };
   }

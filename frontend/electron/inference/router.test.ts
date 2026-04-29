@@ -164,6 +164,34 @@ describe('InferenceRouter', () => {
     expect(dec.reason).toContain('E4B');
   });
 
+  it('respects defaultE2BModel / defaultE4BModel overrides in decide()', async () => {
+    const e2b = new StubAdapter('e2b-stub');
+    const e4b = new StubAdapter('e4b-stub');
+    const router = new InferenceRouter(e2b, e4b, null, {
+      hasRealE4B: true,
+      defaultE2BModel: 'custom-e2b',
+      defaultE4BModel: 'custom-e4b',
+    });
+    const e2bDec = router.decide({ taskType: 'smart_reply', prompt: 'hi' });
+    expect(e2bDec.tier).toBe('e2b');
+    expect(e2bDec.model).toBe('custom-e2b');
+    const e4bDec = router.decide({ taskType: 'draft_artifact', prompt: 'spec' });
+    expect(e4bDec.tier).toBe('e4b');
+    expect(e4bDec.model).toBe('custom-e4b');
+  });
+
+  it('passes the configured E4B default through to the adapter on run()', async () => {
+    const e2b = new StubAdapter('e2b-stub');
+    const e4b = new StubAdapter('e4b-stub');
+    const router = new InferenceRouter(e2b, e4b, null, {
+      hasRealE4B: true,
+      defaultE2BModel: 'ternary-bonsai-8b',
+      defaultE4BModel: 'ternary-bonsai-8b-alt',
+    });
+    await router.run({ taskType: 'draft_artifact', prompt: 'spec' });
+    expect(e4b.lastReq?.model).toBe('ternary-bonsai-8b-alt');
+  });
+
   describe('confidential server tier', () => {
     it('refuses server-bound requests when no server adapter is wired', () => {
       const e2b = new StubAdapter('e2b-stub');

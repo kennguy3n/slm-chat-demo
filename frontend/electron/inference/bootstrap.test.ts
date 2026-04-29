@@ -96,7 +96,11 @@ describe('bootstrapInference', () => {
 
     const dec = stack.router.decide({ taskType: 'draft_artifact', prompt: 'p' });
     expect(dec.tier).toBe('e4b');
-    expect(dec.model).toBe('ternary-bonsai-8b');
+    // The router now reports the env-resolved E4B_MODEL as the
+    // default model name for E4B-routed decisions, so an operator
+    // pulling a custom high-tier alias sees it surfaced in the
+    // privacy strip and passed through to the adapter.
+    expect(dec.model).toBe('ternary-bonsai-8b-alt');
     expect(dec.reason).toContain('E4B');
   });
 
