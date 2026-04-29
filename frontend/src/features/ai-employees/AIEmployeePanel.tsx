@@ -393,7 +393,7 @@ export function AIEmployeePanel({ employee, channels, recipeCatalog, onChange }:
             result: {
               status: 'ok',
               output: run.resultSummary ?? '(no summary available)',
-              model: 'gemma-4-e2b',
+              model: 'ternary-bonsai-8b',
               tier: 'e2b',
               reason:
                 'Drafted on-device. Review before anything is written to the workspace.',

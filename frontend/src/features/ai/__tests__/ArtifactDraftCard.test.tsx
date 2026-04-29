@@ -16,7 +16,7 @@ const sample: DraftArtifactResponse = {
   artifactType: 'PRD',
   section: 'all',
   title: 'PRD: Inline translation',
-  model: 'gemma-4-e4b',
+  model: 'ternary-bonsai-8b',
   tier: 'e4b',
   reason: 'Drafting a PRD benefits from E4B reasoning.',
   messageCount: 2,

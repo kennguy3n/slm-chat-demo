@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bootstrapInference } from './bootstrap.js';
 
 // makeFetch returns a fake fetch that handles the two endpoints the
@@ -30,7 +30,24 @@ function makeFetch(opts: {
   }) as typeof fetch;
 }
 
+// The default on-device model covers both the E2B and E4B tier slots.
+// Tests that want to exercise the "E4B fallback to E2B" branch override
+// `E4B_MODEL` to a distinct alias and then control which aliases the
+// fake daemon reports as pulled.
 describe('bootstrapInference', () => {
+  const ORIGINAL_E4B = process.env.E4B_MODEL;
+  const ORIGINAL_E2B = process.env.E2B_MODEL;
+  beforeEach(() => {
+    delete process.env.E2B_MODEL;
+    delete process.env.E4B_MODEL;
+  });
+  afterEach(() => {
+    if (ORIGINAL_E2B === undefined) delete process.env.E2B_MODEL;
+    else process.env.E2B_MODEL = ORIGINAL_E2B;
+    if (ORIGINAL_E4B === undefined) delete process.env.E4B_MODEL;
+    else process.env.E4B_MODEL = ORIGINAL_E4B;
+  });
+
   it('falls back to mock adapters when ollama is unreachable', async () => {
     const stack = await bootstrapInference({ fetchImpl: makeFetch({ pingOk: false }) });
     expect(stack.source).toBe('mock');
@@ -40,9 +57,12 @@ describe('bootstrapInference', () => {
     expect(stack.e4bStatus).toBeUndefined();
   });
 
-  it('wires a single ollama adapter for both tiers when only e2b is pulled', async () => {
+  it('wires a single ollama adapter for both tiers when the E4B-specific alias is not pulled', async () => {
+    // Force the bootstrap to look for a distinct E4B alias so the
+    // fallback branch is exercised.
+    process.env.E4B_MODEL = 'ternary-bonsai-8b-alt';
     const stack = await bootstrapInference({
-      fetchImpl: makeFetch({ pingOk: true, tagModels: ['gemma-4-e2b'] }),
+      fetchImpl: makeFetch({ pingOk: true, tagModels: ['ternary-bonsai-8b'] }),
     });
     expect(stack.source).toBe('ollama');
     expect(stack.hasE4B).toBe(false);
@@ -58,11 +78,12 @@ describe('bootstrapInference', () => {
     expect(dec.reason).toMatch(/fallback to E2B/i);
   });
 
-  it('wires two ollama adapters when both e2b and e4b are pulled', async () => {
+  it('wires two ollama adapters when both the E2B and E4B aliases are pulled', async () => {
+    process.env.E4B_MODEL = 'ternary-bonsai-8b-alt';
     const stack = await bootstrapInference({
       fetchImpl: makeFetch({
         pingOk: true,
-        tagModels: ['gemma-4-e2b', 'gemma-4-e4b:latest'],
+        tagModels: ['ternary-bonsai-8b', 'ternary-bonsai-8b-alt:latest'],
       }),
     });
     expect(stack.source).toBe('ollama');
@@ -75,20 +96,37 @@ describe('bootstrapInference', () => {
 
     const dec = stack.router.decide({ taskType: 'draft_artifact', prompt: 'p' });
     expect(dec.tier).toBe('e4b');
-    expect(dec.model).toBe('gemma-4-e4b');
+    expect(dec.model).toBe('ternary-bonsai-8b');
     expect(dec.reason).toContain('E4B');
   });
 
+  it('wires E4B=true when the single default alias is pulled (both tiers point at ternary-bonsai-8b)', async () => {
+    // Without any overrides both tier slots resolve to the same
+    // ternary-bonsai-8b alias. When that alias is present the probe
+    // reports E4B as available — which is the intended Phase-5
+    // behaviour (one model serves both slots).
+    const stack = await bootstrapInference({
+      fetchImpl: makeFetch({ pingOk: true, tagModels: ['ternary-bonsai-8b'] }),
+    });
+    expect(stack.source).toBe('ollama');
+    expect(stack.hasE4B).toBe(true);
+    expect(stack.router.hasE4B()).toBe(true);
+    expect(stack.defaultModel).toBe('ternary-bonsai-8b');
+    expect(stack.defaultE4BModel).toBe('ternary-bonsai-8b');
+  });
+
   it('respects the listModels override (used by isolated unit tests)', async () => {
+    process.env.E4B_MODEL = 'ternary-bonsai-8b-alt';
     const stack = await bootstrapInference({
       fetchImpl: makeFetch({ pingOk: true, tagModels: [] }),
-      listModels: async () => ['gemma-4-e2b', 'gemma-4-e4b'],
+      listModels: async () => ['ternary-bonsai-8b', 'ternary-bonsai-8b-alt'],
     });
     expect(stack.hasE4B).toBe(true);
     expect(stack.router.hasE4B()).toBe(true);
   });
 
   it('treats listModels failure as "no E4B"', async () => {
+    process.env.E4B_MODEL = 'ternary-bonsai-8b-alt';
     const stack = await bootstrapInference({
       fetchImpl: makeFetch({ pingOk: true, tagModels: [] }),
       listModels: async () => {

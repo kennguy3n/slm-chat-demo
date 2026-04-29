@@ -31,7 +31,7 @@ Electron App
 │   └── Privacy / policy engine
 │       ↓ (HTTP to local daemon)
 └── Ollama / llama.cpp (local sidecar)
-    └── Gemma 4 E2B / E4B GGUF
+    └── Ternary-Bonsai-8B GGUF (hf.co/prism-ml/Ternary-Bonsai-8B-gguf)
 
 Go Data API (optional, localhost:8080)
 ├── Chat / thread / message data
@@ -544,7 +544,7 @@ Electron Main Process (Node.js / TypeScript)
    └── MockAdapter       (frontend/electron/inference/mock.ts)
    ↓  HTTP (localhost:11434)
 Ollama / llama.cpp (local sidecar)
-   └── Gemma 4 E2B / E4B GGUF
+   └── Ternary-Bonsai-8B GGUF (hf.co/prism-ml/Ternary-Bonsai-8B-gguf)
 ```
 
 Phase 1 implements this diagram with `OllamaAdapter` (TypeScript)
@@ -552,15 +552,17 @@ talking to a local Ollama daemon at `OLLAMA_BASE_URL` (default
 `http://localhost:11434`). The Electron main process boots the
 `InferenceRouter` in `bootstrap.ts`, which pings Ollama with a 500 ms
 timeout; if reachable it instantiates **two distinct `OllamaAdapter`
-instances** — one bound to `E2B_MODEL` (default `gemma-4-e2b`) and one
-bound to `E4B_MODEL` (default `gemma-4-e4b`). The default names are
-*aliases*: the repo ships `models/Modelfile.e2b` and `models/Modelfile.e4b`
-that wrap the upstream Gemma 4 base models published by Google to the
-Ollama library (`gemma4:e2b` / `gemma4:e4b`, verified against
-[ollama.com/library/gemma4/tags](https://ollama.com/library/gemma4/tags)
-on 2026-04-29) with the demo's preferred temperature / top_p / context
-length / system prompt. `scripts/setup-models.sh` automates the pull +
-alias creation. Bootstrap pings each model independently; if the larger
+instances** — one bound to `E2B_MODEL` and one bound to `E4B_MODEL`,
+both defaulting to `ternary-bonsai-8b`. The default name is an
+*alias*: the repo ships a single `models/Modelfile.bonsai8b` that wraps
+the upstream Ternary-Bonsai-8B GGUF model published by prism-ml to
+HuggingFace
+([`hf.co/prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf))
+with the demo's preferred temperature / top_p / context length / system
+prompt. `scripts/setup-models.sh` automates the pull + alias creation.
+The two-tier routing logic is retained so an operator can pull a
+different high-tier model later and override `E4B_MODEL` without
+touching any code — today the same 8B model serves both slots. Bootstrap pings each model independently; if the larger
 E4B model has not been pulled it aliases the E4B slot to the E2B
 adapter and the router's `hasE4B()` returns `false`, so reasoning-heavy
 tasks gracefully fall back to E2B without ever hitting an unloaded
@@ -627,8 +629,9 @@ sub-section behind that flag.
 
 ### 4.2 Browser-local path (future)
 
-WebGPU inference where supported. Gemma 4 is designed for browser deployment, so
-running E2B directly in the page is a capability target. It is not a main demo
+WebGPU inference where supported. Ternary-Bonsai-8B's GGUF format is
+already browser-shippable via llama.cpp's WebGPU backend, so running it
+directly in the page is a capability target. It is not a main demo
 dependency — the sidecar path stays primary because availability and performance
 are too uneven across browsers and devices today.
 
@@ -639,7 +642,10 @@ are too uneven across browsers and devices today.
 - **Phase 2** — React Native or native Android app, still talking to the Go
   backend; on-device inference via a bundled llama.cpp build.
 - **Phase 3** — Android AICore / ML Kit GenAI Prompt API for direct on-device
-  E2B / E4B with no sidecar, using the system-managed model.
+  inference with no sidecar, using the system-managed model. The same
+  two-tier routing contract carries over — Ternary-Bonsai-8B stays the
+  default model for both slots until a dedicated mobile-class model is
+  available.
 
 ---
 
@@ -666,7 +672,7 @@ to run it, what to redact, and which sources are allowed. It is invoked by
   },
   "source_sensitivity": "public | internal | confidential | restricted",
   "allowed_compute": ["on_device", "confidential_server", "shared_server"],
-  "preferred_model": "gemma-4-e2b | gemma-4-e4b | server-large"
+  "preferred_model": "ternary-bonsai-8b | server-large"
 }
 ```
 
@@ -675,7 +681,7 @@ to run it, what to redact, and which sources are allowed. It is invoked by
 ```json
 {
   "decision": "allow | deny | downgrade",
-  "model": "gemma-4-e2b | gemma-4-e4b | server-large",
+  "model": "ternary-bonsai-8b | server-large",
   "quant": "q4_k_m | q5_k_m | q8_0 | fp16",
   "redaction_required": true,
   "data_egress_bytes": 0,

@@ -218,7 +218,7 @@ export async function runGuardrailRewrite(
       rawOutput: resp.output,
       privacy: {
         computeLocation: 'on_device',
-        modelName: resp.model || `gemma-4-${tier}`,
+        modelName: resp.model || 'ternary-bonsai-8b',
         tier,
         reason: routeReason,
         dataEgressBytes: 0,
@@ -253,7 +253,7 @@ export async function runGuardrailRewrite(
     rawOutput: resp.output,
     privacy: {
       computeLocation: 'on_device',
-      modelName: resp.model || `gemma-4-${tier}`,
+      modelName: resp.model || 'ternary-bonsai-8b',
       tier,
       reason: routeReason,
       dataEgressBytes: 0,

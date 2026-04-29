@@ -100,8 +100,8 @@ describe('InferenceRouter', () => {
     const e4b = new StubAdapter('e4b-stub');
     const router = new InferenceRouter(e2b, e4b, null);
 
-    await router.run({ taskType: 'smart_reply', prompt: 'x', model: 'gemma-4-e4b' });
-    expect(e4b.lastReq?.model).toBe('gemma-4-e4b');
+    await router.run({ taskType: 'smart_reply', prompt: 'x', model: 'ternary-bonsai-8b-e4b' });
+    expect(e4b.lastReq?.model).toBe('ternary-bonsai-8b-e4b');
     expect(e2b.lastReq).toBeNull();
   });
 
@@ -147,7 +147,7 @@ describe('InferenceRouter', () => {
     const dec = router.decide({ taskType: 'draft_artifact', prompt: 'spec' });
     expect(dec.allow).toBe(true);
     expect(dec.tier).toBe('e2b');
-    expect(dec.model).toBe('gemma-4-e2b');
+    expect(dec.model).toBe('ternary-bonsai-8b');
     expect(dec.reason).toMatch(/fallback to E2B/i);
   });
 
@@ -158,7 +158,7 @@ describe('InferenceRouter', () => {
     const resp = await router.run({ taskType: 'draft_artifact', prompt: 'spec' });
     expect(e4b.lastReq?.prompt).toBe('spec');
     expect(e2b.lastReq).toBeNull();
-    expect(resp.model).toBe('gemma-4-e4b');
+    expect(resp.model).toBe('ternary-bonsai-8b');
     const dec = router.lastDecision();
     expect(dec.tier).toBe('e4b');
     expect(dec.reason).toContain('E4B');

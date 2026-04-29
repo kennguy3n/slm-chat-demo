@@ -13,7 +13,7 @@ const sample: ThreadSummaryResponse = {
   ],
   threadId: 'msg_eng_root',
   channelId: 'ch_engineering',
-  model: 'gemma-4-e2b',
+  model: 'ternary-bonsai-8b',
   tier: 'e2b',
   reason: 'short thread (4 messages); E2B is sufficient',
   messageCount: 4,
@@ -26,7 +26,7 @@ describe('ThreadSummaryCard', () => {
     renderWithProviders(
       <ThreadSummaryCard summary={sample} streamingText="Alice is drafting a PRD." />,
     );
-    expect(screen.getByTestId('thread-summary-model')).toHaveTextContent('gemma-4-e2b');
+    expect(screen.getByTestId('thread-summary-model')).toHaveTextContent('ternary-bonsai-8b');
     expect(screen.getByTestId('thread-summary-tier')).toHaveTextContent('E2B');
   });
 

@@ -72,7 +72,7 @@ function fakeOk(destination = 'Tokyo'): TripPlannerExecution {
       rawOutput: 'raw',
       privacy: {
         computeLocation: 'on_device',
-        modelName: 'gemma-4-e4b',
+        modelName: 'ternary-bonsai-8b',
         tier: 'e4b',
         reason: 'Routed trip planner to E4B for itinerary.',
         dataEgressBytes: 0,

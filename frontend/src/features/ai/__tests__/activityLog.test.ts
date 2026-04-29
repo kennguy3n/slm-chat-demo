@@ -17,7 +17,7 @@ describe('activityLog', () => {
   it('records entries and assigns an id + timestamp', () => {
     const entry = logActivity({
       skillId: 'family-checklist',
-      model: 'gemma-4-e2b',
+      model: 'ternary-bonsai-8b',
       tier: 'e2b',
       itemsProduced: 3,
       egressBytes: 0,
@@ -31,7 +31,7 @@ describe('activityLog', () => {
   it('summarizes runs, items, egress, and unique models', () => {
     logActivity({
       skillId: 'family-checklist',
-      model: 'gemma-4-e2b',
+      model: 'ternary-bonsai-8b',
       tier: 'e2b',
       itemsProduced: 3,
       egressBytes: 0,
@@ -39,7 +39,7 @@ describe('activityLog', () => {
     });
     logActivity({
       skillId: 'trip-planner',
-      model: 'gemma-4-e4b',
+      model: 'ternary-bonsai-8b-alt',
       tier: 'e4b',
       itemsProduced: 4,
       egressBytes: 0,
@@ -49,7 +49,7 @@ describe('activityLog', () => {
     expect(s.totalRuns).toBe(2);
     expect(s.totalItems).toBe(7);
     expect(s.totalEgressBytes).toBe(0);
-    expect(s.modelsUsed).toEqual(['gemma-4-e2b', 'gemma-4-e4b']);
+    expect(s.modelsUsed).toEqual(['ternary-bonsai-8b', 'ternary-bonsai-8b-alt']);
     expect(s.timeSavedSeconds).toBe(7 * 30);
   });
 
@@ -58,7 +58,7 @@ describe('activityLog', () => {
     vi.setSystemTime(new Date('2026-04-28T10:00:00Z'));
     logActivity({
       skillId: 'family-checklist',
-      model: 'gemma-4-e2b',
+      model: 'ternary-bonsai-8b',
       tier: 'e2b',
       itemsProduced: 1,
       egressBytes: 0,
@@ -67,7 +67,7 @@ describe('activityLog', () => {
     vi.setSystemTime(new Date('2026-04-29T10:00:00Z'));
     logActivity({
       skillId: 'family-checklist',
-      model: 'gemma-4-e2b',
+      model: 'ternary-bonsai-8b',
       tier: 'e2b',
       itemsProduced: 2,
       egressBytes: 0,
@@ -84,7 +84,7 @@ describe('activityLog', () => {
     expect(spy).toHaveBeenCalledTimes(1); // initial replay
     logActivity({
       skillId: 'guardrail-rewrite',
-      model: 'gemma-4-e2b',
+      model: 'ternary-bonsai-8b',
       tier: 'e2b',
       itemsProduced: 1,
       egressBytes: 0,
@@ -94,7 +94,7 @@ describe('activityLog', () => {
     unsubscribe();
     logActivity({
       skillId: 'guardrail-rewrite',
-      model: 'gemma-4-e2b',
+      model: 'ternary-bonsai-8b',
       tier: 'e2b',
       itemsProduced: 1,
       egressBytes: 0,

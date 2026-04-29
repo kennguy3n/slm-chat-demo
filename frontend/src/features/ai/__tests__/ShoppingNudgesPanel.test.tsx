@@ -14,7 +14,7 @@ const fakeResp: ShoppingNudgesResponse = {
     { item: 'Milk', reason: 'We are out', sourceMessageId: 'm2' },
   ],
   sourceMessageIds: ['m1', 'm2'],
-  model: 'gemma-4-e2b',
+  model: 'ternary-bonsai-8b',
   tier: 'e2b',
   reason: 'Routed shopping nudges to E2B.',
   computeLocation: 'on_device',

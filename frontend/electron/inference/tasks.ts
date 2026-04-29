@@ -238,11 +238,10 @@ export function buildThreadSummary(
     };
   });
 
-  let model = 'gemma-4-e2b';
+  let model = 'ternary-bonsai-8b';
   let tier: ThreadSummaryResponse['tier'] = 'e2b';
   let reason = 'Short thread routed to E2B.';
   if (messages.length > THREAD_SUMMARY_SHORT) {
-    model = 'gemma-4-e4b';
     tier = 'e4b';
     reason = 'Thread is long enough to benefit from E4B reasoning.';
   }
@@ -553,7 +552,7 @@ export function buildDraftArtifact(
   // decision still wins when a real adapter is wired in.
   const reasoningHeavy = req.artifactType === 'PRD' || req.artifactType === 'QBR';
   let tier: Tier = reasoningHeavy || req.messages.length > DRAFT_ARTIFACT_SHORT ? 'e4b' : 'e2b';
-  let model = tier === 'e4b' ? 'gemma-4-e4b' : 'gemma-4-e2b';
+  let model = 'ternary-bonsai-8b';
   let reason =
     tier === 'e4b'
       ? `Drafting a ${req.artifactType} benefits from E4B reasoning.`
@@ -617,7 +616,7 @@ export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResp
   }
   return {
     prompt,
-    model: 'gemma-4-e2b',
+    model: 'ternary-bonsai-8b',
     sources,
     computeLocation: 'on_device',
     dataEgressBytes: 0,

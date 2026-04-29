@@ -175,7 +175,7 @@ export class InferenceRouter implements Adapter {
     const { tier, reason } = picked;
     let model = req.model;
     if (!model) {
-      model = tier === 'e4b' ? 'gemma-4-e4b' : 'gemma-4-e2b';
+      model = 'ternary-bonsai-8b';
     }
     return { allow: true, model, tier, reason };
   }

@@ -94,14 +94,15 @@ workspace policy allow it.
 
 ### Device-tier model mapping
 
-| Tier      | Model                                   | Devices                                                   | Workloads                                                              |
-| --------- | --------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Mid-tier  | `unsloth/gemma-4-E2B-it-GGUF`           | Mid-tier phones, edge devices, browser / local sidecar    | Summaries, translation, task extraction, smart replies                 |
-| High-tier | `unsloth/gemma-4-E4B-it-GGUF`           | High-end phones, laptops, desktops                        | Artifact drafts, AI Employee recipes, source-grounded synthesis        |
+| Tier                    | Model                                      | Devices                                                   | Workloads                                                              |
+| ----------------------- | ------------------------------------------ | --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| On-device (both slots)  | `prism-ml/Ternary-Bonsai-8B-gguf`          | Laptops, desktops, and high-end phones                    | Everything — a single 8B ternary-weight model currently serves both the E2B (short / latency-sensitive) and E4B (reasoning-heavy) tier slots. |
 
-Mid-tier is the default target. The shell assumes every KChat user has at
-least E2B-class compute available locally. E4B unlocks on capable hardware
-and is used selectively for reasoning-heavy generations.
+The demo assumes every KChat user has enough local compute to run the
+Ternary-Bonsai-8B GGUF through Ollama. The inference router still
+exposes two logical tiers (E2B and E4B) so operators can pull a
+different high-tier alias and point `E4B_MODEL` at it later without any
+code changes — today both slots resolve to the same 8B model.
 
 ### Workload routing table
 
@@ -258,7 +259,7 @@ allowed to surface.
 | Element                  | Purpose                                                                 |
 | ------------------------ | ----------------------------------------------------------------------- |
 | Compute location         | On-device / confidential server.                                        |
-| Model name               | `gemma-4-E2B-it-GGUF`, `gemma-4-E4B-it-GGUF`, or confidential server.   |
+| Model name               | `ternary-bonsai-8b` (on-device default) or a named confidential server. |
 | Sources used             | Messages, files, connector items, memories referenced.                  |
 | Data egress              | Bytes that left the device (0 for on-device).                           |
 | Confidence / missing info| Model-reported confidence and any gaps ("owner unknown", "date ambiguous"). |
@@ -356,8 +357,10 @@ leaves the device.
   - PRD draft workspace (Brief Builder + Artifact v1).
   - AI Employee queue (mocked execution, real UI and governance).
 - **Local AI**
-  - E2B route with `unsloth/gemma-4-E2B-it-GGUF`.
-  - E4B route with `unsloth/gemma-4-E4B-it-GGUF`.
+  - E2B route backed by `prism-ml/Ternary-Bonsai-8B-gguf` (alias `ternary-bonsai-8b`).
+  - E4B route backed by the same `ternary-bonsai-8b` alias by default;
+    an operator can override `E4B_MODEL` to point at a different pulled
+    model without touching any code.
   - Streaming output in the chat surface.
   - Privacy strip on every AI output (compute location, model, sources,
     egress, confidence, why, linked origin).

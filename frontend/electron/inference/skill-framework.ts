@@ -1,6 +1,7 @@
 // AI Skills Framework — the structured contract every skill in the
-// Electron main-process inference layer follows. SLMs (Gemma 4 E2B/E4B)
-// have limited world knowledge and a non-trivial hallucination rate,
+// Electron main-process inference layer follows. SLMs
+// (Ternary-Bonsai-8B) have limited world knowledge and a non-trivial
+// hallucination rate,
 // so every skill is built around four load-bearing rules:
 //
 //   1. The prompt MUST instruct the model to answer "INSUFFICIENT: <reason>"
@@ -443,7 +444,7 @@ export async function runSkill<I, O>(
     confidence: parsed.confidence ?? 1,
     privacy: {
       computeLocation: 'on_device',
-      modelName: model || `gemma-4-${tier}`,
+      modelName: model || 'ternary-bonsai-8b',
       tier,
       reason: routeReason || `Routed ${def.id} to ${tier.toUpperCase()}.`,
       dataEgressBytes: 0,

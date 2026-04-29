@@ -17,7 +17,7 @@ const sample: PrefillApprovalResponse = {
     risk: 'medium',
   },
   sourceMessageIds: ['msg_vendor_1', 'msg_vendor_2'],
-  model: 'gemma-4-e4b',
+  model: 'ternary-bonsai-8b',
   tier: 'e4b',
   reason: 'Routed prefill_approval to E4B for stronger reasoning.',
   computeLocation: 'on_device',
@@ -107,7 +107,7 @@ describe('ApprovalPrefillCard', () => {
 
   it('renders the privacy strip with the model and on-device compute', () => {
     renderWithProviders(<ApprovalPrefillCard prefill={sample} />);
-    expect(screen.getByTestId('privacy-model')).toHaveTextContent('gemma-4-e4b');
+    expect(screen.getByTestId('privacy-model')).toHaveTextContent('ternary-bonsai-8b');
     expect(screen.getByTestId('privacy-compute')).toHaveTextContent('On-device');
   });
 });

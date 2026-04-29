@@ -103,7 +103,7 @@ export function MorningDigestPanel() {
             digest={
               digest ?? {
                 prompt: '',
-                model: 'gemma-4-e2b',
+                model: 'ternary-bonsai-8b',
                 sources: [],
                 computeLocation: 'on_device',
                 dataEgressBytes: 0,

@@ -3,12 +3,14 @@
 // reach Ollama, prefer it for both tiers when reachable, fall back to
 // the mock adapter so the app always boots.
 //
-// Phase 3 (E4B routing completion): the bootstrap now creates two
-// distinct OllamaAdapter instances when both gemma-4-e2b and
-// gemma-4-e4b models are pulled locally. If only e2b is available the
-// E4B tier transparently falls back to the e2b adapter, and the router
-// reports that fallback through `decide()`. The default model name for
-// each tier is configurable via `E2B_MODEL` and `E4B_MODEL` env vars.
+// Phase 3 (E4B routing completion): the bootstrap creates two distinct
+// OllamaAdapter instances so the two-tier routing logic continues to
+// work. The single on-device model (Ternary-Bonsai-8B) currently
+// serves both tiers, so the two adapters point at the same alias by
+// default. If an operator pulls a different E4B-class alias they can
+// still override it via `E4B_MODEL`; the router reports any fallback
+// from E4B → E2B through `decide()`. The default model name for each
+// tier is configurable via `E2B_MODEL` and `E4B_MODEL` env vars.
 
 import type { Adapter, Loader, StatusProvider } from './adapter.js';
 import {
@@ -61,8 +63,12 @@ export interface BootstrapOptions {
   pingServer?: (signal?: AbortSignal) => Promise<void>;
 }
 
-const DefaultE2BModel = 'gemma-4-e2b';
-const DefaultE4BModel = 'gemma-4-e4b';
+// Both tiers default to the same Ternary-Bonsai-8B alias. The
+// two-tier logic is retained for future flexibility (e.g. pulling a
+// larger E4B-class model later) but today a single 8B model serves
+// both slots.
+const DefaultE2BModel = 'ternary-bonsai-8b';
+const DefaultE4BModel = 'ternary-bonsai-8b';
 const DefaultServerModel = 'confidential-large';
 
 export async function bootstrapInference(

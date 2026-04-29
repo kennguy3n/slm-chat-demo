@@ -57,7 +57,7 @@ const OBJECT_LABEL: Record<Props['objectKind'], string> = {
 function defaultPrivacy(): PrivacyStripData {
   return {
     computeLocation: 'on_device',
-    modelName: 'gemma-4-e4b',
+    modelName: 'ternary-bonsai-8b',
     sources: [],
     dataEgressBytes: 0,
     whySuggested: 'Drafted on-device from the current thread. Review before publishing.',

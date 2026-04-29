@@ -52,7 +52,7 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
 
   constructor(opts: OllamaAdapterOptions = {}) {
     this.baseURL = (opts.baseURL || DefaultOllamaBaseURL).replace(/\/$/, '');
-    this.model = opts.model || 'gemma-4-e2b';
+    this.model = opts.model || 'ternary-bonsai-8b';
     // Allow tests to inject a fake fetch.
     this.fetchImpl = opts.fetchImpl || ((...a) => fetch(...(a as Parameters<typeof fetch>)));
   }
@@ -181,7 +181,7 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     // Two adapter instances (E2B / E4B) share the same daemon, so each one
     // must report only on the model it represents — finding any other model
     // in /api/ps does NOT mean this adapter's model is loaded. Strip Ollama's
-    // optional `:tag` suffix (e.g. "gemma-4-e2b:q4_k_m") on BOTH sides of the
+    // optional `:tag` suffix (e.g. "ternary-bonsai-8b:q4_k_m") on BOTH sides of the
     // comparison: users may set E2B_MODEL / E4B_MODEL to a tagged name and
     // the daemon may report a different tag, but matching bare-vs-bare lets
     // us track the model regardless of quantisation without confusing two

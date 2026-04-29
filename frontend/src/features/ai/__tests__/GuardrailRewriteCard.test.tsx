@@ -10,7 +10,7 @@ import type {
 
 const privacy: TripPlannerPrivacy = {
   computeLocation: 'on_device',
-  modelName: 'gemma-4-e2b',
+  modelName: 'ternary-bonsai-8b',
   tier: 'e2b',
   reason: 'Routed guardrail review to E2B.',
   dataEgressBytes: 0,

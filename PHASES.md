@@ -29,7 +29,7 @@ Each phase has a goal, a list of deliverables, and explicit exit criteria. The i
 
 ## Phase 1 — Local LLM MVP
 
-**Goal:** Prove efficient local AI with Gemma 4 E2B/E4B.
+**Goal:** Prove efficient local AI with Ternary-Bonsai-8B (prism-ml/Ternary-Bonsai-8B-gguf) serving both E2B and E4B routing tiers.
 
 **Deliverables:**
 

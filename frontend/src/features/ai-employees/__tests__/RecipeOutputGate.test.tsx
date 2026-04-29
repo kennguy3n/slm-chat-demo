@@ -9,7 +9,7 @@ function okResult(output: unknown): RecipeResultEnvelope {
   return {
     status: 'ok',
     output,
-    model: 'gemma-4-e2b',
+    model: 'ternary-bonsai-8b',
     tier: 'e2b',
     reason: 'Drafted on-device for review.',
   };

@@ -62,7 +62,7 @@ function privacyDataForCard(card: KAppCard): PrivacyStripData {
           : 'Detected an event with a date and a location.';
   return {
     computeLocation: 'on_device',
-    modelName: 'gemma-4-e2b',
+    modelName: 'ternary-bonsai-8b',
     sources: [
       {
         kind: card.kind === 'task' || card.kind === 'event' ? 'message' : 'thread',
@@ -286,7 +286,7 @@ export function ChatSurface({ channel, users, currentUserId }: Props) {
                 digest={
                   digest ?? {
                     prompt: '',
-                    model: 'gemma-4-e2b',
+                    model: 'ternary-bonsai-8b',
                     sources: [],
                     computeLocation: 'on_device',
                     dataEgressBytes: 0,

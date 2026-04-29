@@ -128,7 +128,7 @@ describe('OutputReview', () => {
     );
     // The PrivacyStrip renders the on-device label and the model name.
     expect(screen.getAllByText(/On-device/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/gemma-4-e4b/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/ternary-bonsai-8b/i).length).toBeGreaterThan(0);
   });
 
   it('hides the Edit button when allowEdit={false} (status-confirmation flow)', () => {

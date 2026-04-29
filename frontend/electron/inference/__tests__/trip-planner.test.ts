@@ -11,7 +11,7 @@ import type {
 
 class CannedAdapter implements Adapter {
   public lastReq: InferenceRequest | null = null;
-  constructor(public output: string, public modelLabel = 'gemma-4-e4b') {}
+  constructor(public output: string, public modelLabel = 'ternary-bonsai-8b') {}
   name() {
     return 'canned';
   }

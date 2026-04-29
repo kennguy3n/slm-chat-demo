@@ -1,11 +1,18 @@
 # KChat SLM Demo
 
 KChat SLM Demo is an **Electron desktop app** that proves the AI features
-inside KChat can run on-device using quantized local small language models
-(Gemma 4 E2B / E4B). The Electron **main process** owns all inference and
-talks directly to a local Ollama daemon (or `MockAdapter` when Ollama
-isn't running). A small Go **data API** provides chats, threads,
+inside KChat can run on-device using a quantized local small language
+model — **Ternary-Bonsai-8B** ([prism-ml/Ternary-Bonsai-8B-gguf](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf))
+served through Ollama. The Electron **main process** owns all inference
+and talks directly to the local Ollama daemon (or `MockAdapter` when
+Ollama isn't running). A small Go **data API** provides chats, threads,
 workspaces and seeded KApp cards. No AI traffic ever leaves the device.
+
+The same 8B model currently serves both the **E2B** (short, latency-
+sensitive) and **E4B** (reasoning-heavy) tier slots inside the router;
+the two-tier routing logic is preserved so operators can pull a
+different high-tier alias later and point the `E4B_MODEL` env var at it
+without touching any code.
 
 The demo runs the **same product surface in two contexts**:
 
@@ -30,7 +37,7 @@ For the full product thesis, architecture, phasing, and progress, see:
 | ----------- | ------------------------------------------------------------------------------ |
 | Shell       | Electron 31 (main + preload + renderer), TypeScript                            |
 | Renderer    | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL      |
-| Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` and an `InferenceRouter` that picks E2B / E4B per task. |
+| Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` (default model: `ternary-bonsai-8b`) and an `InferenceRouter` that picks E2B / E4B per task. |
 | IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `familyChecklist`, `shoppingNudges`, `eventRSVP`, `tripPlan`, `guardrailCheck`, `recipeRun` (Phase 4 generic AI-Employee recipe runner), `modelStatus`, `loadModel`, `unloadModel`, `route`. |
 | Local memory | `features/memory/memoryStore.ts` — IndexedDB (`kchat-slm-memory` / `facts`) with an in-memory fallback. The AI never auto-writes; users add / edit / remove facts from the AI Memory page. 0 B egress. |
 | Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
@@ -38,7 +45,7 @@ For the full product thesis, architecture, phasing, and progress, see:
 
 ## Demo
 
-The `demo/` directory contains screenshots and video walkthroughs of the key B2C and B2B user journeys running on real Gemma 4 E2B/E4B models. See [`demo/README.md`](./demo/README.md) for the full inventory.
+The `demo/` directory contains screenshots and video walkthroughs of the key B2C and B2B user journeys running on the Ternary-Bonsai-8B model via Ollama. See [`demo/README.md`](./demo/README.md) for the full inventory.
 
 ## Quick start
 
@@ -74,19 +81,19 @@ it falls back to the bundled `MockAdapter` so the demo always works
 without a model present.
 
 The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults
-`E2B_MODEL` to `gemma-4-e2b` and `E4B_MODEL` to `gemma-4-e4b`. Those
-names are *aliases*, not the upstream Ollama tags — the `models/`
-directory ships two Modelfiles that create the aliases on top of the
-real Gemma 4 base models published by Google to the Ollama library
-(`gemma4:e2b` and `gemma4:e4b`, verified against
-[ollama.com/library/gemma4/tags](https://ollama.com/library/gemma4/tags)
-on 2026-04-29).
+both `E2B_MODEL` and `E4B_MODEL` to `ternary-bonsai-8b`. That name is
+an *alias*, not the upstream Ollama tag — the `models/` directory
+ships a single [`Modelfile.bonsai8b`](./models/Modelfile.bonsai8b)
+that creates the alias on top of the
+[`hf.co/prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf)
+HuggingFace GGUF repo (served through Ollama's
+`FROM hf.co/<user>/<repo>` shorthand).
 
-The fastest way to set both aliases up is the bundled script:
+The fastest way to set the alias up is the bundled script:
 
 ```bash
-# Pulls gemma4:e2b + gemma4:e4b and creates the gemma-4-e2b /
-# gemma-4-e4b aliases the bootstrap looks for.
+# Pulls hf.co/prism-ml/Ternary-Bonsai-8B-gguf and creates the
+# ternary-bonsai-8b alias the bootstrap looks for.
 ./scripts/setup-models.sh
 
 # Make sure the daemon is running in the background.
@@ -96,34 +103,33 @@ export OLLAMA_BASE_URL=http://localhost:11434
 cd frontend && npm run electron:dev
 ```
 
-If you only want one tier, pull the base model and create the matching
-alias by hand:
+To set up the alias by hand:
 
 ```bash
-ollama pull gemma4:e2b
-ollama create gemma-4-e2b -f models/Modelfile.e2b
-
-# Optional: high-tier model for reasoning-heavy tasks.
-ollama pull gemma4:e4b
-ollama create gemma-4-e4b -f models/Modelfile.e4b
+ollama pull hf.co/prism-ml/Ternary-Bonsai-8B-gguf
+ollama create ternary-bonsai-8b -f models/Modelfile.bonsai8b
 ```
 
-If only the E2B alias exists, the bootstrap aliases the E4B slot to the
-E2B adapter and the router reports the fallback through `decide()` so
-the **Local model** panel and privacy strip show that reasoning-heavy
-tasks ran on E2B. If you want different alias names (e.g. you've
-pulled `gemma3:4b-it-qat` and want to point the app at it without
-renaming anything), override at runtime:
+Both tier slots resolve to the same alias by default, so a single pull
+is enough to light up E2B **and** E4B routing. If you later pull a
+different high-tier model and want the router's E4B slot to use it
+without renaming anything, override at runtime:
 
 ```bash
-export E2B_MODEL=gemma3:4b-it-qat
-export E4B_MODEL=gemma3:12b-it-qat
+export E2B_MODEL=ternary-bonsai-8b
+export E4B_MODEL=some-other-alias
 cd frontend && npm run electron:dev
 ```
 
+When `E4B_MODEL` resolves to a model the daemon hasn't pulled, the
+bootstrap aliases the E4B slot to the E2B adapter and the router reports
+the fallback through `decide()` so the **Local model** panel and
+privacy strip show that reasoning-heavy tasks ran on E2B.
+
 See [`models/README.md`](./models/README.md) for the full list of
 Modelfile knobs (context length, temperature, system prompt) and for
-quantisation alternatives like `gemma4:e4b-it-q8_0`.
+local-GGUF fallback instructions for environments where the
+`FROM hf.co/<user>/<repo>` shorthand is not yet supported.
 
 The **Local model** panel in the right sidebar (`DeviceCapabilityPanel`)
 calls `window.electronAI.modelStatus()` over IPC; the main process
@@ -311,8 +317,8 @@ go test ./...
 ## Phase 1 — complete
 
 - **E4B routing tier** — `bootstrap.ts` now creates two distinct
-  `OllamaAdapter` instances (`E2B_MODEL` / `E4B_MODEL`, defaulting to
-  `gemma-4-e2b` / `gemma-4-e4b`), pings each model independently, and
+  `OllamaAdapter` instances (`E2B_MODEL` / `E4B_MODEL`, both defaulting
+  to `ternary-bonsai-8b`), pings each model independently, and
   aliases the E4B slot to the E2B adapter when the larger model is not
   pulled. The `InferenceRouter` exposes `hasE4B()`; `decide()` reports
   the real tier so the privacy strip and `model:status` (`e4bModel`,
