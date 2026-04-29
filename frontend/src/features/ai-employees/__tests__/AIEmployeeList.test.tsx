@@ -77,4 +77,20 @@ describe('AIEmployeeList', () => {
       screen.getByTestId('ai-employee-card-ai_mika_sales').className,
     ).toMatch(/ai-employee-card--active/);
   });
+
+  it('renders the Phase 4 mode badge next to each employee name', () => {
+    const mixed: AIEmployee[] = [
+      { ...employees[0], mode: 'auto' },
+      { ...employees[1], mode: 'inline' },
+      { ...employees[2], mode: 'auto' },
+    ];
+    render(
+      <AIEmployeeList employees={mixed} selectedId={null} onSelect={() => {}} />,
+    );
+    const badges = screen.getAllByTestId('ai-employee-mode-badge');
+    expect(badges).toHaveLength(3);
+    expect(badges[0]).toHaveAttribute('data-mode', 'auto');
+    expect(badges[1]).toHaveAttribute('data-mode', 'inline');
+    expect(badges[2]).toHaveAttribute('data-mode', 'auto');
+  });
 });

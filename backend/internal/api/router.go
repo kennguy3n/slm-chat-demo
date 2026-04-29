@@ -117,6 +117,8 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/ai-employees/{id}", aiEmpH.Get)
 		r.Patch("/ai-employees/{id}/channels", aiEmpH.UpdateChannels)
 		r.Patch("/ai-employees/{id}/recipes", aiEmpH.UpdateRecipes)
+		r.Patch("/ai-employees/{id}/budget", aiEmpH.UpdateBudget)
+		r.Post("/ai-employees/{id}/budget/increment", aiEmpH.IncrementBudgetUsage)
 
 		// AI Employee recipe-run queue — the renderer records a run
 		// when a recipe is kicked off (executor lives in the Electron

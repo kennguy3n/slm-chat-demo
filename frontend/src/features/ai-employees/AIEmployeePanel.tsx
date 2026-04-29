@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AIEmployee, AIEmployeeRecipe } from '../../types/aiEmployee';
+import type {
+  AIEmployee,
+  AIEmployeeRecipe,
+  RecipeRun,
+} from '../../types/aiEmployee';
 import type { Channel } from '../../types/workspace';
-import { updateAIEmployeeChannels } from '../../api/aiEmployeeApi';
+import {
+  updateAIEmployeeBudget,
+  updateAIEmployeeChannels,
+} from '../../api/aiEmployeeApi';
 import { QueueView } from './QueueView';
+import { RecipeOutputGate, type RecipeResultEnvelope } from './RecipeOutputGate';
 
 interface Props {
   employee: AIEmployee | null;
@@ -46,10 +54,29 @@ export function AIEmployeePanel({ employee, channels, recipeCatalog, onChange }:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [budgetEditing, setBudgetEditing] = useState(false);
+  const [budgetDraft, setBudgetDraft] = useState('0');
+  const [budgetSaving, setBudgetSaving] = useState(false);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+
+  // Phase 4 — the human-approval gate. When a completed recipe run
+  // is selected (or when a recipe the renderer just ran surfaces its
+  // result), we stash the pair here so <RecipeOutputGate /> can show
+  // the content in the right rail until the user Accepts / Edits /
+  // Discards it. No KApp is persisted until Accept fires.
+  const [pendingReview, setPendingReview] = useState<{
+    recipeId: string;
+    result: RecipeResultEnvelope;
+  } | null>(null);
+
   useEffect(() => {
     setEditing(false);
     setSelected(employee?.allowedChannelIds ?? []);
     setError(null);
+    setBudgetEditing(false);
+    setBudgetDraft(String(employee?.budget.maxTokensPerDay ?? 0));
+    setBudgetError(null);
+    setPendingReview(null);
     // Reset only when the *employee* changes. `allowedChannelIds` is
     // managed optimistically through `selected` above; re-seeding it
     // every render would fight the inline edit.
@@ -101,6 +128,28 @@ export function AIEmployeePanel({ employee, channels, recipeCatalog, onChange }:
       onChange?.(employee);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleBudgetSave() {
+    if (!employee) return;
+    const parsed = Number(budgetDraft);
+    if (!Number.isFinite(parsed) || parsed < 0 || Math.floor(parsed) !== parsed) {
+      setBudgetError('Enter a non-negative integer.');
+      return;
+    }
+    setBudgetSaving(true);
+    setBudgetError(null);
+    onChange?.({ ...employee, budget: { ...employee.budget, maxTokensPerDay: parsed } });
+    try {
+      const updated = await updateAIEmployeeBudget(employee.id, parsed);
+      onChange?.(updated);
+      setBudgetEditing(false);
+    } catch (err) {
+      setBudgetError((err as Error).message);
+      onChange?.(employee);
+    } finally {
+      setBudgetSaving(false);
     }
   }
 
@@ -244,7 +293,23 @@ export function AIEmployeePanel({ employee, channels, recipeCatalog, onChange }:
       </div>
 
       <div className="ai-employee-panel__section">
-        <h4 className="ai-employee-panel__heading">Budget</h4>
+        <div className="ai-employee-panel__section-head">
+          <h4 className="ai-employee-panel__heading">Budget</h4>
+          {!budgetEditing && (
+            <button
+              type="button"
+              className="ai-employee-panel__edit"
+              onClick={() => {
+                setBudgetDraft(String(employee.budget.maxTokensPerDay));
+                setBudgetError(null);
+                setBudgetEditing(true);
+              }}
+              data-testid="ai-employee-panel-edit-budget"
+            >
+              Edit budget
+            </button>
+          )}
+        </div>
         <div className="ai-employee-panel__budget" data-testid="ai-employee-panel-budget">
           <div
             className="ai-employee-panel__budget-bar"
@@ -263,13 +328,98 @@ export function AIEmployeePanel({ employee, channels, recipeCatalog, onChange }:
             {employee.budget.maxTokensPerDay.toLocaleString()} tokens today
           </p>
         </div>
+
+        {budgetEditing && (
+          <div
+            className="ai-employee-panel__budget-editor"
+            data-testid="ai-employee-panel-budget-editor"
+          >
+            <label className="ai-employee-panel__budget-label">
+              Max tokens per day
+              <input
+                type="number"
+                min={0}
+                step={1000}
+                value={budgetDraft}
+                onChange={(e) => setBudgetDraft(e.target.value)}
+                data-testid="ai-employee-panel-budget-input"
+              />
+            </label>
+            {budgetError && (
+              <p className="ai-employee-panel__error" role="alert">
+                {budgetError}
+              </p>
+            )}
+            <div className="ai-employee-panel__picker-actions">
+              <button
+                type="button"
+                className="ai-employee-panel__save"
+                onClick={handleBudgetSave}
+                disabled={budgetSaving}
+                data-testid="ai-employee-panel-save-budget"
+              >
+                {budgetSaving ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                className="ai-employee-panel__cancel"
+                onClick={() => {
+                  setBudgetDraft(String(employee.budget.maxTokensPerDay));
+                  setBudgetEditing(false);
+                  setBudgetError(null);
+                }}
+                disabled={budgetSaving}
+                data-testid="ai-employee-panel-cancel-budget"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <QueueView
         aiEmployeeId={employee.id}
         channels={channels}
         recipeCatalog={recipeCatalog}
+        onReviewRun={(run: RecipeRun) => {
+          // Phase 4 demo — the Queue surfaces only a summary; the
+          // approval gate renders that summary verbatim so the user
+          // has something concrete to Accept / Discard. When the
+          // renderer learns to persist full outputs (Phase 5), this
+          // mapping will hydrate the richer shape instead.
+          setPendingReview({
+            recipeId: run.recipeId,
+            result: {
+              status: 'ok',
+              output: run.resultSummary ?? '(no summary available)',
+              model: 'gemma-4-e2b',
+              tier: 'e2b',
+              reason:
+                'Drafted on-device. Review before anything is written to the workspace.',
+            },
+          });
+        }}
       />
+
+      {pendingReview && (
+        <RecipeOutputGate
+          recipeId={pendingReview.recipeId}
+          recipe={recipeCatalog[pendingReview.recipeId]}
+          result={pendingReview.result}
+          aiEmployeeName={employee.name}
+          onAccept={() => {
+            // The AIEmployeePanel doesn't own KApps persistence
+            // itself — the caller wires the Accept callback through
+            // the pendingReview state. The demo simply closes the
+            // gate on Accept to mirror the "no write until human
+            // confirms" invariant; real callers will pipe the edited
+            // content into kappsApi.
+            setPendingReview(null);
+          }}
+          onDiscard={() => setPendingReview(null)}
+        />
+      )}
     </section>
   );
 }

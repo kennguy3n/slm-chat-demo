@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ContextMode } from '../../types/workspace';
+import type { SelectedSource } from '../../types/knowledge';
+import { SourcePicker } from '../knowledge/SourcePicker';
 
 export interface ActionLauncherAction {
   id: string;
@@ -15,11 +17,26 @@ interface Props {
   // "queued" placeholder toast (the caller is rendering its own progress
   // UI). When false / undefined, the placeholder toast still fires so the
   // user gets feedback for unwired actions.
-  onAction?: (path: string[]) => boolean | void;
+  //
+  // Phase 5 — callers receive the set of SelectedSource entries the
+  // user picked in the SourcePicker (when one is opened). If the
+  // action didn't route through the picker, `sources` is undefined.
+  onAction?: (
+    path: string[],
+    sources?: SelectedSource[],
+  ) => boolean | void;
   // Render-prop hook so callers can mount the trigger button inside their
   // own composer toolbar. The launcher provides the popover; the caller
   // decides where the trigger lives.
   triggerLabel?: string;
+  // Phase 5 — workspaceId enables the SourcePicker step for the B2B
+  // Create / Analyze / Plan intents. When omitted the picker is
+  // skipped entirely and the launcher behaves as it did in Phase 4.
+  workspaceId?: string;
+  // Top-level action ids that should route through SourcePicker
+  // before `onAction` fires. Defaults to the B2B knowledge intents;
+  // tests override this to avoid opening the picker.
+  intentsRequiringSources?: string[];
 }
 
 // Phase 0 menu definitions. PROPOSAL.md section 4.2 describes the B2C quick
@@ -76,10 +93,23 @@ const B2B_ACTIONS: ActionLauncherAction[] = [
 // surfaces the four core intents with submenus. Phase 0 invokes onAction
 // with the path of action ids; full wiring (route + run + privacy strip)
 // lands in Phase 1.
-export function ActionLauncher({ context, onAction, triggerLabel = 'AI' }: Props) {
+export function ActionLauncher({
+  context,
+  onAction,
+  triggerLabel = 'AI',
+  workspaceId,
+  intentsRequiringSources = ['create', 'analyze', 'plan'],
+}: Props) {
   const [open, setOpen] = useState(false);
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Phase 5 — when the user picks a knowledge-intent action we defer
+  // running it until the SourcePicker returns. The pending path +
+  // label live here while the picker is open.
+  const [pendingPick, setPendingPick] = useState<
+    | { path: string[]; label: string }
+    | null
+  >(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const actions = context === 'b2c' ? B2C_ACTIONS : B2B_ACTIONS;
@@ -103,12 +133,40 @@ export function ActionLauncher({ context, onAction, triggerLabel = 'AI' }: Props
   }, [toast]);
 
   function trigger(path: string[], label: string) {
+    // Phase 5 — knowledge-intent actions route through SourcePicker
+    // so the user can scope which channels / threads the AI reads
+    // from. We only open the picker when a workspaceId is supplied
+    // (callers that don't know their workspace keep the Phase 4
+    // behaviour).
+    const topIntent = path[0];
+    if (
+      workspaceId &&
+      intentsRequiringSources.includes(topIntent)
+    ) {
+      setPendingPick({ path, label });
+      setOpen(false);
+      setOpenSubmenu(null);
+      return;
+    }
+
     const handled = onAction?.(path) === true;
     if (!handled) {
       setToast(`Queued ${label} (Phase 1 will wire this to the inference adapter)`);
     }
     setOpen(false);
     setOpenSubmenu(null);
+  }
+
+  function handleSourcesConfirmed(sources: SelectedSource[]) {
+    if (!pendingPick) return;
+    const { path, label } = pendingPick;
+    setPendingPick(null);
+    const handled = onAction?.(path, sources) === true;
+    if (!handled) {
+      setToast(
+        `Queued ${label} with ${sources.length} source${sources.length === 1 ? '' : 's'}`,
+      );
+    }
   }
 
   return (
@@ -182,6 +240,13 @@ export function ActionLauncher({ context, onAction, triggerLabel = 'AI' }: Props
         <div className="action-launcher__toast" role="status" data-testid="action-launcher-toast">
           {toast}
         </div>
+      )}
+      {pendingPick && workspaceId && (
+        <SourcePicker
+          workspaceId={workspaceId}
+          onCancel={() => setPendingPick(null)}
+          onSelect={handleSourcesConfirmed}
+        />
       )}
     </div>
   );

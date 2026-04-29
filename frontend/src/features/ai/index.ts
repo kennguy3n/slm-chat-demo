@@ -1,6 +1,7 @@
 // Barrel exports for the ai feature module.
 export { ActionLauncher } from './ActionLauncher';
 export type { ActionLauncherAction } from './ActionLauncher';
+export { AIEmployeeModeBadge } from './AIEmployeeModeBadge';
 export { ApprovalPrefillCard } from './ApprovalPrefillCard';
 export { ArtifactDraftCard } from './ArtifactDraftCard';
 export { DeviceCapabilityPanel } from './DeviceCapabilityPanel';

@@ -72,9 +72,9 @@ Meilisearch land in later phases.
 | 6 | `ModelStatusBadge` | Active model (E2B / E4B / server), loaded state, battery. |
 | 7 | `KAppCardRenderer` | Renders Task / Approval / Form / Artifact / Sheet / Base cards. |
 | 8 | `ArtifactWorkspace` | PRD / RFC / proposal editor with citations and versions. |
-| 9 | `AIEmployeePanel` | B2B AI employee profile, queue, and channel assignments. Hosts `QueueView` (Phase 4) beneath the budget section for pending / completed recipe runs. |
+| 9 | `AIEmployeePanel` | B2B AI employee profile, queue, and channel assignments. Hosts `QueueView` (Phase 4) beneath an inline budget editor (Phase 4 close — "Edit budget" button, optimistic `PATCH /api/ai-employees/{id}/budget` save with rollback on error) and gates completed recipe runs through `RecipeOutputGate` (human Accept / Edit / Discard before any KApp write). |
 | 10 | `DeviceCapabilityPanel` | RAM, WebGPU support, sidecar status, currently-loaded model. |
-| 11 | `SourcePicker` | Pick channels, threads, files, and connectors as AI sources. |
+| 11 | `SourcePicker` | Phase 5 kickoff — three-tab picker (Channels / Threads / Files) that lets B2B users scope which surfaces an AI Employee may read before running a knowledge intent. Selections surface as removable chips; Confirm / Cancel fire callbacks on the parent. Files tab ships a "Coming soon" placeholder for Phase 5 connectors. Wired into `ActionLauncher` for the Create / Analyze / Plan intents and into `ArtifactDraftCard` via `pickedSources`. |
 | 12 | `OutputReview` | Human review gate: renders AI-generated content with Accept / Edit / Discard controls before any KApp write. Supports `allowEdit` for creation flows vs. read-only confirmation for status transitions. |
 
 ### 2.2 Frontend stack
@@ -141,15 +141,15 @@ frontend/
     ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
     ├── features/
     │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer, launcherDispatch) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces); Phase 3 adds `launcherDispatch.ts`, the pure helper that maps every B2B Action Launcher path to a `kapps:launcher` CustomEvent the right-rail ThreadPanel listens for
-    │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, activityLog) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), ThreadSummaryCard for the B2B thread summary, ApprovalPrefillCard for B2B approval prefill, and ArtifactDraftCard for the B2B PRD / RFC / Proposal / SOP / QBR drafting flow; Phase 2 adds TaskCreatedPill (inline AI badges below messages), MorningDigestPanel (B2C right-rail catch-up), FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard (B2C trip / event planning skill), GuardrailRewriteCard (pre-send PII / tone / unverified-claim review), and MetricsDashboard backed by the new `activityLog` module which records every AI run; PrivacyStrip itself gained an expandable `whyDetails[]` list in Phase 2
+    │   ├── ai/ (ActionLauncher, AIEmployeeModeBadge, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, activityLog) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), ThreadSummaryCard for the B2B thread summary, ApprovalPrefillCard for B2B approval prefill, and ArtifactDraftCard for the B2B PRD / RFC / Proposal / SOP / QBR drafting flow; Phase 2 adds TaskCreatedPill (inline AI badges below messages), MorningDigestPanel (B2C right-rail catch-up), FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard (B2C trip / event planning skill), GuardrailRewriteCard (pre-send PII / tone / unverified-claim review), and MetricsDashboard backed by the new `activityLog` module which records every AI run; PrivacyStrip itself gained an expandable `whyDetails[]` list in Phase 2
     │   ├── memory/ (AIMemoryPage, memoryStore) — Phase 2: local-only IndexedDB-backed second brain (DB `kchat-slm-memory`, store `facts`) with an in-memory fallback for jsdom / SSR; the AI never auto-writes — every fact passes through the AIMemoryPage UI
     │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)  — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation. — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation.
     │   ├── artifacts/ (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections) — Phase 3 right-rail viewer for full artifacts: section split, inline source pins, version history, line-by-line diff, status transitions.
-    │   ├── ai-employees/ (AIEmployeeList, AIEmployeePanel, QueueView, recipeCatalog) — Phase 4 (B2B sidebar cards + right-rail profile panel with inline channel picker + recipe list + `QueueView` pending-AI-tasks panel; `recipeCatalog.ts` is the renderer-side display map for recipe ids)
-    │   └── knowledge/ (SourcePicker)                                         — Phase 5
+    │   ├── ai-employees/ (AIEmployeeList, AIEmployeePanel, QueueView, RecipeOutputGate, recipeCatalog) — Phase 4 (B2B sidebar cards + right-rail profile panel with inline channel picker, inline budget editor, recipe list, `QueueView` pending-AI-tasks panel, and the `RecipeOutputGate` human-approval surface that wraps `OutputReview` for completed runs; `recipeCatalog.ts` is the renderer-side display map for recipe ids)
+    │   └── knowledge/ (SourcePicker)                                         — Phase 5 (three-tab Channels / Threads / Files picker with chip list, derived-from-messages thread listing, and test seam via `api` prop)
     ├── stores/ (chatStore, aiStore, workspaceStore, kappsStore — Phase 3 task/approval CRUD with optimistic merge)
     ├── api/ (client, aiApi, chatApi, kappsApi, workspaceApi — Phase 3 navigation, streamAI, aiEmployeeApi — Phase 4, recipeRunApi — Phase 4, electronBridge)
-    ├── types/ (chat, ai, kapps, workspace, aiEmployee, electron.d.ts)
+    ├── types/ (chat, ai, kapps, workspace, aiEmployee, knowledge, electron.d.ts)
     ├── router.tsx
     ├── styles.css
     └── main.tsx
@@ -257,10 +257,22 @@ load via `registerRecipe`; `getRecipe(id)` and `listRecipes()`
 expose the registry to the dispatcher. The canonical dispatcher is
 the `ai:recipe:run` IPC channel (see §3.3b): it looks the recipe
 up by id, refuses recipes the caller's AI Employee is not
-authorised for, and delegates to `recipe.execute`. Authorisation
-is currently enforced by passing the AI Employee's
-`allowedRecipes[]` through the request payload (loaded from the Go
-backend in the renderer). Phase 4 ships six canonical recipes, all self-registered through
+authorised for, **charges the AI Employee's daily token budget
+before executing** by calling `POST /api/ai-employees/{id}/budget/increment`
+with an estimate derived from the messages + recipe output shape
+(refuses with `reason: 'budget exceeded'` on 429), and only then
+delegates to `recipe.execute`. Authorisation is currently enforced
+by passing the AI Employee's `allowedRecipes[]` through the request
+payload (loaded from the Go backend in the renderer). The budget
+gate falls open on transport errors so a broken proxy can't
+hard-block a demo, but any 429 refusal is surfaced as a uniform
+`RecipeResult` and never persists a KApp. The `RecipeOutputGate`
+surface (§2.1 module #9) sits between a successful run and any
+KApp write, giving the user a final Accept / Edit / Discard
+before the output graduates from "recipe output" to a persisted
+object.
+
+Phase 4 ships six canonical recipes, all self-registered through
 `recipes/index.ts`:
 
 - `summarize` — wraps `buildThreadSummary`; `preferredTierForThread`
@@ -410,6 +422,8 @@ PATCH  /api/ai-employees/{id}/channels                    (Phase 4)
 PATCH  /api/ai-employees/{id}/recipes                     (Phase 4)
 GET    /api/ai-employees/{id}/queue                       (Phase 4)
 POST   /api/ai-employees/{id}/queue                       (Phase 4)
+PATCH  /api/ai-employees/{id}/budget                      (Phase 4 — { maxTokensPerDay })
+POST   /api/ai-employees/{id}/budget/increment            (Phase 4 — { tokensUsed }; 429 on overrun)
 GET    /api/privacy/egress-preview
 ```
 

@@ -198,7 +198,11 @@ export function registerIPCHandlers(): void {
     'ai:recipe:run',
     async (
       _e,
-      req: RecipeContext & { recipeId: string; allowedRecipes?: string[] },
+      req: RecipeContext & {
+        recipeId: string;
+        allowedRecipes?: string[];
+        apiBaseUrl?: string;
+      },
     ): Promise<RecipeResult> => {
       const { router } = await getStack();
       return runRecipe(router, req);
@@ -258,14 +262,34 @@ export function registerIPCHandlers(): void {
   });
 }
 
+// estimateRecipeTokens returns a coarse token-cost estimate for a
+// recipe run. The Phase 4 demo has no tokenizer attached so we
+// approximate using message character counts (roughly four characters
+// per token). This is sufficient for the budget gate, which only
+// needs to know roughly how much to charge per run.
+function estimateRecipeTokens(req: RecipeContext): number {
+  let chars = 0;
+  for (const m of req.messages) chars += m.content.length;
+  return Math.max(256, Math.ceil(chars / 4));
+}
+
 // runRecipe looks the recipe up, validates the AI Employee is
-// authorised to run it, and returns a `refused` envelope (instead of
-// throwing) when authorisation fails so the renderer can render the
-// refusal uniformly. Exported for direct unit-testing without going
-// through ipcMain.
+// authorised to run it, enforces the per-employee token budget by
+// calling the backend's budget/increment endpoint before execution,
+// and returns a `refused` envelope (instead of throwing) when any of
+// those pre-flight checks fails. Exported for direct unit-testing
+// without going through ipcMain.
 export async function runRecipe(
   router: InferenceRouter,
-  req: RecipeContext & { recipeId: string; allowedRecipes?: string[] },
+  req: RecipeContext & {
+    recipeId: string;
+    allowedRecipes?: string[];
+    // apiBaseUrl lets tests point the budget fetch at an in-process
+    // mock server without mutating global state. Falls back to the
+    // BACKEND_URL env var (used by the Electron dev server) and
+    // finally `http://localhost:8080`.
+    apiBaseUrl?: string;
+  },
 ): Promise<RecipeResult> {
   const recipe = getRecipe(req.recipeId);
   if (!recipe) {
@@ -286,6 +310,51 @@ export async function runRecipe(
       reason: `AI Employee "${req.aiEmployeeId}" is not authorised to run recipe "${req.recipeId}"`,
     };
   }
+
+  // Budget gate. We increment *before* executing so concurrent runs
+  // can't both squeeze through just below the ceiling — the backend
+  // does the atomic check. On 429 we refuse without running the
+  // recipe. Network errors fall open so the demo remains usable
+  // offline (the backend is the source of truth for enforcement, not
+  // the main process).
+  const base = req.apiBaseUrl ?? process.env.BACKEND_URL ?? 'http://localhost:8080';
+  const tokensUsed = estimateRecipeTokens(req);
+  try {
+    const res = await fetch(
+      `${base}/api/ai-employees/${encodeURIComponent(req.aiEmployeeId)}/budget/increment`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-ID': 'user_alice',
+        },
+        body: JSON.stringify({ tokensUsed }),
+      },
+    );
+    if (res.status === 429) {
+      return {
+        status: 'refused',
+        output: null,
+        model: '',
+        tier: recipe.preferredTier,
+        reason: `budget exceeded for AI Employee "${req.aiEmployeeId}"`,
+      };
+    }
+    if (res.status === 404) {
+      // Treat an unknown employee as a soft refusal rather than a
+      // hard crash — the renderer already surfaces refusals uniformly.
+      return {
+        status: 'refused',
+        output: null,
+        model: '',
+        tier: recipe.preferredTier,
+        reason: `AI Employee "${req.aiEmployeeId}" not found`,
+      };
+    }
+  } catch {
+    // Fall open on network errors — see note above.
+  }
+
   return recipe.execute(router, {
     aiEmployeeId: req.aiEmployeeId,
     channelId: req.channelId,
