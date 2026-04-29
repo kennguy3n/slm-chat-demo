@@ -22,6 +22,9 @@ type Memory struct {
 	auditLog      []models.AuditEntry
 	aiEmployees   map[string]models.AIEmployee
 	recipeRuns    []models.RecipeRun
+	connectors    map[string]models.Connector
+	connectorFiles []models.ConnectorFile
+	retrievalChunks []models.RetrievalChunk
 }
 
 // NewMemory returns an empty Memory store. Call Seed to populate it with the
@@ -36,8 +39,11 @@ func NewMemory() *Memory {
 		formTemplates: map[string]models.FormTemplate{},
 		forms:         []models.Form{},
 		auditLog:      []models.AuditEntry{},
-		aiEmployees:   map[string]models.AIEmployee{},
-		recipeRuns:    []models.RecipeRun{},
+		aiEmployees:    map[string]models.AIEmployee{},
+		recipeRuns:     []models.RecipeRun{},
+		connectors:     map[string]models.Connector{},
+		connectorFiles: []models.ConnectorFile{},
+		retrievalChunks: []models.RetrievalChunk{},
 	}
 }
 
@@ -632,4 +638,165 @@ func (m *Memory) UpdateRecipeRun(id string, mutate func(*models.RecipeRun)) (mod
 		return m.recipeRuns[i], true
 	}
 	return models.RecipeRun{}, false
+}
+
+// ---- Connectors (Phase 5) ----
+
+// PutConnector upserts a connector keyed by ID.
+func (m *Memory) PutConnector(c models.Connector) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.connectors[c.ID] = c
+}
+
+// GetConnector returns the connector with the given ID, if any.
+func (m *Memory) GetConnector(id string) (models.Connector, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	c, ok := m.connectors[id]
+	return c, ok
+}
+
+// ListConnectors returns connectors for a workspace, sorted by ID.
+// Passing an empty workspaceID returns every seeded connector.
+func (m *Memory) ListConnectors(workspaceID string) []models.Connector {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]models.Connector, 0, len(m.connectors))
+	for _, c := range m.connectors {
+		if workspaceID != "" && c.WorkspaceID != workspaceID {
+			continue
+		}
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// UpdateConnector applies a mutator to the stored connector. Returns
+// the updated record and true on success; false if no such connector
+// exists.
+func (m *Memory) UpdateConnector(id string, mutate func(*models.Connector)) (models.Connector, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.connectors[id]
+	if !ok {
+		return models.Connector{}, false
+	}
+	mutate(&c)
+	m.connectors[id] = c
+	return c, true
+}
+
+// AppendConnectorFile records a new connector file. Phase 5 seeds
+// every file at startup; there is no public mutator for files.
+func (m *Memory) AppendConnectorFile(f models.ConnectorFile) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.connectorFiles = append(m.connectorFiles, f)
+}
+
+// ListConnectorFiles returns every file stored for a single connector,
+// sorted by ID for deterministic rendering.
+func (m *Memory) ListConnectorFiles(connectorID string) []models.ConnectorFile {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []models.ConnectorFile{}
+	for _, f := range m.connectorFiles {
+		if f.ConnectorID != connectorID {
+			continue
+		}
+		out = append(out, f)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// ListConnectorFilesByChannel returns the union of files across every
+// connector currently attached to `channelID`. Channel-scoped
+// attachment is the privacy boundary for Phase 5 — a file is only
+// visible to AI / pickers in the channels its connector is attached
+// to.
+func (m *Memory) ListConnectorFilesByChannel(channelID string) []models.ConnectorFile {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if channelID == "" {
+		return []models.ConnectorFile{}
+	}
+	allowed := map[string]struct{}{}
+	for _, c := range m.connectors {
+		for _, cid := range c.ChannelIDs {
+			if cid == channelID {
+				allowed[c.ID] = struct{}{}
+				break
+			}
+		}
+	}
+	out := []models.ConnectorFile{}
+	for _, f := range m.connectorFiles {
+		if _, ok := allowed[f.ConnectorID]; !ok {
+			continue
+		}
+		out = append(out, f)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// ---- Retrieval index (Phase 5) ----
+
+// AppendChunks stores `chunks` in the retrieval index. The index is
+// append-only except via ClearChannelChunks (called before re-indexing
+// a channel).
+func (m *Memory) AppendChunks(chunks []models.RetrievalChunk) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.retrievalChunks = append(m.retrievalChunks, chunks...)
+}
+
+// ListChunksByChannel returns every retrieval chunk recorded for the
+// given channel, in insertion order.
+func (m *Memory) ListChunksByChannel(channelID string) []models.RetrievalChunk {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []models.RetrievalChunk{}
+	for _, c := range m.retrievalChunks {
+		if c.ChannelID == channelID {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// ClearChannelChunks removes every retrieval chunk for the given
+// channel. Called by the retrieval service before each (re-)index so
+// stale chunks don't accumulate.
+func (m *Memory) ClearChannelChunks(channelID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	kept := m.retrievalChunks[:0]
+	for _, c := range m.retrievalChunks {
+		if c.ChannelID == channelID {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	m.retrievalChunks = kept
+}
+
+// ListAllChannelMessages returns every message in a channel, including
+// thread replies, sorted by CreatedAt. The retrieval index uses this
+// so thread replies are searchable too.
+func (m *Memory) ListAllChannelMessages(channelID string) []models.Message {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []models.Message{}
+	for _, msg := range m.messages {
+		if msg.ChannelID != channelID {
+			continue
+		}
+		out = append(out, msg)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out
 }

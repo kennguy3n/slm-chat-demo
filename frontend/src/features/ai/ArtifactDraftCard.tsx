@@ -4,8 +4,11 @@ import type {
   PrivacyStripData,
   PrivacyStripWhyDetail,
 } from '../../types/ai';
-import type { SelectedSource } from '../../types/knowledge';
+import type { ConnectorFile, SelectedSource } from '../../types/knowledge';
 import { PrivacyStrip } from './PrivacyStrip';
+import { PermissionPreview } from '../knowledge/PermissionPreview';
+import { CitationRenderer } from '../knowledge/CitationRenderer';
+import type { CitationSource } from '../knowledge/CitationChip';
 
 interface Props {
   draft: DraftArtifactResponse;
@@ -22,6 +25,12 @@ interface Props {
   // in the card's attribution section so the user can see exactly
   // which channels/threads the AI was allowed to read from.
   pickedSources?: SelectedSource[];
+  // Connector files visible from the channel — used by the in-card
+  // PermissionPreview gate that fires when pickedSources includes
+  // files. The gate is the second consent surface (the first lives
+  // in ActionLauncher) and exists so a user landing on a draft via
+  // a deep link still sees the egress badge before reading content.
+  connectorFiles?: ConnectorFile[];
 }
 
 const SECTION_LABEL: Record<DraftArtifactResponse['section'], string> = {
@@ -44,18 +53,33 @@ export function ArtifactDraftCard({
   onEdit,
   onDiscard,
   pickedSources,
+  connectorFiles,
 }: Props) {
   const text = streamingText ?? '';
+  const hasCitations = /\[source:[a-zA-Z0-9_\-:.]+\]/.test(text);
+  const citationSources: CitationSource[] = draft.sources.map((s) => ({
+    kind: 'message' as const,
+    id: s.id,
+    label: s.sender,
+    sender: s.sender,
+    excerpt: s.excerpt,
+  }));
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
+  const hasPickedFiles =
+    !!pickedSources && pickedSources.some((s) => s.kind === 'file');
+  const [previewConfirmed, setPreviewConfirmed] = useState(!hasPickedFiles);
 
   // Reset local action state when a fresh draft arrives.
   useEffect(() => {
     setAccepted(false);
     setSubmitting(false);
     setAcceptError(null);
-  }, [draft.threadId, draft.artifactType, draft.section]);
+    setPreviewConfirmed(
+      !pickedSources || !pickedSources.some((s) => s.kind === 'file'),
+    );
+  }, [draft.threadId, draft.artifactType, draft.section, pickedSources]);
 
   async function handleAccept() {
     if (submitting || accepted) return;
@@ -105,6 +129,23 @@ export function ArtifactDraftCard({
     },
   };
 
+  if (!previewConfirmed && pickedSources) {
+    return (
+      <article
+        className="artifact-draft-card artifact-draft-card--preview"
+        data-testid="artifact-draft-card"
+        aria-label="AI artifact draft permission preview"
+      >
+        <PermissionPreview
+          sources={pickedSources}
+          connectorFiles={connectorFiles}
+          onConfirm={() => setPreviewConfirmed(true)}
+          onCancel={() => onDiscard?.()}
+        />
+      </article>
+    );
+  }
+
   return (
     <article
       className="artifact-draft-card"
@@ -129,8 +170,14 @@ export function ArtifactDraftCard({
       </h4>
       <div className="artifact-draft-card__body" data-testid="artifact-draft-body">
         {text ? (
-          text.split('\n').map((line, i) =>
-            line.trim() === '' ? <br key={i} /> : <p key={i}>{line}</p>,
+          hasCitations ? (
+            <CitationRenderer text={text} sources={citationSources} />
+          ) : (
+            text
+              .split('\n')
+              .map((line, i) =>
+                line.trim() === '' ? <br key={i} /> : <p key={i}>{line}</p>,
+              )
           )
         ) : (
           <p className="artifact-draft-card__placeholder">Drafting…</p>
@@ -141,7 +188,7 @@ export function ArtifactDraftCard({
           </span>
         )}
       </div>
-      {draft.sources.length > 0 && (
+      {!hasCitations && draft.sources.length > 0 && (
         <details className="artifact-draft-card__sources">
           <summary>Sources ({draft.sources.length})</summary>
           <ul data-testid="artifact-draft-sources">

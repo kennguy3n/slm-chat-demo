@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { OutputReview, type OutputReviewSource } from '../kapps/OutputReview';
+import { CitationRenderer } from '../knowledge/CitationRenderer';
+import type { CitationSource } from '../knowledge/CitationChip';
 import type { AuditObjectKind } from '../../types/audit';
 import type { AIEmployeeRecipe } from '../../types/aiEmployee';
 import type { PrivacyStripData } from '../../types/ai';
@@ -210,12 +212,28 @@ export function RecipeOutputGate({
     },
   };
 
+  const hasCitations = /\[source:[a-zA-Z0-9_\-:.]+\]/.test(content);
+  const citationSources: CitationSource[] = sources.map((s) => ({
+    kind: 'message',
+    id: s.id,
+    label: s.label,
+    excerpt: s.excerpt,
+  }));
+
   return (
     <div
       className="recipe-output-gate"
       data-testid="recipe-output-gate"
       data-recipe-id={recipeId}
     >
+      {hasCitations && (
+        <div
+          className="recipe-output-gate__citations"
+          data-testid="recipe-output-gate-citations"
+        >
+          <CitationRenderer text={content} sources={citationSources} />
+        </div>
+      )}
       <OutputReview
         content={content}
         sources={sources}

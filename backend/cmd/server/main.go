@@ -31,6 +31,8 @@ func main() {
 	kapps := services.NewKApps(mem).WithAudit(audit)
 	aiEmployees := services.NewAIEmployeeService(mem)
 	recipeRuns := services.NewRecipeRunService(mem)
+	connectors := services.NewConnectorService(mem)
+	retrieval := services.NewRetrievalService(mem)
 
 	r := api.NewRouter(api.Deps{
 		Identity:    identity,
@@ -40,6 +42,8 @@ func main() {
 		Audit:       audit,
 		AIEmployees: aiEmployees,
 		RecipeRuns:  recipeRuns,
+		Connectors:  connectors,
+		Retrieval:   retrieval,
 	})
 
 	addr := os.Getenv("ADDR")

@@ -74,8 +74,11 @@ Meilisearch land in later phases.
 | 8 | `ArtifactWorkspace` | PRD / RFC / proposal editor with citations and versions. |
 | 9 | `AIEmployeePanel` | B2B AI employee profile, queue, and channel assignments. Hosts `QueueView` (Phase 4) beneath an inline budget editor (Phase 4 close — "Edit budget" button, optimistic `PATCH /api/ai-employees/{id}/budget` save with rollback on error) and gates completed recipe runs through `RecipeOutputGate` (human Accept / Edit / Discard before any KApp write). |
 | 10 | `DeviceCapabilityPanel` | RAM, WebGPU support, sidecar status, currently-loaded model. |
-| 11 | `SourcePicker` | Phase 5 kickoff — three-tab picker (Channels / Threads / Files) that lets B2B users scope which surfaces an AI Employee may read before running a knowledge intent. Selections surface as removable chips; Confirm / Cancel fire callbacks on the parent. Files tab ships a "Coming soon" placeholder for Phase 5 connectors. Wired into `ActionLauncher` for the Create / Analyze / Plan intents and into `ArtifactDraftCard` via `pickedSources`. |
+| 11 | `SourcePicker` | Three-tab picker (Channels / Threads / Files) that lets B2B users scope which surfaces an AI Employee may read before running a knowledge intent. Selections surface as removable chips; Confirm / Cancel fire callbacks on the parent. Files tab now lists real channel-attached connector files (Phase 5). Wired into `ActionLauncher` for the Create / Analyze / Plan intents and into `ArtifactDraftCard` via `pickedSources`. |
 | 12 | `OutputReview` | Human review gate: renders AI-generated content with Accept / Edit / Discard controls before any KApp write. Supports `allowEdit` for creation flows vs. read-only confirmation for status transitions. |
+| 13 | `ConnectorPanel` | Phase 5 — B2B right-rail "Connectors" tab that lists workspace connectors, shows per-channel attach status, exposes per-row file counts, and toggles attach / detach via `connectorApi`. Enforces the channel-scoped privacy boundary so only files from connectors attached to the active channel can be picked. |
+| 14 | `PermissionPreview` | Phase 5 — "AI will read from…" sheet rendered between SourcePicker confirm and `onAction` dispatch (and as an in-card gate inside `ArtifactDraftCard` when `pickedSources` includes file selections). One row per channel / thread / file plus a `0 bytes will leave this device` egress badge and Confirm / Cancel actions. |
+| 15 | `CitationChip` / `CitationRenderer` | Phase 5 — inline citation rendering. `CitationRenderer` parses `[source:id]` markers in streamed AI output, renders chips numbered in citation order (repeated cites reuse the same index), and emits a "Sources (N)" footer with full attribution. `CitationChip` exposes per-chip hover tooltip and click-through to `#message-{id}` or the connector URL. Wired into `ThreadSummaryCard`, `ArtifactDraftCard`, `ApprovalPrefillCard`, and `RecipeOutputGate`. |
 
 ### 2.2 Frontend stack
 
@@ -146,7 +149,7 @@ frontend/
     │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)  — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation. — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation.
     │   ├── artifacts/ (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections) — Phase 3 right-rail viewer for full artifacts: section split, inline source pins, version history, line-by-line diff, status transitions.
     │   ├── ai-employees/ (AIEmployeeList, AIEmployeePanel, QueueView, RecipeOutputGate, recipeCatalog) — Phase 4 (B2B sidebar cards + right-rail profile panel with inline channel picker, inline budget editor, recipe list, `QueueView` pending-AI-tasks panel, and the `RecipeOutputGate` human-approval surface that wraps `OutputReview` for completed runs; `recipeCatalog.ts` is the renderer-side display map for recipe ids)
-    │   └── knowledge/ (SourcePicker)                                         — Phase 5 (three-tab Channels / Threads / Files picker with chip list, derived-from-messages thread listing, and test seam via `api` prop)
+    │   └── knowledge/ (SourcePicker, ConnectorPanel, PermissionPreview, CitationChip, CitationRenderer)        — Phase 5 (three-tab picker with chip list, B2B Connectors right-rail panel for per-channel attach / detach, egress-aware permission preview, and inline citation rendering with stable indices + Sources footer)
     ├── stores/ (chatStore, aiStore, workspaceStore, kappsStore — Phase 3 task/approval CRUD with optimistic merge)
     ├── api/ (client, aiApi, chatApi, kappsApi, workspaceApi — Phase 3 navigation, streamAI, aiEmployeeApi — Phase 4, recipeRunApi — Phase 4, electronBridge)
     ├── types/ (chat, ai, kapps, workspace, aiEmployee, knowledge, electron.d.ts)
@@ -326,8 +329,8 @@ are the data services that persist Phase-0+ state and stream events.
 | 4 | `chat-service` | Messages, threads, reactions, attachments. |
 | 5 | `kapps-service` | Tasks, approvals, forms, base rows, sheet metadata. |
 | 6 | `artifact-service` | Docs / PRDs / RFCs / proposals, versions, citations. |
-| 7 | `retrieval-service` | Local + source retrieval, citations, chunking. |
-| 8 | `connector-service` | Drive / OneDrive / Jira, with permission preview. |
+| 7 | `retrieval-service` | Local + source retrieval, citations, chunking. Phase 5 ships `services.RetrievalService` with per-channel keyword indexing (`IndexChannel` chunks all channel + thread messages and connector file excerpts) and term-overlap scoring (`Search`); channel-scoped so no cross-channel leakage. |
+| 8 | `connector-service` | Drive / OneDrive / GitHub mock connectors with channel-scoped attachment. Phase 5 ships `services.ConnectorService` with `List` / `Get` / `ListFiles` / `ListFilesByChannel` / `AttachToChannel` / `DetachFromChannel`; one seeded Google Drive connector (`conn_gdrive_acme`) attached to `ch_vendor_management`. |
 | 9 | `event-service` | NATS JetStream event publication and subscriptions. |
 | 10 | `audit-service` | Immutable append-only event log for all KApp mutations (task, approval, artifact, form lifecycle events). In-memory store (Phase 0); persisted in later phases. |
 
@@ -343,17 +346,23 @@ backend/
 │   │   ├── handlers/             (chat.go, workspace.go, kapps.go, privacy.go,
 │   │   │                          artifacts.go, audit.go [Phase 3],
 │   │   │                          ai_employees.go [Phase 4],
-│   │   │                          recipe_runs.go [Phase 4])
+│   │   │                          recipe_runs.go [Phase 4],
+│   │   │                          connectors.go [Phase 5],
+│   │   │                          retrieval.go [Phase 5])
 │   │   └── userctx/              (request-scoped user helpers)
 │   ├── services/                 (identity.go, workspace.go, chat.go, kapps.go,
 │   │                              audit.go [Phase 3],
 │   │                              ai_employees.go [Phase 4],
-│   │                              recipe_runs.go [Phase 4])
+│   │                              recipe_runs.go [Phase 4],
+│   │                              connectors.go [Phase 5],
+│   │                              retrieval.go [Phase 5])
 │   ├── models/                   (user.go, workspace.go, message.go, task.go,
 │   │                              approval.go, artifact.go, event.go, card.go,
 │   │                              audit.go [Phase 3],
 │   │                              ai_employee.go [Phase 4],
-│   │                              recipe_run.go [Phase 4])
+│   │                              recipe_run.go [Phase 4],
+│   │                              connector.go [Phase 5],
+│   │                              retrieval.go [Phase 5])
 │   └── store/                    (memory.go + seed.go + seedAIEmployees;
 │                                   Phase 6+ adds postgres.go)
 └── go.mod
@@ -424,6 +433,14 @@ GET    /api/ai-employees/{id}/queue                       (Phase 4)
 POST   /api/ai-employees/{id}/queue                       (Phase 4)
 PATCH  /api/ai-employees/{id}/budget                      (Phase 4 — { maxTokensPerDay })
 POST   /api/ai-employees/{id}/budget/increment            (Phase 4 — { tokensUsed }; 429 on overrun)
+GET    /api/connectors (?workspaceId=)                    (Phase 5)
+GET    /api/connectors/{id}                               (Phase 5)
+GET    /api/connectors/{id}/files                         (Phase 5)
+POST   /api/connectors/{id}/channels                      (Phase 5 — { channelId })
+DELETE /api/connectors/{id}/channels/{channelId}          (Phase 5)
+GET    /api/channels/{channelId}/connector-files          (Phase 5)
+POST   /api/channels/{channelId}/index                    (Phase 5 — chunks channel + thread messages + connector files)
+GET    /api/channels/{channelId}/search?q=&topK=          (Phase 5 — keyword retrieval; channel-scoped, default topK=5)
 GET    /api/privacy/egress-preview
 ```
 

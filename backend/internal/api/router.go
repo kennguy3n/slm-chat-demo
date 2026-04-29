@@ -22,6 +22,8 @@ type Deps struct {
 	Audit       *services.AuditService
 	AIEmployees *services.AIEmployeeService
 	RecipeRuns  *services.RecipeRunService
+	Connectors  *services.ConnectorService
+	Retrieval   *services.RetrievalService
 }
 
 // NewRouter wires the chi router with CORS, JSON content-type, mock auth, and
@@ -51,6 +53,8 @@ func NewRouter(d Deps) http.Handler {
 	auH := handlers.NewAudit(d.Audit, d.KApps)
 	aiEmpH := handlers.NewAIEmployees(d.AIEmployees)
 	rrH := handlers.NewRecipeRuns(d.RecipeRuns, d.AIEmployees)
+	connH := handlers.NewConnectors(d.Connectors)
+	retH := handlers.NewRetrieval(d.Retrieval)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
@@ -126,6 +130,24 @@ func NewRouter(d Deps) http.Handler {
 		// right-rail Queue view stays in sync across refreshes.
 		r.Get("/ai-employees/{id}/queue", rrH.List)
 		r.Post("/ai-employees/{id}/queue", rrH.Record)
+
+		// Connectors — Phase 5 mocked external integrations
+		// (Drive, OneDrive, GitHub). One seeded Google Drive
+		// connector ships per workspace; channel-scoped
+		// attachment is the privacy boundary.
+		r.Get("/connectors", connH.List)
+		r.Get("/connectors/{id}", connH.Get)
+		r.Get("/connectors/{id}/files", connH.Files)
+		r.Post("/connectors/{id}/channels", connH.Attach)
+		r.Delete("/connectors/{id}/channels/{channelId}", connH.Detach)
+		r.Get("/channels/{channelId}/connector-files", connH.ChannelFiles)
+
+		// Retrieval — Phase 5 per-channel keyword index. The
+		// renderer (re-)indexes a channel before running an AI
+		// action, then queries the index to ground inference
+		// in real source content.
+		r.Post("/channels/{channelId}/index", retH.Index)
+		r.Get("/channels/{channelId}/search", retH.Search)
 	})
 
 	return r

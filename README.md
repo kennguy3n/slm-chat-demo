@@ -219,10 +219,10 @@ slm-chat-demo/
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer, TasksKApp, CreateTaskForm, CreateApprovalForm, FormCard, AuditLogPanel, OutputReview)
 │   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections)
 │   │   │   ├── ai-employees/    (AIEmployeeList, AIEmployeePanel, QueueView, RecipeOutputGate, recipeCatalog)
-│   │   │   └── knowledge/       (SourcePicker — Phase 5 channel/thread/file scoping)
+│   │   │   └── knowledge/       (SourcePicker, ConnectorPanel, PermissionPreview, CitationChip, CitationRenderer — Phase 5 channel/thread/file scoping, mock connector attach, egress-aware permission preview, inline citation rendering)
 │   │   ├── stores/              (workspaceStore, chatStore*, aiStore*, useKAppsStore)
-│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, recipeRunApi, electronBridge)
-│   │   ├── types/               (chat, ai, kapps, workspace, audit, aiEmployee, knowledge, electron.d.ts)
+│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, recipeRunApi, connectorApi, retrievalContext, electronBridge)
+│   │   ├── types/               (chat, ai, kapps, workspace, audit, aiEmployee, knowledge — includes Connector, ConnectorFile, RetrievalChunk, RetrievalResult — electron.d.ts)
 │   │   ├── router.tsx
 │   │   ├── styles.css
 │   │   └── main.tsx
@@ -321,24 +321,64 @@ go test ./...
 
 ## Phase 5 — in progress
 
-- **Source picker UI** — new `features/knowledge/SourcePicker.tsx`
-  + `types/knowledge.ts` (`SelectedSource`, `SelectedSourceKind`,
+- **Source picker UI** — `features/knowledge/SourcePicker.tsx` +
+  `types/knowledge.ts` (`SelectedSource`, `SelectedSourceKind`,
   `ThreadSummary`) lets B2B users scope which channels, threads, and
   files an AI Employee may read before running a knowledge intent.
-  Three tabs (Channels / Threads / Files — Files shows a "Coming
-  soon" placeholder for Phase 5 connectors), a chip list with
-  per-chip × removal, Confirm / Cancel buttons, and optional
-  `initialSelected` seeding. The picker fetches channels via
-  `workspaceApi.fetchWorkspaceChannels` and derives per-channel
-  threads by grouping channel messages on `threadId` (the backend
-  has no dedicated thread listing endpoint yet, so the picker pulls
-  `fetchChannelMessages` and groups client-side). Wired into
-  `ActionLauncher` via new `workspaceId` + `intentsRequiringSources`
-  props — the B2B Create / Analyze / Plan intents now route through
-  the picker before firing `onAction`, and the callback receives a
-  second `sources` argument. `ArtifactDraftCard` accepts a
-  `pickedSources` prop and renders them in a "Context" details strip
-  next to the existing source attribution.
+  Three tabs (Channels / Threads / Files), a chip list with per-chip
+  × removal, Confirm / Cancel buttons, and optional `initialSelected`
+  seeding. The Files tab now lists real channel-attached connector
+  files (replacing the kickoff "Coming soon" placeholder); chips
+  surface the connector name. Wired into `ActionLauncher` via
+  `workspaceId` + `channelId` + `intentsRequiringSources` props and
+  into `ArtifactDraftCard` via `pickedSources`.
+- **Google Drive connector (mock)** — backend `models/connector.go`
+  (`Connector`, `ConnectorKind`, `ConnectorStatus`, `ConnectorFile`),
+  `services.ConnectorService`, six handlers (`GET /api/connectors`,
+  `GET /api/connectors/{id}`, `GET /api/connectors/{id}/files`,
+  `GET /api/channels/{channelId}/connector-files`,
+  `POST /api/connectors/{id}/channels`,
+  `DELETE /api/connectors/{id}/channels/{channelId}`). Seed adds
+  `conn_gdrive_acme` (Acme Corp Drive) attached to `ch_vendor_management`
+  with four mock files (PRD, vendor contract, budget spreadsheet,
+  design brief). Frontend `connectorApi.ts` mirrors all six endpoints.
+- **Channel-scoped connector attachment** —
+  `features/knowledge/ConnectorPanel.tsx` mounted in the B2B right-rail
+  "Connectors" tab. Lists workspace connectors, shows attach status
+  against the active channel, exposes per-row file counts, and toggles
+  attach / detach via `connectorApi`. The SourcePicker Files tab uses
+  `fetchChannelConnectorFiles(channelId)` so a file is only selectable
+  when its connector is attached to the active channel — matching
+  PROPOSAL.md §7 rule 2.
+- **Permission preview before AI access** —
+  `features/knowledge/PermissionPreview.tsx` renders the "AI will read
+  from…" sheet with one row per channel / thread / file, a
+  `0 bytes will leave this device` egress badge, and Confirm / Cancel
+  actions. Wired between SourcePicker confirm and `onAction` dispatch
+  in `ActionLauncher`, and as an in-card gate inside
+  `ArtifactDraftCard` whenever `pickedSources` includes file selections.
+- **Per-channel retrieval index** — backend `models/retrieval.go`
+  (`RetrievalChunk`, `RetrievalSourceKind`, `RetrievalResult`),
+  `services.RetrievalService` with `IndexChannel` (chunks all channel +
+  thread messages and connector file excerpts) and `Search`
+  (whitespace tokenize + stopword filter + term-overlap score), plus
+  `POST /api/channels/{channelId}/index` and
+  `GET /api/channels/{channelId}/search?q=&topK=` endpoints. Frontend
+  `connectorApi.indexChannel` / `searchChannel` and
+  `api/retrievalContext.ts` `gatherRetrievalContext` helper that
+  coalesces channel + thread picks, indexes once per channel, and
+  returns merged top-K results sorted by score — ready to feed AI
+  prompt assembly.
+- **Citation rendering in AI outputs** —
+  `features/knowledge/CitationChip.tsx` (`[N]`-style chip with hover
+  tooltip and click-through to `#message-{id}` or the connector URL)
+  and `CitationRenderer.tsx` (parses `[source:id]` markers in
+  streamed text, renders chips numbered in citation order, repeats
+  reuse the same index, emits a "Sources (N)" footer with full
+  attribution). Wired into `ThreadSummaryCard`, `ArtifactDraftCard`,
+  `ApprovalPrefillCard`, and `RecipeOutputGate` so any AI body
+  containing markers renders inline chips + a footer attribution
+  list while marker-free bodies fall back to the existing rendering.
 
 ## Phase 4 — complete
 

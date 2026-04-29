@@ -25,6 +25,8 @@ func newTestServer() http.Handler {
 		Audit:       audit,
 		AIEmployees: services.NewAIEmployeeService(mem),
 		RecipeRuns:  services.NewRecipeRunService(mem),
+		Connectors:  services.NewConnectorService(mem),
+		Retrieval:   services.NewRetrievalService(mem),
 	})
 }
 
