@@ -69,14 +69,57 @@ the inference router wires Ollama as the E2B and E4B adapter; otherwise
 it falls back to the bundled `MockAdapter` so the demo always works
 without a model present.
 
-```bash
-ollama pull gemma-4-e2b
-ollama serve &
+The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults
+`E2B_MODEL` to `gemma-4-e2b` and `E4B_MODEL` to `gemma-4-e4b`. Those
+names are *aliases*, not the upstream Ollama tags — the `models/`
+directory ships two Modelfiles that create the aliases on top of the
+real Gemma 4 base models published by Google to the Ollama library
+(`gemma4:e2b` and `gemma4:e4b`, verified against
+[ollama.com/library/gemma4/tags](https://ollama.com/library/gemma4/tags)
+on 2026-04-29).
 
+The fastest way to set both aliases up is the bundled script:
+
+```bash
+# Pulls gemma4:e2b + gemma4:e4b and creates the gemma-4-e2b /
+# gemma-4-e4b aliases the bootstrap looks for.
+./scripts/setup-models.sh
+
+# Make sure the daemon is running in the background.
+ollama serve &
 export OLLAMA_BASE_URL=http://localhost:11434
 
 cd frontend && npm run electron:dev
 ```
+
+If you only want one tier, pull the base model and create the matching
+alias by hand:
+
+```bash
+ollama pull gemma4:e2b
+ollama create gemma-4-e2b -f models/Modelfile.e2b
+
+# Optional: high-tier model for reasoning-heavy tasks.
+ollama pull gemma4:e4b
+ollama create gemma-4-e4b -f models/Modelfile.e4b
+```
+
+If only the E2B alias exists, the bootstrap aliases the E4B slot to the
+E2B adapter and the router reports the fallback through `decide()` so
+the **Local model** panel and privacy strip show that reasoning-heavy
+tasks ran on E2B. If you want different alias names (e.g. you've
+pulled `gemma3:4b-it-qat` and want to point the app at it without
+renaming anything), override at runtime:
+
+```bash
+export E2B_MODEL=gemma3:4b-it-qat
+export E4B_MODEL=gemma3:12b-it-qat
+cd frontend && npm run electron:dev
+```
+
+See [`models/README.md`](./models/README.md) for the full list of
+Modelfile knobs (context length, temperature, system prompt) and for
+quantisation alternatives like `gemma4:e4b-it-q8_0`.
 
 The **Local model** panel in the right sidebar (`DeviceCapabilityPanel`)
 calls `window.electronAI.modelStatus()` over IPC; the main process

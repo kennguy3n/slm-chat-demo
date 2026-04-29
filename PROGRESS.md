@@ -1,6 +1,6 @@
 # KChat SLM Demo — Progress Tracker
 
-Last updated: 2026-04-29 (Phase 3 mid — Approvals submit, Artifacts CRUD + versioning + source pins, Forms intake)
+Last updated: 2026-04-29 (Phase 3 mid — Modelfiles + setup-models.sh for Gemma 4 E2B / E4B aliases)
 
 ---
 
@@ -148,6 +148,7 @@ Last updated: 2026-04-29 (Phase 3 mid — Approvals submit, Artifacts CRUD + ver
 
 | Date | Change |
 |------|--------|
+| 2026-04-29 | Phase 1 follow-up: shipped `models/Modelfile.e2b` + `models/Modelfile.e4b` + `models/README.md` + `scripts/setup-models.sh` so `./scripts/setup-models.sh` pulls `gemma4:e2b` / `gemma4:e4b` (verified against [ollama.com/library/gemma4/tags](https://ollama.com/library/gemma4/tags)) and creates the `gemma-4-e2b` / `gemma-4-e4b` aliases the bootstrap defaults to. Added `prefill_form` to `MockAdapter` + `taskPreference` test coverage, a Modelfile / setup-script existence test, and an opt-in (`OLLAMA_INTEGRATION=1`) live `OllamaAdapter` smoke test. README "Optional: run with a real local model" section rewritten to drive the script + alias flow. |
 | 2026-04-28 | Phase 1 close: real E4B routing — `bootstrap.ts` wires two `OllamaAdapter` instances (`E2B_MODEL`/`E4B_MODEL`); router exposes `hasE4B()` and falls back to E2B when only the smaller model is pulled; `model:status` returns `e4bModel`/`e4bLoaded` and the renderer surfaces both tiers in `DeviceCapabilityPanel`. |
 | 2026-04-28 | Phase 3: Workspace → Domain → Channel navigation — added `Domain.WorkspaceID`, `GET /api/workspaces/{id}/domains`, `GET /api/domains/{id}/channels`, `frontend/src/api/workspaceApi.ts`, and a collapsible domain tree in `B2BLayout`; `workspaceStore` now tracks `selectedDomainId` and `expandedDomainIds`. |
 | 2026-04-28 | Phase 3: Thread linked-objects — `Card.ThreadID`, `GET /api/threads/{id}/linked-objects`, `fetchLinkedObjects()`, and a `Linked objects (n)` `<details>` section in `ThreadPanel` rendering compact KApp cards. |
