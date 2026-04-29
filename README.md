@@ -197,6 +197,9 @@ slm-chat-demo/
 │   │       ├── secondBrain.ts   (Phase 2: family checklist, shopping nudges, RSVP extraction)
 │   │       ├── skill-framework.ts  (declarative SkillDefinition contract + runSkill executor)
 │   │       ├── search-service.ts   (SearchService interface + MockSearchService for trip planner)
+│   │       ├── confidential-server.ts  (Phase 6: ConfidentialServerAdapter for server-tier inference)
+│   │       ├── redaction.ts            (Phase 6: RedactionEngine — tokenize/redact/detokenize PII)
+│   │       ├── egress-tracker.ts       (Phase 6: EgressTracker singleton for privacy UI)
 │   │       ├── skills/
 │   │       │   ├── trip-planner.ts       (B2C trip / event planning skill)
 │   │       │   └── guardrail-rewrite.ts  (PII / tone / unverified-claim detection + rewrite)
@@ -214,7 +217,7 @@ slm-chat-demo/
 │   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
 │   │   ├── features/
 │   │   │   ├── chat/            (ChatSurface, ThreadPanel, MessageList, MessageBubble, Composer, launcherDispatch)
-│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, activityLog)
+│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, AIEmployeeModeBadge, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, activityLog, formatEgressBytes, useEgressSummary)
 │   │   │   ├── memory/          (AIMemoryPage + memoryStore — local-only IndexedDB-backed second brain)
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer, TasksKApp, CreateTaskForm, CreateApprovalForm, FormCard, AuditLogPanel, OutputReview)
 │   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections)
