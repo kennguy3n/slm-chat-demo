@@ -43,10 +43,6 @@ For the full product thesis, architecture, phasing, and progress, see:
 | Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
 | Persistence | (Phase 0) in-memory; (Phase 6+) PostgreSQL + NATS JetStream + MinIO/S3         |
 
-## Demo
-
-The `demo/` directory contains screenshots and video walkthroughs of the key B2C and B2B user journeys running on the Ternary-Bonsai-8B model via Ollama. See [`demo/README.md`](./demo/README.md) for the full inventory.
-
 ## Quick start
 
 ```bash
@@ -235,10 +231,6 @@ slm-chat-demo/
 │   ├── tsconfig.json
 │   ├── tsconfig.electron.json
 │   └── vite.config.ts
-├── demo/                        # Screenshots and video walkthroughs
-│   ├── README.md
-│   ├── screenshots/
-│   └── video/
 ├── PROPOSAL.md
 ├── ARCHITECTURE.md
 ├── PHASES.md
