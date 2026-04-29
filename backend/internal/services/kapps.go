@@ -389,19 +389,27 @@ func (k *KApps) UpdateArtifact(id string, in UpdateArtifactInput) (models.Artifa
 	if in.Status != nil && !validArtifactStatus(*in.Status) {
 		return models.Artifact{}, ErrInvalidStatus
 	}
+	var transitionErr error
 	updated, ok := k.store.UpdateArtifact(id, func(a *models.Artifact) {
+		if in.Status != nil && !validArtifactTransition(a.Status, *in.Status) {
+			transitionErr = ErrInvalidStatus
+			return
+		}
 		if in.Title != nil {
 			a.Title = strings.TrimSpace(*in.Title)
 		}
 		if in.URL != nil {
 			a.URL = *in.URL
 		}
-		if in.Status != nil && validArtifactTransition(a.Status, *in.Status) {
+		if in.Status != nil {
 			a.Status = *in.Status
 		}
 	})
 	if !ok {
 		return models.Artifact{}, ErrNotFound
+	}
+	if transitionErr != nil {
+		return models.Artifact{}, transitionErr
 	}
 	return updated, nil
 }

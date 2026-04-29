@@ -207,6 +207,22 @@ func TestArtifactCRUDLifecycle(t *testing.T) {
 	if p.Artifact.Status != models.ArtifactStatusPublished {
 		t.Errorf("expected published, got %q", p.Artifact.Status)
 	}
+
+	// Reject illegal transition published → in_review with HTTP 400.
+	bad := bytes.NewBufferString(`{"status":"in_review"}`)
+	rec = doRequest(t, h, "PATCH", "/api/kapps/artifacts/"+id, "user_alice", bad)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on illegal transition, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Confirm the artifact's status was not changed.
+	rec = doGet(t, h, "/api/kapps/artifacts/"+id, "user_alice")
+	var after struct {
+		Artifact models.Artifact `json:"artifact"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &after)
+	if after.Artifact.Status != models.ArtifactStatusPublished {
+		t.Errorf("expected status to remain published, got %q", after.Artifact.Status)
+	}
 }
 
 func TestArtifactCreateRejectsUnknownType(t *testing.T) {

@@ -290,6 +290,9 @@ export function ThreadPanel({ channel }: Props) {
       refreshLinkedObjects();
     } catch (err) {
       setSubmitErr(err instanceof Error ? err.message : String(err));
+      // Rethrow so ApprovalPrefillCard surfaces a retry-able error state
+      // instead of staying locked in "Submitted".
+      throw err;
     }
   }
 
