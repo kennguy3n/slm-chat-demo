@@ -63,6 +63,9 @@ export function QueueView({
       return;
     }
     let cancelled = false;
+    // Clear prior employee's runs so a slow / failed fetch never leaves the
+    // previous queue visible under the new employee's header.
+    setRuns([]);
     setLoading(true);
     setError(null);
     fetchQueue(aiEmployeeId)
