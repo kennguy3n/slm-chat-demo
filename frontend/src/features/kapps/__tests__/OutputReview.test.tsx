@@ -131,6 +131,22 @@ describe('OutputReview', () => {
     expect(screen.getAllByText(/gemma-4-e4b/i).length).toBeGreaterThan(0);
   });
 
+  it('hides the Edit button when allowEdit={false} (status-confirmation flow)', () => {
+    render(
+      <OutputReview
+        objectKind="artifact-status"
+        targetStatus="published"
+        content="Locked body"
+        sources={[]}
+        allowEdit={false}
+        onAccept={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('output-review-edit')).not.toBeInTheDocument();
+    expect(screen.getByTestId('output-review-accept')).toBeInTheDocument();
+  });
+
   it('uses a status-specific Accept label when targetStatus is supplied', () => {
     render(
       <OutputReview

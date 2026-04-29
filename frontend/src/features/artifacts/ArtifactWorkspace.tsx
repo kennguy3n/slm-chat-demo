@@ -397,6 +397,11 @@ export function ArtifactWorkspace({
           }
           content={currentVersion?.body ?? ''}
           sources={reviewSources}
+          // Status transitions only PATCH `status`; the body itself is
+          // versioned through the version flow, not the status flow.
+          // Disable inline editing here so user edits cannot silently
+          // diverge from the persisted artifact body.
+          allowEdit={false}
           onAccept={() => handleStatus(pendingStatus)}
           onDiscard={() => setPendingStatus(null)}
         />

@@ -37,6 +37,13 @@ interface Props {
   // draft → in_review), the parent passes the target status here so
   // the Accept button can advertise it.
   targetStatus?: string;
+
+  // When false, the Edit button is hidden and the body is read-only.
+  // Use this for confirmation flows (e.g. artifact status transitions)
+  // where the parent only patches metadata and would silently drop any
+  // body edits the user typed. Defaults to true so creation flows keep
+  // their inline-editing affordance.
+  allowEdit?: boolean;
 }
 
 const OBJECT_LABEL: Record<Props['objectKind'], string> = {
@@ -75,6 +82,7 @@ export function OutputReview({
   onEdit,
   onDiscard,
   targetStatus,
+  allowEdit = true,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
@@ -180,15 +188,17 @@ export function OutputReview({
         >
           Discard
         </button>
-        <button
-          type="button"
-          className="output-review__edit"
-          onClick={handleEdit}
-          disabled={busy}
-          data-testid="output-review-edit"
-        >
-          {editing ? 'Save edits' : 'Edit'}
-        </button>
+        {allowEdit && (
+          <button
+            type="button"
+            className="output-review__edit"
+            onClick={handleEdit}
+            disabled={busy}
+            data-testid="output-review-edit"
+          >
+            {editing ? 'Save edits' : 'Edit'}
+          </button>
+        )}
         <button
           type="button"
           className="output-review__accept"
