@@ -13,6 +13,7 @@ import {
   AIEmployeeList,
   AIEmployeePanel,
 } from '../features/ai-employees';
+import { ConnectorPanel } from '../features/knowledge';
 
 
 interface Props {
@@ -24,11 +25,12 @@ interface Props {
   currentUserId?: string;
 }
 
-type RightRailTab = 'tasks' | 'ai-employees';
+type RightRailTab = 'tasks' | 'ai-employees' | 'connectors';
 
 const RIGHT_TABS: { id: RightRailTab; label: string }[] = [
   { id: 'tasks', label: 'Tasks' },
   { id: 'ai-employees', label: 'AI Employees' },
+  { id: 'connectors', label: 'Connectors' },
 ];
 
 // B2BLayout renders the workspace -> domain -> channel hierarchy in the
@@ -240,6 +242,19 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
               recipeCatalog={AI_EMPLOYEE_RECIPES}
               onChange={handleEmployeeChange}
             />
+          </div>
+          <div role="tabpanel" hidden={rightTab !== 'connectors'}>
+            {workspace && selected ? (
+              <ConnectorPanel
+                workspaceId={workspace.id}
+                channelId={selected.id}
+                channelName={selected.name}
+              />
+            ) : (
+              <p className="connector-panel__empty">
+                Select a channel to manage connectors.
+              </p>
+            )}
           </div>
         </div>
       </aside>

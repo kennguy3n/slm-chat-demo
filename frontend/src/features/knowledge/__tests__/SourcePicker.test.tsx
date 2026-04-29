@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SourcePicker } from '../SourcePicker';
 import type { Channel } from '../../../types/workspace';
-import type { ThreadSummary } from '../../../types/knowledge';
+import type {
+  Connector,
+  ConnectorFile,
+  ThreadSummary,
+} from '../../../types/knowledge';
 
 const CHANNELS: Channel[] = [
   {
@@ -33,12 +37,43 @@ const THREADS_BY_CHANNEL: Record<string, ThreadSummary[]> = {
   ch_general: [],
 };
 
+const CONNECTORS: Connector[] = [
+  {
+    id: 'conn_gdrive_acme',
+    kind: 'google_drive',
+    name: 'Acme Corp Drive',
+    workspaceId: 'ws_acme',
+    channelIds: ['ch_engineering'],
+    status: 'connected',
+    createdAt: '2026-04-01T00:00:00Z',
+  },
+];
+
+const CHANNEL_FILES: ConnectorFile[] = [
+  {
+    id: 'file_acme_q3_prd',
+    connectorId: 'conn_gdrive_acme',
+    name: 'Q3 Logging Platform PRD.gdoc',
+    mimeType: 'application/vnd.google-apps.document',
+    size: 12_840,
+    excerpt: 'Q3 logging platform PRD…',
+    url: 'https://drive.google.com/x',
+    permissions: ['alice@acme.com:owner'],
+  },
+];
+
 function makeApi(overrides: Partial<Parameters<typeof SourcePicker>[0]['api']> = {}) {
   return {
     fetchWorkspaceChannels: vi.fn().mockResolvedValue(CHANNELS),
     fetchChannelThreads: vi.fn(
       async (cid: string) => THREADS_BY_CHANNEL[cid] ?? [],
     ),
+    fetchChannelConnectorFiles: vi
+      .fn<(channelId: string) => Promise<ConnectorFile[]>>()
+      .mockResolvedValue(CHANNEL_FILES),
+    fetchConnectors: vi
+      .fn<(workspaceId: string) => Promise<Connector[]>>()
+      .mockResolvedValue(CONNECTORS),
     ...overrides,
   };
 }
@@ -143,20 +178,53 @@ describe('SourcePicker', () => {
     ).toBeInTheDocument();
   });
 
-  it('Files tab shows the Coming soon placeholder', async () => {
+  it('Files tab lists channel-attached connector files and chips show the connector name', async () => {
+    const api = makeApi();
     render(
       <SourcePicker
         workspaceId="ws_acme"
+        channelId="ch_engineering"
         onSelect={vi.fn()}
         onCancel={vi.fn()}
-        api={makeApi()}
+        api={api}
       />,
     );
     await screen.findByTestId('source-picker-channel-ch_general');
     fireEvent.click(screen.getByTestId('source-picker-tab-files'));
-    expect(screen.getByTestId('source-picker-tab-body-files')).toHaveTextContent(
-      /coming soon/i,
+    await waitFor(() => {
+      expect(api.fetchChannelConnectorFiles).toHaveBeenCalledWith('ch_engineering');
+    });
+    const fileCheckbox = await screen.findByTestId(
+      'source-picker-file-file_acme_q3_prd',
     );
+    fireEvent.click(fileCheckbox);
+    expect(
+      screen.getByTestId('source-picker-chip-file-file_acme_q3_prd'),
+    ).toHaveTextContent(/Q3 Logging Platform PRD/);
+    expect(
+      screen.getByTestId('source-picker-chip-file-file_acme_q3_prd'),
+    ).toHaveTextContent(/Acme Corp Drive/);
+  });
+
+  it('Files tab shows an empty state when no files are attached to the channel', async () => {
+    render(
+      <SourcePicker
+        workspaceId="ws_acme"
+        channelId="ch_general"
+        onSelect={vi.fn()}
+        onCancel={vi.fn()}
+        api={makeApi({
+          fetchChannelConnectorFiles: vi
+            .fn<(channelId: string) => Promise<ConnectorFile[]>>()
+            .mockResolvedValue([]),
+        })}
+      />,
+    );
+    await screen.findByTestId('source-picker-channel-ch_general');
+    fireEvent.click(screen.getByTestId('source-picker-tab-files'));
+    expect(
+      await screen.findByText(/No connector files attached/i),
+    ).toBeInTheDocument();
   });
 
   it('Confirm fires onSelect with the accumulated selections', async () => {

@@ -3,6 +3,8 @@ import type {
   ThreadSummaryResponse,
 } from '../../types/ai';
 import { PrivacyStrip } from './PrivacyStrip';
+import { CitationRenderer } from '../knowledge/CitationRenderer';
+import type { CitationSource } from '../knowledge/CitationChip';
 
 interface Props {
   summary: ThreadSummaryResponse;
@@ -27,6 +29,14 @@ export function ThreadSummaryCard({
   onDiscard,
 }: Props) {
   const text = streamingText ?? '';
+  const hasCitations = /\[source:[a-zA-Z0-9_\-:.]+\]/.test(text);
+  const citationSources: CitationSource[] = summary.sources.map((s) => ({
+    kind: 'message' as const,
+    id: s.id,
+    label: `${s.sender}`,
+    sender: s.sender,
+    excerpt: s.excerpt,
+  }));
 
   const privacy: PrivacyStripData = {
     computeLocation: summary.computeLocation,
@@ -63,8 +73,14 @@ export function ThreadSummaryCard({
       </header>
       <div className="thread-summary-card__body" data-testid="thread-summary-body">
         {text ? (
-          text.split('\n').map((line, i) =>
-            line.trim() === '' ? <br key={i} /> : <p key={i}>{line}</p>,
+          hasCitations ? (
+            <CitationRenderer text={text} sources={citationSources} />
+          ) : (
+            text
+              .split('\n')
+              .map((line, i) =>
+                line.trim() === '' ? <br key={i} /> : <p key={i}>{line}</p>,
+              )
           )
         ) : (
           <p className="thread-summary-card__placeholder">
@@ -77,7 +93,7 @@ export function ThreadSummaryCard({
           </span>
         )}
       </div>
-      {summary.sources.length > 0 && (
+      {!hasCitations && summary.sources.length > 0 && (
         <details className="thread-summary-card__sources">
           <summary>Sources ({summary.sources.length})</summary>
           <ul data-testid="thread-summary-sources">

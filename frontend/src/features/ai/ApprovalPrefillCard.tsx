@@ -6,6 +6,8 @@ import type {
   PrivacyStripWhyDetail,
 } from '../../types/ai';
 import { PrivacyStrip } from './PrivacyStrip';
+import { CitationRenderer } from '../knowledge/CitationRenderer';
+import type { CitationSource } from '../knowledge/CitationChip';
 
 interface Props {
   prefill: PrefillApprovalResponse;
@@ -195,6 +197,18 @@ export function ApprovalPrefillCard({
         <p className="approval-prefill-card__missing" data-testid="approval-prefill-missing">
           Missing: {missing.join(', ')}
         </p>
+      )}
+      {prefill.sourceMessageIds.length > 0 && (
+        <CitationRenderer
+          text={justification}
+          sources={prefill.sourceMessageIds.map<CitationSource>((id) => ({
+            kind: 'message',
+            id,
+            label: sourceExcerpts[id] ?? `Source message ${id}`,
+            excerpt: sourceExcerpts[id],
+          }))}
+          footerLabel={`Sources (${prefill.sourceMessageIds.length})`}
+        />
       )}
       <div
         className="approval-prefill-card__actions"

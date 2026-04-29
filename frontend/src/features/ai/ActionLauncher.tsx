@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { ContextMode } from '../../types/workspace';
 import type { SelectedSource } from '../../types/knowledge';
 import { SourcePicker } from '../knowledge/SourcePicker';
+import { PermissionPreview } from '../knowledge/PermissionPreview';
+import type { ConnectorFile } from '../../types/knowledge';
+import { fetchChannelConnectorFiles } from '../../api/connectorApi';
 
 export interface ActionLauncherAction {
   id: string;
@@ -33,10 +36,16 @@ interface Props {
   // Create / Analyze / Plan intents. When omitted the picker is
   // skipped entirely and the launcher behaves as it did in Phase 4.
   workspaceId?: string;
+  // Channel context. When provided, the SourcePicker scopes the Files
+  // tab to attached connectors and the PermissionPreview can show the
+  // "X files reachable from this channel" detail.
+  channelId?: string;
   // Top-level action ids that should route through SourcePicker
   // before `onAction` fires. Defaults to the B2B knowledge intents;
   // tests override this to avoid opening the picker.
   intentsRequiringSources?: string[];
+  // Test seam for the connector file fetch used by PermissionPreview.
+  fetchChannelFiles?: (channelId: string) => Promise<ConnectorFile[]>;
 }
 
 // Phase 0 menu definitions. PROPOSAL.md section 4.2 describes the B2C quick
@@ -98,7 +107,9 @@ export function ActionLauncher({
   onAction,
   triggerLabel = 'AI',
   workspaceId,
+  channelId,
   intentsRequiringSources = ['create', 'analyze', 'plan'],
+  fetchChannelFiles = fetchChannelConnectorFiles,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
@@ -110,6 +121,14 @@ export function ActionLauncher({
     | { path: string[]; label: string }
     | null
   >(null);
+  // Phase 5 — once the SourcePicker confirms we hold the chosen
+  // sources here while the PermissionPreview is shown, then dispatch
+  // onAction once the user actually confirms the egress preview.
+  const [pendingPreview, setPendingPreview] = useState<
+    | { path: string[]; label: string; sources: SelectedSource[] }
+    | null
+  >(null);
+  const [previewFiles, setPreviewFiles] = useState<ConnectorFile[]>([]);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const actions = context === 'b2c' ? B2C_ACTIONS : B2B_ACTIONS;
@@ -161,6 +180,20 @@ export function ActionLauncher({
     if (!pendingPick) return;
     const { path, label } = pendingPick;
     setPendingPick(null);
+    setPendingPreview({ path, label, sources });
+    if (channelId) {
+      fetchChannelFiles(channelId)
+        .then(setPreviewFiles)
+        .catch(() => setPreviewFiles([]));
+    } else {
+      setPreviewFiles([]);
+    }
+  }
+
+  function handlePreviewConfirmed() {
+    if (!pendingPreview) return;
+    const { path, label, sources } = pendingPreview;
+    setPendingPreview(null);
     const handled = onAction?.(path, sources) === true;
     if (!handled) {
       setToast(
@@ -244,8 +277,17 @@ export function ActionLauncher({
       {pendingPick && workspaceId && (
         <SourcePicker
           workspaceId={workspaceId}
+          channelId={channelId}
           onCancel={() => setPendingPick(null)}
           onSelect={handleSourcesConfirmed}
+        />
+      )}
+      {pendingPreview && (
+        <PermissionPreview
+          sources={pendingPreview.sources}
+          connectorFiles={previewFiles}
+          onCancel={() => setPendingPreview(null)}
+          onConfirm={handlePreviewConfirmed}
         />
       )}
     </div>

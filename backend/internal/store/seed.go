@@ -122,6 +122,72 @@ func Seed(m *Memory) {
 	// Mika Sales AI). Each employee is scoped to a specific subset of
 	// B2B channels and a short recipe list.
 	seedAIEmployees(m, now)
+
+	// Phase 5 — one mocked Google Drive connector attached to Acme
+	// Corp's vendor-management channel, plus a small library of
+	// realistic files the SourcePicker / retrieval index can show.
+	seedConnectors(m, now)
+}
+
+// seedConnectors loads the Phase 5 demo connector data: a single
+// mocked Google Drive connector for Acme Corp and four files spanning
+// the demo's main flows (vendor approval, PRD draft, budget,
+// design brief). No real OAuth or API calls — everything is in-memory.
+func seedConnectors(m *Memory, now time.Time) {
+	m.PutConnector(models.Connector{
+		ID:          "conn_gdrive_acme",
+		Kind:        models.ConnectorKindGoogleDrive,
+		Name:        "Acme Corp Drive",
+		WorkspaceID: "ws_acme",
+		ChannelIDs:  []string{"ch_vendor_management"},
+		Status:      models.ConnectorStatusConnected,
+		CreatedAt:   now,
+	})
+	files := []models.ConnectorFile{
+		{
+			ID:          "file_acme_q3_prd",
+			ConnectorID: "conn_gdrive_acme",
+			Name:        "Q3 Logging Platform PRD.gdoc",
+			MimeType:    "application/vnd.google-apps.document",
+			Size:        12_840,
+			Excerpt:     "Q3 logging platform PRD — replace the legacy syslog ingest with a managed observability vendor. Goals: 99.9% delivery, 30-day retention, SOC 2 Type II vendor, < $45k/yr. Out of scope: client-side telemetry rewrites.",
+			URL:         "https://drive.google.com/file/d/file_acme_q3_prd/view",
+			Permissions: []string{"alice@acme.com:owner", "dave@acme.com:editor", "eve@acme.com:viewer"},
+		},
+		{
+			ID:          "file_acme_vendor_contract",
+			ConnectorID: "conn_gdrive_acme",
+			Name:        "Acme Logs Vendor Contract.pdf",
+			MimeType:    "application/pdf",
+			Size:        88_120,
+			Excerpt:     "Master services agreement between Acme Corp and Acme Logs Inc. Annual fee: $42,000 USD billed quarterly. Termination: 60 days written notice. SLA: 99.9% delivery, 1-hour incident response. Data residency: us-east-1.",
+			URL:         "https://drive.google.com/file/d/file_acme_vendor_contract/view",
+			Permissions: []string{"alice@acme.com:owner", "dave@acme.com:editor"},
+		},
+		{
+			ID:          "file_acme_budget",
+			ConnectorID: "conn_gdrive_acme",
+			Name:        "FY26 Engineering Budget.gsheet",
+			MimeType:    "application/vnd.google-apps.spreadsheet",
+			Size:        24_400,
+			Excerpt:     "FY26 engineering budget. Tooling line item: $180k (logging $45k, observability $60k, CI/CD $35k, security $40k). Variance vs FY25: +6%. Approved by CFO Eve Johnson on 2026-03-12.",
+			URL:         "https://drive.google.com/file/d/file_acme_budget/view",
+			Permissions: []string{"alice@acme.com:viewer", "eve@acme.com:owner"},
+		},
+		{
+			ID:          "file_acme_design_brief",
+			ConnectorID: "conn_gdrive_acme",
+			Name:        "Logging Dashboard Design Brief.gdoc",
+			MimeType:    "application/vnd.google-apps.document",
+			Size:        18_640,
+			Excerpt:     "Design brief for the new logging dashboard. Primary persona: on-call engineer triaging an incident at 3am. Must surface: error rate, top failing services, recent deploys, and a one-click pivot to traces. Avoid burying the search box.",
+			URL:         "https://drive.google.com/file/d/file_acme_design_brief/view",
+			Permissions: []string{"alice@acme.com:editor", "dave@acme.com:editor"},
+		},
+	}
+	for _, f := range files {
+		m.AppendConnectorFile(f)
+	}
 }
 
 // seedAIEmployees loads the three Phase 4 demo AI Employees. The

@@ -15,6 +15,55 @@ export interface SelectedSource {
   // style labels. Only meaningful for kind === 'thread'.
   parentChannelId?: string;
   parentChannelName?: string;
+  // For kind === 'file' the picker stamps the connector the file
+  // came from so the chip + permission preview can show "Drive →
+  // vendor-contract.pdf" attribution without an extra round trip.
+  connectorId?: string;
+  connectorName?: string;
+}
+
+// Phase 5 connector types — the renderer mirrors the backend models
+// in `backend/internal/models/connector.go`.
+export type ConnectorKind = 'google_drive' | 'onedrive' | 'github';
+
+export type ConnectorStatus = 'connected' | 'disconnected';
+
+export interface Connector {
+  id: string;
+  kind: ConnectorKind;
+  name: string;
+  workspaceId: string;
+  channelIds: string[];
+  status: ConnectorStatus;
+  createdAt: string;
+}
+
+export interface ConnectorFile {
+  id: string;
+  connectorId: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  excerpt: string;
+  url: string;
+  permissions: string[];
+}
+
+// Phase 5 retrieval types.
+export type RetrievalSourceKind = 'message' | 'file';
+
+export interface RetrievalChunk {
+  id: string;
+  channelId: string;
+  sourceKind: RetrievalSourceKind;
+  sourceId: string;
+  content: string;
+  embedding?: number[];
+}
+
+export interface RetrievalResult {
+  chunk: RetrievalChunk;
+  score: number;
 }
 
 // ThreadSummary is the minimal payload the source picker needs to

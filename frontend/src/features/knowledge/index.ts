@@ -1,8 +1,19 @@
-// Phase 5 knowledge feature module — exposes the SourcePicker used
-// by the AI Employee launch flow to scope what an AI Employee is
-// allowed to read from before a recipe runs.
+// Phase 5 knowledge feature module — source picker, channel-scoped
+// connector attachment, permission preview, and citation rendering.
 export { SourcePicker } from './SourcePicker';
+export { ConnectorPanel } from './ConnectorPanel';
+export { PermissionPreview } from './PermissionPreview';
+export { CitationChip } from './CitationChip';
+export { CitationRenderer, parseCitations } from './CitationRenderer';
+export type { CitationSource } from './CitationChip';
 export type {
+  Connector,
+  ConnectorFile,
+  ConnectorKind,
+  ConnectorStatus,
+  RetrievalChunk,
+  RetrievalResult,
+  RetrievalSourceKind,
   SelectedSource,
   SelectedSourceKind,
   ThreadSummary,
