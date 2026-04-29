@@ -372,36 +372,111 @@ func seedFormTemplates(m *Memory) {
 
 func seedMessages(m *Memory, base time.Time) {
 	// B2C — Alice <-> Bob DM.
+	//
+	// Kept deliberately conversational so the B2C thread-summary and
+	// smart-reply demos have a believable social exchange to work
+	// with. Includes one Spanish line so the inline-translation demo
+	// has a realistic source message.
 	addMsg(m, "msg_dm_1", "ch_dm_alice_bob", "", "user_bob", "hey, are you free for dinner Thursday?", base.Add(-3*time.Hour))
 	addMsg(m, "msg_dm_2", "ch_dm_alice_bob", "", "user_alice", "yes! 7pm at the usual place?", base.Add(-3*time.Hour+5*time.Minute))
 	addMsg(m, "msg_dm_3", "ch_dm_alice_bob", "", "user_bob", "perfect, I'll book it", base.Add(-3*time.Hour+6*time.Minute))
+	addMsg(m, "msg_dm_4", "ch_dm_alice_bob", "", "user_alice", "btw — should we invite Carol? she's back in town this week", base.Add(-3*time.Hour+10*time.Minute))
+	addMsg(m, "msg_dm_5", "ch_dm_alice_bob", "", "user_bob", "good idea, I'll ping her. want me to pick you up on the way?", base.Add(-3*time.Hour+15*time.Minute))
+	addMsg(m, "msg_dm_6", "ch_dm_alice_bob", "", "user_alice", "heads up: I might be 10 min late Thursday — dentist appointment runs till 6:45", base.Add(-2*time.Hour-30*time.Minute))
+	addMsg(m, "msg_dm_7", "ch_dm_alice_bob", "", "user_bob", "no stress, I'll grab the booth and order us water", base.Add(-2*time.Hour-29*time.Minute))
+	addMsg(m, "msg_dm_8", "ch_dm_alice_bob", "", "user_alice", "¿nos vemos a las siete en el restaurante de siempre?", base.Add(-2*time.Hour-20*time.Minute))
+	addMsg(m, "msg_dm_9", "ch_dm_alice_bob", "", "user_bob", "sí! 7pm confirmed — Carol is in too, she'll meet us there", base.Add(-2*time.Hour-18*time.Minute))
 
-	// B2C — Family group (drives the task-extraction demo flow in PROPOSAL 5.2).
+	// B2C — Family group. Drives two demo flows:
+	//  - Morning Catch-up digest (PROPOSAL 5.1) needs multiple days of
+	//    events (field trip, piano recital, parent-teacher night,
+	//    birthday) so the summary has something meaningful to condense.
+	//  - Task-extraction demo (PROPOSAL 5.2) anchors off `msg_fam_1`.
 	addMsg(m, "msg_fam_1", "ch_family", "", "user_bob", "Mom: Field trip form due Friday, please sign. Also we need sunscreen.", base.Add(-2*time.Hour))
 	addMsg(m, "msg_fam_2", "ch_family", "", "user_alice", "got it — I'll sign the form tonight and grab sunscreen on the way home", base.Add(-2*time.Hour+10*time.Minute))
 	addMsg(m, "msg_fam_3", "ch_family", "", "user_bob", "thanks!", base.Add(-2*time.Hour+11*time.Minute))
 
-	// B2C — Neighborhood community (event card demo).
+	// Yesterday — piano recital and grocery planning.
+	addMsg(m, "msg_fam_4", "ch_family", "", "user_alice", "don't forget Lily's piano recital is Saturday at 2pm. dress code: smart casual.", base.Add(-26*time.Hour))
+	addMsg(m, "msg_fam_5", "ch_family", "", "user_bob", "on my calendar. do we need to buy flowers for her?", base.Add(-26*time.Hour+5*time.Minute))
+	addMsg(m, "msg_fam_6", "ch_family", "", "user_alice", "yes, pick them up day-of so they're fresh — small bouquet, nothing fancy", base.Add(-26*time.Hour+10*time.Minute))
+	addMsg(m, "msg_fam_7", "ch_family", "", "user_bob", "grocery run tomorrow — here's the list: milk, eggs, bread, apples, lunchbox snacks", base.Add(-25*time.Hour))
+	addMsg(m, "msg_fam_8", "ch_family", "", "user_alice", "add pasta + a jar of marinara. Lily asked for spaghetti Wednesday.", base.Add(-25*time.Hour+10*time.Minute))
+
+	// Two days ago — school + shared calendar items.
+	addMsg(m, "msg_fam_9", "ch_family", "", "user_bob", "parent-teacher night Thursday 6pm at Oakridge Elementary — both of us?", base.Add(-48*time.Hour))
+	addMsg(m, "msg_fam_10", "ch_family", "", "user_alice", "I'll go. you're on bedtime duty that night.", base.Add(-48*time.Hour+5*time.Minute))
+
+	// Today, late — birthday reminder + weekend plan so the morning
+	// catch-up has something to summarize for "things coming up".
+	addMsg(m, "msg_fam_11", "ch_family", "", "user_alice", "reminder: Grandma's birthday is next Tuesday — we need a card + gift idea", base.Add(-45*time.Minute))
+	addMsg(m, "msg_fam_12", "ch_family", "", "user_bob", "I'll grab a card this weekend. she's been into gardening lately — small potted plant?", base.Add(-44*time.Minute))
+	addMsg(m, "msg_fam_13", "ch_family", "", "user_alice", "weekend plan: Saturday = recital + ice cream after; Sunday = park if the weather holds", base.Add(-30*time.Minute))
+
+	// B2C — Neighborhood community. Drives the RSVP event-card demo,
+	// so the channel now carries *multiple* distinct events (block
+	// party, garage sale, lost pet notice, volunteer request) instead
+	// of a single event. Only the block party has an existing seeded
+	// event card — the others demonstrate that the LLM can discover
+	// additional events from chat text.
 	addMsg(m, "msg_comm_1", "ch_neighborhood", "", "user_carol", "Block party Saturday May 16, 4pm at Maple Park. Bring a side dish!", base.Add(-90*time.Minute))
 	addMsg(m, "msg_comm_2", "ch_neighborhood", "", "user_alice", "in! happy to bring drinks", base.Add(-85*time.Minute))
 	addMsg(m, "msg_comm_3", "ch_neighborhood", "", "user_carol", "rain plan: we'll move to the community center if it's wet", base.Add(-80*time.Minute))
 
-	// B2B — vendor-management thread (vendor approval demo flow, PROPOSAL 5.3).
+	addMsg(m, "msg_comm_4", "ch_neighborhood", "", "user_carol", "garage sale fundraiser next Sunday May 17, 9am–1pm at 142 Oak St. proceeds go to the school library.", base.Add(-70*time.Minute))
+	addMsg(m, "msg_comm_5", "ch_neighborhood", "", "user_alice", "I have a box of books and two old bikes — happy to donate", base.Add(-65*time.Minute))
+	addMsg(m, "msg_comm_6", "ch_neighborhood", "", "user_carol", "lost pet: orange tabby 'Momo', last seen near Maple & 3rd on Wednesday evening. please DM if you spot him.", base.Add(-60*time.Minute))
+	addMsg(m, "msg_comm_7", "ch_neighborhood", "", "user_alice", "sorry to hear! I'll keep an eye out on my morning walk.", base.Add(-55*time.Minute))
+	addMsg(m, "msg_comm_8", "ch_neighborhood", "", "user_carol", "volunteer request: need 3 people Saturday at 3pm to help set up the block party. DM me if you can come early.", base.Add(-40*time.Minute))
+	addMsg(m, "msg_comm_9", "ch_neighborhood", "", "user_alice", "count me in for setup", base.Add(-35*time.Minute))
+
+	// B2B — vendor-management thread. Drives the approval-prefill demo
+	// (PROPOSAL 5.3). The enriched tail carries pricing breakdown, risk
+	// assessment, and an explicit decision statement so the
+	// `prefill_approval` MockAdapter output has concrete source
+	// material to point at.
 	addMsg(m, "msg_vend_root", "ch_vendor_management", "msg_vend_root", "user_dave", "Need to lock vendor pricing for the Q3 logging contract — three bids on the table.", base.Add(-50*time.Minute))
 	addMsg(m, "msg_vend_r1", "ch_vendor_management", "msg_vend_root", "user_eve", "what are the bids and risk notes?", base.Add(-48*time.Minute))
 	addMsg(m, "msg_vend_r2", "ch_vendor_management", "msg_vend_root", "user_dave", "Acme Logs $42k/yr, BetterLog $51k/yr, CloudTrace $39k/yr. CloudTrace failed our SOC 2 review last quarter.", base.Add(-45*time.Minute))
 	addMsg(m, "msg_vend_r3", "ch_vendor_management", "msg_vend_root", "user_eve", "skip CloudTrace then. lean Acme; need pricing breakdown + termination terms before I approve.", base.Add(-43*time.Minute))
 	addMsg(m, "msg_vend_r4", "ch_vendor_management", "msg_vend_root", "user_dave", "pulling that now — pending decision in this thread.", base.Add(-42*time.Minute))
+	addMsg(m, "msg_vend_r5", "ch_vendor_management", "msg_vend_root", "user_dave", "Pricing breakdown — Acme Logs: $42k/yr base, $3/GB overage past 5TB, 30-day termination. BetterLog: $51k/yr base, $2/GB overage past 3TB, 90-day termination.", base.Add(-40*time.Minute))
+	addMsg(m, "msg_vend_r6", "ch_vendor_management", "msg_vend_root", "user_dave", "Risk notes — Acme Logs: SOC 2 Type II (April 2026), GDPR DPA in place, 99.95% uptime SLA. BetterLog: SOC 2 Type I only, no published uptime SLA.", base.Add(-38*time.Minute))
+	addMsg(m, "msg_vend_r7", "ch_vendor_management", "msg_vend_root", "user_eve", "Decision: go with Acme Logs at $42,000/yr. Justification: lowest cost, stronger SOC 2 posture, shorter termination window. I'll approve once the request is filed.", base.Add(-35*time.Minute))
+	addMsg(m, "msg_vend_r8", "ch_vendor_management", "msg_vend_root", "user_dave", "filing the approval now — source thread is this one.", base.Add(-33*time.Minute))
 
-	// B2B — engineering thread (PRD draft demo flow, PROPOSAL 5.4).
+	// B2B — engineering — inline-translation thread (PRD draft demo,
+	// PROPOSAL 5.4). Unchanged from Phase 0 so the existing Phase-0
+	// artifact card and its source pins remain valid.
 	addMsg(m, "msg_eng_root", "ch_engineering", "msg_eng_root", "user_alice", "Kicking off the inline-translation feature. Goal: per-message translation rendered under the bubble, original always one tap away.", base.Add(-30*time.Minute))
 	addMsg(m, "msg_eng_r1", "ch_engineering", "msg_eng_root", "user_dave", "requirements I have so far: locale auto-detect, on-device only, fall back to original on low confidence, must work in family group chats.", base.Add(-28*time.Minute))
 	addMsg(m, "msg_eng_r2", "ch_engineering", "msg_eng_root", "user_eve", "metric: % messages translated successfully without user toggling back to original. target > 90% for top 5 locales.", base.Add(-25*time.Minute))
 	addMsg(m, "msg_eng_r3", "ch_engineering", "msg_eng_root", "user_alice", "good. I'll draft a PRD from this thread and post v1 here for review.", base.Add(-23*time.Minute))
 
-	// B2B — #general (a couple of casual messages so the channel is not empty).
+	// B2B — engineering — on-call rotation thread (secondary source for
+	// the PRD / artifact demo so there is more than one thread to
+	// summarize or draft from).
+	addMsg(m, "msg_eng_onc_root", "ch_engineering", "msg_eng_onc_root", "user_dave", "Proposal: move to a weekly on-call rotation with a 2-person primary/secondary split starting next month. Current monthly rotation is burning people out.", base.Add(-15*time.Minute))
+	addMsg(m, "msg_eng_onc_r1", "ch_engineering", "msg_eng_onc_root", "user_alice", "+1 to weekly — monthly is brutal on travel weeks. primary/secondary split is the right shape.", base.Add(-14*time.Minute))
+	addMsg(m, "msg_eng_onc_r2", "ch_engineering", "msg_eng_onc_root", "user_eve", "compensation: 1 comp day per week on primary, 0.5 per week on secondary. needs sign-off from Finance before we announce.", base.Add(-13*time.Minute))
+	addMsg(m, "msg_eng_onc_r3", "ch_engineering", "msg_eng_onc_root", "user_dave", "action items: (1) Alice drafts the rotation calendar, (2) Eve confirms the comp-day budget with Finance, (3) I announce in #general by Friday.", base.Add(-12*time.Minute))
+	addMsg(m, "msg_eng_onc_r4", "ch_engineering", "msg_eng_onc_root", "user_alice", "owning (1) — draft calendar by Thursday EOD.", base.Add(-11*time.Minute))
+
+	// B2B — #general. Carries standup-style updates, announcements,
+	// and a short planning thread with explicit action items so the
+	// summarize / extract-tasks demos have meaningful content.
 	addMsg(m, "msg_gen_1", "ch_general", "", "user_eve", "morning everyone — standup in 10", base.Add(-20*time.Minute))
 	addMsg(m, "msg_gen_2", "ch_general", "", "user_dave", "joining", base.Add(-19*time.Minute))
+	addMsg(m, "msg_gen_3", "ch_general", "", "user_alice", "standup notes: inline-translation demo shipped to staging; approval-flow refactor started; on-call rotation proposal in #engineering (please review).", base.Add(-18*time.Minute))
+	addMsg(m, "msg_gen_4", "ch_general", "", "user_dave", "announcement: office closed this Friday for the long weekend — no standup that day.", base.Add(-17*time.Minute))
+	addMsg(m, "msg_gen_5", "ch_general", "", "user_eve", "FYI — the new travel-expense form is live in KApp Forms. please file anything open before month-end.", base.Add(-16*time.Minute))
+
+	// Short Q2 OKR thread — explicit owners + action items for the
+	// extract_tasks / summarize demos.
+	addMsg(m, "msg_gen_okr_root", "ch_general", "msg_gen_okr_root", "user_alice", "need owners for three Q2 OKRs — any volunteers? (1) doc-site refresh, (2) CI time under 10min, (3) customer pilot outreach.", base.Add(-14*time.Minute))
+	addMsg(m, "msg_gen_okr_r1", "ch_general", "msg_gen_okr_root", "user_dave", "(1) I'll own the doc-site refresh.", base.Add(-13*time.Minute))
+	addMsg(m, "msg_gen_okr_r2", "ch_general", "msg_gen_okr_root", "user_eve", "(2) mine — I have the CI profile already.", base.Add(-12*time.Minute))
+	addMsg(m, "msg_gen_okr_r3", "ch_general", "msg_gen_okr_root", "user_alice", "(3) I'll take customer pilot outreach. action: tracking board up by Monday.", base.Add(-11*time.Minute))
 }
 
 // seedCards loads four sample KApp cards covering each card kind so the

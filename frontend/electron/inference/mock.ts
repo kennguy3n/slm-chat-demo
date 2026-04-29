@@ -47,24 +47,59 @@ export class MockAdapter implements Adapter {
 function mockOutputFor(req: InferenceRequest): string {
   switch (req.taskType) {
     case 'summarize':
-      return 'On-device summary: 3 unread threads, 1 deadline (field-trip form Friday), 1 RSVP pending, 1 reply needed.';
+      // Morning Catch-up digest (PROPOSAL 5.1). References the enriched
+      // seed content (Family group: field-trip form, Lily's piano
+      // recital, parent-teacher night, Grandma's birthday; Community:
+      // block party + garage sale + lost pet Momo; Vendor thread:
+      // Acme Logs decision) so the demo feels populated rather than
+      // generic.
+      return [
+        'On-device summary — 4 threads with activity since last check:',
+        '• Family group: field-trip form due Friday (sunscreen too),',
+        '  Lily\'s piano recital Saturday 2pm, parent-teacher night',
+        '  Thursday 6pm, Grandma\'s birthday next Tuesday.',
+        '• Neighborhood: block-party Saturday (you\'re bringing drinks),',
+        '  garage sale May 17, lost-pet notice (orange tabby "Momo"),',
+        '  volunteer request for Saturday setup.',
+        '• Vendor management: decision on the Q3 logging contract —',
+        '  Acme Logs at $42k/yr, ready to approve.',
+        '• #general: Q2 OKR owners assigned; Friday is a company holiday.',
+      ].join('\n');
     case 'translate': {
       const prompt = (req.prompt ?? '').trim() || '(no source text)';
       return `Translation (en→es): ${prompt} → "[mocked Spanish translation of ${JSON.stringify(prompt)}]"`;
     }
     case 'extract_tasks':
+      // Demo flow 5.2 — task extraction from the Family group.
+      // Output lines reference the source message IDs (`msg_fam_*`) so
+      // the renderer's `SourcePin` / provenance surface has concrete
+      // anchors to render.
       return [
-        '- Submit field-trip form (due Friday)',
-        '- Add sunscreen to shopping list',
-        '- Set Friday reminder',
+        '- Submit field-trip form (due Friday) [source: msg_fam_1]',
+        '- Add sunscreen to shopping list [source: msg_fam_1]',
+        '- Buy flowers for Lily\'s piano recital Saturday [source: msg_fam_5]',
+        '- Grocery run: milk, eggs, bread, apples, pasta, marinara [source: msg_fam_7, msg_fam_8]',
+        '- Parent-teacher night Thursday 6pm at Oakridge Elementary [source: msg_fam_9]',
+        '- Pick up birthday card + potted plant for Grandma (next Tuesday) [source: msg_fam_11, msg_fam_12]',
       ].join('\n');
     case 'smart_reply':
-      return 'Suggested reply: "Sounds good — I\'ll handle the form tonight and grab sunscreen on the way home."';
+      // Return 2-3 short candidate replies on separate lines. `tasks.ts:parseSmartReplies`
+      // splits on newlines, strips leading bullets / numbered prefixes /
+      // "suggested reply:" labels, and caps at 3 suggestions.
+      return [
+        'Sounds good — I\'ll handle the form tonight and grab sunscreen on the way home.',
+        'Thanks for the reminder! I\'ll pick up sunscreen and sign the form after dinner.',
+        'Can do — I\'ll swing by the store on my way back and knock both out tonight.',
+      ].join('\n');
     case 'prefill_approval':
+      // Demo flow 5.3 — approval prefill from the enriched vendor
+      // thread. Fields match `msg_vend_r5` (pricing breakdown),
+      // `msg_vend_r6` (SOC 2 / GDPR risk notes), and `msg_vend_r7`
+      // (explicit decision line).
       return [
         'vendor: Acme Logs',
         'amount: $42,000 / yr',
-        'justification: Lowest-cost SOC 2-cleared bidder.',
+        'justification: Lowest-cost SOC 2 Type II-cleared bidder with 30-day termination and 99.95% uptime SLA; BetterLog was $51k with 90-day termination, CloudTrace failed SOC 2.',
         'risk: medium',
       ].join('\n');
     case 'prefill_form':
@@ -72,7 +107,7 @@ function mockOutputFor(req: InferenceRequest): string {
         'vendor: Acme Logs',
         'amount: $42,000',
         'compliance: SOC 2',
-        'justification: Logging vendor selection — see thread.',
+        'justification: Logging vendor selection — see vendor-management thread (msg_vend_root).',
         'requester: alice',
       ].join('\n');
     case 'draft_artifact':

@@ -77,8 +77,8 @@ func TestChannelMessagesAndThreadMessages(t *testing.T) {
 	store.Seed(m)
 
 	famMsgs := m.ListChannelMessages("ch_family")
-	if len(famMsgs) != 3 {
-		t.Fatalf("expected 3 top-level family messages, got %d", len(famMsgs))
+	if len(famMsgs) < 5 {
+		t.Fatalf("expected at least 5 top-level family messages, got %d", len(famMsgs))
 	}
 	// Sorted ascending by createdAt.
 	for i := 1; i < len(famMsgs); i++ {
@@ -88,8 +88,8 @@ func TestChannelMessagesAndThreadMessages(t *testing.T) {
 	}
 
 	thread := m.ListThreadMessages("msg_vend_root")
-	if len(thread) != 5 {
-		t.Fatalf("expected 5 thread messages, got %d", len(thread))
+	if len(thread) < 5 {
+		t.Fatalf("expected at least 5 vendor thread messages, got %d", len(thread))
 	}
 	if thread[0].ID != "msg_vend_root" {
 		t.Errorf("expected first thread message to be the root, got %s", thread[0].ID)
