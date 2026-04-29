@@ -21,6 +21,7 @@ type Memory struct {
 	forms         []models.Form
 	auditLog      []models.AuditEntry
 	aiEmployees   map[string]models.AIEmployee
+	recipeRuns    []models.RecipeRun
 }
 
 // NewMemory returns an empty Memory store. Call Seed to populate it with the
@@ -36,6 +37,7 @@ func NewMemory() *Memory {
 		forms:         []models.Form{},
 		auditLog:      []models.AuditEntry{},
 		aiEmployees:   map[string]models.AIEmployee{},
+		recipeRuns:    []models.RecipeRun{},
 	}
 }
 
@@ -590,4 +592,44 @@ func (m *Memory) ListAuditEntries(objectID string, objectKind string) []models.A
 		out = append(out, e)
 	}
 	return out
+}
+
+// AppendRecipeRun records a recipe-run queue entry. The log is
+// append-only except via UpdateRecipeRun (status / completion).
+func (m *Memory) AppendRecipeRun(run models.RecipeRun) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.recipeRuns = append(m.recipeRuns, run)
+}
+
+// ListRecipeRuns returns every recipe run, optionally filtered to a
+// single AI Employee. Runs are returned in insertion (chronological)
+// order so the Queue view can render newest-first via the caller.
+func (m *Memory) ListRecipeRuns(aiEmployeeID string) []models.RecipeRun {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []models.RecipeRun{}
+	for _, r := range m.recipeRuns {
+		if aiEmployeeID != "" && r.AIEmployeeID != aiEmployeeID {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// UpdateRecipeRun applies a mutator to the stored recipe run with the
+// given ID. Returns the updated run and true on success; false if no
+// such run exists.
+func (m *Memory) UpdateRecipeRun(id string, mutate func(*models.RecipeRun)) (models.RecipeRun, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.recipeRuns {
+		if m.recipeRuns[i].ID != id {
+			continue
+		}
+		mutate(&m.recipeRuns[i])
+		return m.recipeRuns[i], true
+	}
+	return models.RecipeRun{}, false
 }

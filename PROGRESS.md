@@ -1,6 +1,6 @@
 # KChat SLM Demo — Progress Tracker
 
-Last updated: 2026-04-29 (Phase 4 in progress — AI Employee profiles, allowed-channel config, recipe registry + summarize / extract_tasks recipes)
+Last updated: 2026-04-29 (Phase 4 in progress — AI Employee profiles, recipe registry + 6 canonical recipes, and right-rail Queue view)
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: 2026-04-29 (Phase 4 in progress — AI Employee profiles, allowed-
 | Phase 1: Local LLM MVP | Complete | 100% |
 | Phase 2: B2C second-brain demo | Complete | 100% |
 | Phase 3: B2B KApps MVP | Complete | 100% |
-| Phase 4: AI Employees and recipe engine | In progress | ~55% |
+| Phase 4: AI Employees and recipe engine | In progress | ~70% |
 | Phase 5: Connectors and knowledge graph | Not started | 0% |
 | Phase 6: Confidential server mode | Not started | 0% |
 
@@ -98,11 +98,11 @@ Last updated: 2026-04-29 (Phase 4 in progress — AI Employee profiles, allowed-
 - [x] Recipe registry — `frontend/electron/inference/recipes/registry.ts` defines `RecipeDefinition` / `RecipeContext` / `RecipeResult` plus `RECIPE_REGISTRY` + `registerRecipe` / `getRecipe` / `listRecipes`; generic `ai:recipe:run` IPC channel looks recipes up by id and refuses recipes the AI Employee is not authorised for. Intentionally separate from the AI Skills Framework — skills own low-level prompts + guardrails, recipes compose existing task helpers into AI-Employee-scoped actions.
 - [x] Recipe: summarize — `recipes/summarize.ts` wraps `buildThreadSummary` with a short-thread heuristic (`preferredTierForThread`, E2B ≤ 8 msgs, E4B otherwise) and returns prompt + sources + message count.
 - [x] Recipe: extract_tasks — `recipes/extract-tasks.ts` wraps `runKAppsExtractTasks`, preserves per-task source provenance (`sourceMessageId`), and returns a `refused` envelope for empty threads without crashing.
-- [ ] Recipe: draft_prd
-- [ ] Recipe: draft_proposal
-- [ ] Recipe: create_qbr
-- [ ] Recipe: prefill_approval
-- [ ] Queue view (pending AI tasks)
+- [x] Recipe: draft_prd — `recipes/draft-prd.ts` wraps `buildDraftArtifact({ artifactType: 'PRD' })`, advertises `preferredTier: 'e4b'`, returns `{ prompt, sources, threadId, channelId }` so the renderer can stream the body via `ai:stream`, and refuses empty threads gracefully (no exception).
+- [x] Recipe: draft_proposal — `recipes/draft-proposal.ts` wraps `buildDraftArtifact({ artifactType: 'Proposal' })` with the same deterministic prompt-then-stream pattern as `draft_prd` and the same empty-thread refusal envelope.
+- [x] Recipe: create_qbr — `recipes/create-qbr.ts` wraps `buildDraftArtifact({ artifactType: 'QBR' })`, advertises `preferredTier: 'e4b'` so the router favours reasoning-heavy routing, and surfaces the QBR wins / gaps / asks / next-quarter prompt to the renderer.
+- [x] Recipe: prefill_approval — `recipes/prefill-approval.ts` wraps `runPrefillApproval`, flattens the parsed `{ vendor, amount, risk, justification }` fields + `sourceMessageIds` into the `RecipeResult` envelope, advertises `preferredTier: 'e4b'`, and refuses empty threads without crashing. All six canonical recipes now self-register through the barrel (`recipes/index.ts`).
+- [x] Queue view (pending AI tasks) — `backend/internal/models/recipe_run.go` + `store/memory.go` (`AppendRecipeRun` / `ListRecipeRuns(aiEmployeeId)` / `UpdateRecipeRun`) + `services/recipe_runs.go` (`RecipeRunService.List` / `Record` / `Complete`) + `api/handlers/recipe_runs.go` (`GET /api/ai-employees/{id}/queue`, `POST /api/ai-employees/{id}/queue`) wired through `api/router.go` + `cmd/server/main.go`. Frontend ships `features/ai-employees/QueueView.tsx` (compact card layout with recipe name, status badge, channel, timestamp; empty state reads "No pending tasks") + `api/recipeRunApi.ts` (`fetchQueue` / `recordRun`) mounted inside `AIEmployeePanel` beneath the budget section.
 - [ ] Budget controls (token/compute limits)
 - [ ] Human approval before publish gate
 - [ ] Auto mode badge
@@ -148,6 +148,7 @@ Last updated: 2026-04-29 (Phase 4 in progress — AI Employee profiles, allowed-
 
 | Date | Change |
 |------|--------|
+| 2026-04-29 | Phase 4 mid-phase: shipped four new recipes (`draft_prd`, `draft_proposal`, `create_qbr`, `prefill_approval`) composing existing `buildDraftArtifact` / `runPrefillApproval` helpers — all register through `recipes/index.ts` and handle empty threads with a `refused` envelope instead of throwing. Added the AI-Employee Queue view: `RecipeRun` model + in-memory store, `RecipeRunService`, `GET /api/ai-employees/{id}/queue`, `POST /api/ai-employees/{id}/queue`, and a `QueueView` right-rail component (mounted inside `AIEmployeePanel`) with status badges, channel names, and a "No pending tasks" empty state. Phase 4 is now ~70% (10 / 14 items). |
 | 2026-04-29 | Phase 4 kickoff: shipped AI Employee profiles (Kara Ops AI, Nina PM AI, Mika Sales AI) with `AIEmployee` model + RWMutex-guarded store, seed, `AIEmployeeService`, `GET /api/ai-employees`, `GET /api/ai-employees/{id}`, `PATCH /api/ai-employees/{id}/channels`, `PATCH /api/ai-employees/{id}/recipes`. Frontend adds `AIEmployeeList` (B2B sidebar) and `AIEmployeePanel` (B2B right-rail "AI Employees" tab) with an inline channel picker backed by optimistic TanStack Query cache updates. Added `frontend/electron/inference/recipes/registry.ts` recipe registry (`RecipeDefinition` / `RecipeContext` / `RecipeResult` + `registerRecipe` / `getRecipe` / `listRecipes`), canonical `summarize` and `extract_tasks` recipes that compose existing `buildThreadSummary` / `runKAppsExtractTasks` helpers, and a generic `ai:recipe:run` IPC channel with authorisation refusal. |
 | 2026-04-29 | Phase 3 complete: shipped audit log (`AuditService` + `GET /api/audit`), `OutputReview` human review gate with `allowEdit` prop, and full Action Launcher integration for Create/Analyze/Plan/Approve B2B flows. All 12 Phase 3 deliverables now checked off. PR #21. |
 | 2026-04-29 | Added `demo/` directory with B2C and B2B screenshots and video walkthroughs of key user journeys running on real Gemma 4 E2B/E4B models via Ollama. |

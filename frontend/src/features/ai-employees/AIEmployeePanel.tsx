@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { AIEmployee, AIEmployeeRecipe } from '../../types/aiEmployee';
 import type { Channel } from '../../types/workspace';
 import { updateAIEmployeeChannels } from '../../api/aiEmployeeApi';
+import { QueueView } from './QueueView';
 
 interface Props {
   employee: AIEmployee | null;
@@ -263,6 +264,12 @@ export function AIEmployeePanel({ employee, channels, recipeCatalog, onChange }:
           </p>
         </div>
       </div>
+
+      <QueueView
+        aiEmployeeId={employee.id}
+        channels={channels}
+        recipeCatalog={recipeCatalog}
+      />
     </section>
   );
 }

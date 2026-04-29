@@ -31,4 +31,9 @@ export const AI_EMPLOYEE_RECIPES: Record<string, AIEmployeeRecipe> = {
     name: 'Draft proposal',
     description: 'Draft a sales proposal or vendor pitch with source pins for human review.',
   },
+  create_qbr: {
+    id: 'create_qbr',
+    name: 'Create QBR',
+    description: 'Draft a quarterly business review — wins, gaps, asks, next-quarter plan — with source pins.',
+  },
 };

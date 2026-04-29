@@ -176,10 +176,10 @@ slm-chat-demo/
 │   │   ├── api/
 │   │   │   ├── router.go        (data-only routes)
 │   │   │   ├── middleware.go
-│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts, audit, ai_employees)
+│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts, audit, ai_employees, recipe_runs)
 │   │   │   └── userctx/         (request-scoped user helpers)
-│   │   ├── services/            (identity, workspace, chat, kapps, audit, ai_employees)
-│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card, audit, ai_employee)
+│   │   ├── services/            (identity, workspace, chat, kapps, audit, ai_employees, recipe_runs)
+│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card, audit, ai_employee, recipe_run)
 │   │   └── store/               (memory store + Phase-0 seed + Phase-4 AI Employee seed)
 │   └── go.mod
 ├── frontend/
@@ -204,7 +204,11 @@ slm-chat-demo/
 │   │       │   ├── registry.ts           (RecipeDefinition + RECIPE_REGISTRY + register/get/list)
 │   │       │   ├── summarize.ts          (wraps buildThreadSummary; E2B/E4B by length)
 │   │       │   ├── extract-tasks.ts      (wraps runKAppsExtractTasks; source provenance)
-│   │       │   └── index.ts              (barrel — self-registers canonical recipes)
+│   │       │   ├── draft-prd.ts          (wraps buildDraftArtifact, artifactType='PRD')
+│   │       │   ├── draft-proposal.ts     (wraps buildDraftArtifact, artifactType='Proposal')
+│   │       │   ├── create-qbr.ts         (wraps buildDraftArtifact, artifactType='QBR')
+│   │       │   ├── prefill-approval.ts   (wraps runPrefillApproval; flattens vendor/amount/risk/justification)
+│   │       │   └── index.ts              (barrel — self-registers all 6 canonical recipes)
 │   │       └── bootstrap.ts     (pings Ollama; chooses real vs. mock adapter set; instantiates SearchService)
 │   ├── src/
 │   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
@@ -214,10 +218,10 @@ slm-chat-demo/
 │   │   │   ├── memory/          (AIMemoryPage + memoryStore — local-only IndexedDB-backed second brain)
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer, TasksKApp, CreateTaskForm, CreateApprovalForm, FormCard, AuditLogPanel, OutputReview)
 │   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections)
-│   │   │   ├── ai-employees/    (AIEmployeeList, AIEmployeePanel, recipeCatalog)
+│   │   │   ├── ai-employees/    (AIEmployeeList, AIEmployeePanel, QueueView, recipeCatalog)
 │   │   │   └── knowledge/       (placeholder)
 │   │   ├── stores/              (workspaceStore, chatStore*, aiStore*, useKAppsStore)
-│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, electronBridge)
+│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, recipeRunApi, electronBridge)
 │   │   ├── types/               (chat, ai, kapps, workspace, audit, aiEmployee, electron.d.ts)
 │   │   ├── router.tsx
 │   │   ├── styles.css
@@ -366,6 +370,29 @@ go test ./...
   `RecipeResult` with `status: 'refused'` rather than throwing), and
   delegates to `recipe.execute`. Exported as `runRecipe` for direct
   unit-testing without spinning up the Electron main process.
+- **Recipes: draft_prd / draft_proposal / create_qbr / prefill_approval** —
+  four new recipes in `electron/inference/recipes/` compose existing
+  `buildDraftArtifact` (PRD / Proposal / QBR) and `runPrefillApproval`
+  task helpers. All advertise `preferredTier: 'e4b'`, return a uniform
+  `RecipeResult` envelope (drafting recipes surface `{ prompt, sources,
+  threadId, channelId }` so the renderer streams the body through
+  `ai:stream`; the approval recipe flattens `{ vendor, amount, risk,
+  justification, sourceMessageIds }`), and refuse empty threads with
+  `status: 'refused'` instead of throwing. With these the registry now
+  ships all six canonical Phase-4 recipes through `recipes/index.ts`.
+- **Queue view (pending AI tasks)** — new `models/recipe_run.go`
+  (`RecipeRun` with `id` / `aiEmployeeId` / `recipeId` / `channelId` /
+  `threadId` / `status` / `createdAt` / `completedAt` / `resultSummary`),
+  append-only `RecipeRuns` slice in `store/memory.go`
+  (`AppendRecipeRun` / `ListRecipeRuns(aiEmployeeId?)` /
+  `UpdateRecipeRun`), `services/recipe_runs.go`
+  (`RecipeRunService.List` / `Record` / `Complete`), and handlers at
+  `GET /api/ai-employees/{id}/queue` + `POST /api/ai-employees/{id}/queue`.
+  Frontend ships `src/api/recipeRunApi.ts` (`fetchQueue` / `recordRun`)
+  and `features/ai-employees/QueueView.tsx` — a compact KApp-style card
+  list showing recipe name, status badge, channel, timestamp, and
+  result summary, with a "No pending tasks" empty state. Mounted
+  inside `AIEmployeePanel` beneath the budget section.
 
 ## Phase 3 — complete
 

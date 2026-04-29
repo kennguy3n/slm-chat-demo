@@ -3,4 +3,5 @@
 // by both.
 export { AIEmployeePanel } from './AIEmployeePanel';
 export { AIEmployeeList } from './AIEmployeeList';
+export { QueueView } from './QueueView';
 export { AI_EMPLOYEE_RECIPES } from './recipeCatalog';
