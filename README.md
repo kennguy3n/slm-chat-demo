@@ -31,7 +31,7 @@ For the full product thesis, architecture, phasing, and progress, see:
 | Shell       | Electron 31 (main + preload + renderer), TypeScript                            |
 | Renderer    | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL      |
 | Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` and an `InferenceRouter` that picks E2B / E4B per task. |
-| IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `familyChecklist`, `shoppingNudges`, `eventRSVP`, `tripPlan`, `guardrailCheck`, `modelStatus`, `loadModel`, `unloadModel`, `route`. |
+| IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `familyChecklist`, `shoppingNudges`, `eventRSVP`, `tripPlan`, `guardrailCheck`, `recipeRun` (Phase 4 generic AI-Employee recipe runner), `modelStatus`, `loadModel`, `unloadModel`, `route`. |
 | Local memory | `features/memory/memoryStore.ts` — IndexedDB (`kchat-slm-memory` / `facts`) with an in-memory fallback. The AI never auto-writes; users add / edit / remove facts from the AI Memory page. 0 B egress. |
 | Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
 | Persistence | (Phase 0) in-memory; (Phase 6+) PostgreSQL + NATS JetStream + MinIO/S3         |
@@ -176,11 +176,11 @@ slm-chat-demo/
 │   │   ├── api/
 │   │   │   ├── router.go        (data-only routes)
 │   │   │   ├── middleware.go
-│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts, audit)
+│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts, audit, ai_employees)
 │   │   │   └── userctx/         (request-scoped user helpers)
-│   │   ├── services/            (identity, workspace, chat, kapps, audit)
-│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card, audit)
-│   │   └── store/               (memory store + Phase-0 seed)
+│   │   ├── services/            (identity, workspace, chat, kapps, audit, ai_employees)
+│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card, audit, ai_employee)
+│   │   └── store/               (memory store + Phase-0 seed + Phase-4 AI Employee seed)
 │   └── go.mod
 ├── frontend/
 │   ├── electron/
@@ -200,6 +200,11 @@ slm-chat-demo/
 │   │       ├── skills/
 │   │       │   ├── trip-planner.ts       (B2C trip / event planning skill)
 │   │       │   └── guardrail-rewrite.ts  (PII / tone / unverified-claim detection + rewrite)
+│   │       ├── recipes/
+│   │       │   ├── registry.ts           (RecipeDefinition + RECIPE_REGISTRY + register/get/list)
+│   │       │   ├── summarize.ts          (wraps buildThreadSummary; E2B/E4B by length)
+│   │       │   ├── extract-tasks.ts      (wraps runKAppsExtractTasks; source provenance)
+│   │       │   └── index.ts              (barrel — self-registers canonical recipes)
 │   │       └── bootstrap.ts     (pings Ollama; chooses real vs. mock adapter set; instantiates SearchService)
 │   ├── src/
 │   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
@@ -209,11 +214,11 @@ slm-chat-demo/
 │   │   │   ├── memory/          (AIMemoryPage + memoryStore — local-only IndexedDB-backed second brain)
 │   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer, TasksKApp, CreateTaskForm, CreateApprovalForm, FormCard, AuditLogPanel, OutputReview)
 │   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections)
-│   │   │   ├── ai-employees/    (placeholder)
+│   │   │   ├── ai-employees/    (AIEmployeeList, AIEmployeePanel, recipeCatalog)
 │   │   │   └── knowledge/       (placeholder)
 │   │   ├── stores/              (workspaceStore, chatStore*, aiStore*, useKAppsStore)
-│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, electronBridge)
-│   │   ├── types/               (chat, ai, kapps, workspace, audit, electron.d.ts)
+│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, electronBridge)
+│   │   ├── types/               (chat, ai, kapps, workspace, audit, aiEmployee, electron.d.ts)
 │   │   ├── router.tsx
 │   │   ├── styles.css
 │   │   └── main.tsx
@@ -309,6 +314,58 @@ go test ./...
   the real tier so the privacy strip and `model:status` (`e4bModel`,
   `e4bLoaded`, `hasE4B`) reflect what actually ran. The
   `DeviceCapabilityPanel` shows both tiers side-by-side.
+
+## Phase 4 — in progress
+
+- **AI Employee profiles (Kara Ops AI, Nina PM AI, Mika Sales AI)** —
+  backend defines `models/ai_employee.go` (`AIEmployee` struct with
+  role / avatar color / description / allowed channel ids / recipes /
+  budget / mode), an RWMutex-guarded store
+  (`PutAIEmployee` / `GetAIEmployee` / `ListAIEmployees` /
+  `UpdateAIEmployee`), `seedAIEmployees`, and an
+  `AIEmployeeService` exposed through `GET /api/ai-employees` and
+  `GET /api/ai-employees/{id}`. The renderer fetches employees via
+  `src/api/aiEmployeeApi.ts`; `AIEmployeeList` renders the three
+  compact cards under the B2B sidebar and `AIEmployeePanel` renders
+  the full profile in a new "AI Employees" right-rail tab with role
+  / mode badges, allowed-channel chips, assigned recipes, and a
+  budget-usage bar.
+- **Allowed channels configuration per AI Employee** —
+  `PATCH /api/ai-employees/{id}/channels` validates every channel id
+  against the workspace store and rejects unknown channels with
+  HTTP 400. The `AIEmployeePanel` "Configure channels" button opens
+  an inline multi-select; Save pushes through `updateAIEmployeeChannels`
+  and the React tree refreshes optimistically through the TanStack
+  Query cache so the chips update before the network round trip
+  settles. `PATCH /api/ai-employees/{id}/recipes` ships the same
+  pattern for the recipe list.
+- **Recipe registry** — `frontend/electron/inference/recipes/registry.ts`
+  defines `RecipeDefinition` (`id`, `name`, `description`, `taskType`,
+  `preferredTier`, `execute(router, context)`), `RecipeContext`
+  (`channelId`, `threadId?`, `messages`, `aiEmployeeId`), `RecipeResult`
+  (`status: ok | refused`, `output`, `model`, `tier`, `reason`), a
+  module-level `RECIPE_REGISTRY` Map, and `registerRecipe` /
+  `getRecipe` / `listRecipes` helpers. The registry is intentionally
+  separate from the AI Skills Framework in `skill-framework.ts`:
+  skills are low-level inference contracts (prompts, guardrails,
+  parsers); recipes are higher-level AI-Employee-scoped wrappers that
+  compose existing task helpers.
+- **Recipes: summarize + extract_tasks** — `recipes/summarize.ts`
+  wraps `buildThreadSummary` and exposes a short-thread heuristic
+  (`preferredTierForThread`: E2B ≤ 8 messages, E4B otherwise).
+  `recipes/extract-tasks.ts` wraps `runKAppsExtractTasks`, preserves
+  per-task source provenance through the `sourceMessageId` field, and
+  returns a `refused` envelope (not an exception) for empty threads.
+  Both self-register into `RECIPE_REGISTRY` via the
+  `recipes/index.ts` barrel.
+- **`ai:recipe:run` IPC channel** — a generic recipe runner in
+  `electron/ipc-handlers.ts` accepts
+  `{ recipeId, aiEmployeeId, channelId, threadId?, messages, allowedRecipes? }`,
+  looks the recipe up in `RECIPE_REGISTRY`, refuses recipes the
+  calling AI Employee is not authorised for (returning a uniform
+  `RecipeResult` with `status: 'refused'` rather than throwing), and
+  delegates to `recipe.execute`. Exported as `runRecipe` for direct
+  unit-testing without spinning up the Electron main process.
 
 ## Phase 3 — complete
 

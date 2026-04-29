@@ -29,13 +29,15 @@ func main() {
 	chat := services.NewChat(mem)
 	audit := services.NewAudit(mem)
 	kapps := services.NewKApps(mem).WithAudit(audit)
+	aiEmployees := services.NewAIEmployeeService(mem)
 
 	r := api.NewRouter(api.Deps{
-		Identity:   identity,
-		Workspaces: workspaces,
-		Chat:       chat,
-		KApps:      kapps,
-		Audit:      audit,
+		Identity:    identity,
+		Workspaces:  workspaces,
+		Chat:        chat,
+		KApps:       kapps,
+		Audit:       audit,
+		AIEmployees: aiEmployees,
 	})
 
 	addr := os.Getenv("ADDR")

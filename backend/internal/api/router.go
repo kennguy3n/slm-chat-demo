@@ -15,11 +15,12 @@ import (
 // intentionally data-only: AI inference now lives in the Electron main
 // process (frontend/electron/inference/) and reaches Ollama directly.
 type Deps struct {
-	Identity   *services.Identity
-	Workspaces *services.Workspace
-	Chat       *services.Chat
-	KApps      *services.KApps
-	Audit      *services.AuditService
+	Identity    *services.Identity
+	Workspaces  *services.Workspace
+	Chat        *services.Chat
+	KApps       *services.KApps
+	Audit       *services.AuditService
+	AIEmployees *services.AIEmployeeService
 }
 
 // NewRouter wires the chi router with CORS, JSON content-type, mock auth, and
@@ -47,6 +48,7 @@ func NewRouter(d Deps) http.Handler {
 	fH := handlers.NewForms(d.KApps)
 	pH := handlers.NewPrivacy()
 	auH := handlers.NewAudit(d.Audit, d.KApps)
+	aiEmpH := handlers.NewAIEmployees(d.AIEmployees)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
@@ -105,6 +107,14 @@ func NewRouter(d Deps) http.Handler {
 		// single object; ?channelId=… returns all entries for
 		// objects in the channel.
 		r.Get("/audit", auH.List)
+
+		// AI Employees — Phase 4 workspace-scoped personas
+		// (Kara Ops AI, Nina PM AI, Mika Sales AI) with allowed
+		// channels and authorised recipe lists.
+		r.Get("/ai-employees", aiEmpH.List)
+		r.Get("/ai-employees/{id}", aiEmpH.Get)
+		r.Patch("/ai-employees/{id}/channels", aiEmpH.UpdateChannels)
+		r.Patch("/ai-employees/{id}/recipes", aiEmpH.UpdateRecipes)
 	})
 
 	return r

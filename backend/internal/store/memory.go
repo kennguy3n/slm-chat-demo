@@ -20,6 +20,7 @@ type Memory struct {
 	formTemplates map[string]models.FormTemplate
 	forms         []models.Form
 	auditLog      []models.AuditEntry
+	aiEmployees   map[string]models.AIEmployee
 }
 
 // NewMemory returns an empty Memory store. Call Seed to populate it with the
@@ -34,6 +35,7 @@ func NewMemory() *Memory {
 		formTemplates: map[string]models.FormTemplate{},
 		forms:         []models.Form{},
 		auditLog:      []models.AuditEntry{},
+		aiEmployees:   map[string]models.AIEmployee{},
 	}
 }
 
@@ -523,6 +525,51 @@ func (m *Memory) AppendAuditEntry(e models.AuditEntry) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.auditLog = append(m.auditLog, e)
+}
+
+// ---- AI Employees (Phase 4) ----
+
+// PutAIEmployee upserts an AI Employee profile keyed by ID.
+func (m *Memory) PutAIEmployee(e models.AIEmployee) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.aiEmployees[e.ID] = e
+}
+
+// GetAIEmployee returns the AI Employee with the given ID, if any.
+func (m *Memory) GetAIEmployee(id string) (models.AIEmployee, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	e, ok := m.aiEmployees[id]
+	return e, ok
+}
+
+// ListAIEmployees returns every seeded AI Employee sorted by ID so the
+// demo sidebar / right-rail panel render in a deterministic order.
+func (m *Memory) ListAIEmployees() []models.AIEmployee {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]models.AIEmployee, 0, len(m.aiEmployees))
+	for _, e := range m.aiEmployees {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// UpdateAIEmployee applies the supplied mutator to the stored AI
+// Employee. Returns the updated profile and true on success; false if
+// the employee does not exist.
+func (m *Memory) UpdateAIEmployee(id string, mutate func(*models.AIEmployee)) (models.AIEmployee, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e, ok := m.aiEmployees[id]
+	if !ok {
+		return models.AIEmployee{}, false
+	}
+	mutate(&e)
+	m.aiEmployees[id] = e
+	return e, true
 }
 
 // ListAuditEntries returns audit entries filtered by objectId and/or

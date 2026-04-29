@@ -429,6 +429,7 @@ export interface ElectronAI {
   // dedicated `frontend/src/types/electron.d.ts` augmentation.
   tripPlan(req: unknown): Promise<unknown>;
   guardrailCheck(req: unknown): Promise<unknown>;
+  recipeRun(req: unknown): Promise<unknown>;
   modelStatus(): Promise<ModelStatus>;
   loadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
   unloadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
