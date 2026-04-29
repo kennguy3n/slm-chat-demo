@@ -214,3 +214,61 @@ describe('parseKAppsExtractedTasks', () => {
     expect(parseKAppsExtractedTasks(out, [])).toEqual([]);
   });
 });
+
+import { runPrefillForm, parseFormFields } from './tasks.js';
+
+describe('parseFormFields', () => {
+  it('keeps only allow-listed fields', () => {
+    const out = ['vendor: Acme', 'cost: $100', 'amount: $200'].join('\n');
+    expect(parseFormFields(out, ['vendor', 'amount'])).toEqual({
+      vendor: 'Acme',
+      amount: '$200',
+    });
+  });
+
+  it('returns {} when output indicates insufficient context', () => {
+    expect(parseFormFields('I do not have enough information.', ['vendor'])).toEqual({});
+  });
+
+  it('strips bullet prefixes and quoted values', () => {
+    const out = '- vendor: "Acme"\n* amount: 1';
+    expect(parseFormFields(out, ['vendor', 'amount'])).toEqual({
+      vendor: 'Acme',
+      amount: '1',
+    });
+  });
+});
+
+describe('runPrefillForm', () => {
+  it('fills the requested fields and reports on-device metadata', async () => {
+    const router = makeRouter();
+    const resp = await runPrefillForm(router, {
+      threadId: 't1',
+      templateId: 'vendor_onboarding_v1',
+      fields: ['vendor', 'amount', 'compliance', 'justification'],
+      messages: [
+        { id: 'm1', channelId: 'c1', senderId: 'u1', content: 'We picked Acme at $42k SOC 2.' },
+      ],
+    });
+    expect(resp.templateId).toBe('vendor_onboarding_v1');
+    expect(resp.channelId).toBe('c1');
+    expect(resp.computeLocation).toBe('on_device');
+    expect(resp.dataEgressBytes).toBe(0);
+    expect(resp.fields.vendor).toBe('Acme Logs');
+    expect(resp.fields.amount).toBe('$42,000');
+    expect(resp.fields.compliance).toBe('SOC 2');
+    expect(resp.sourceMessageIds.length).toBeGreaterThan(0);
+  });
+
+  it('throws when the thread has no messages', async () => {
+    const router = makeRouter();
+    await expect(
+      runPrefillForm(router, {
+        threadId: 't',
+        templateId: 'x',
+        fields: ['a'],
+        messages: [],
+      }),
+    ).rejects.toThrow(/thread/);
+  });
+});

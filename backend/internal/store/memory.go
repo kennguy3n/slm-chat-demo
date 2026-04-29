@@ -12,22 +12,26 @@ import (
 type Memory struct {
 	mu sync.RWMutex
 
-	users      map[string]models.User
-	workspaces map[string]models.Workspace
-	channels   map[string]models.Channel
-	messages   map[string]models.Message
-	cards      []models.Card
+	users         map[string]models.User
+	workspaces    map[string]models.Workspace
+	channels      map[string]models.Channel
+	messages      map[string]models.Message
+	cards         []models.Card
+	formTemplates map[string]models.FormTemplate
+	forms         []models.Form
 }
 
 // NewMemory returns an empty Memory store. Call Seed to populate it with the
 // Phase 0 demo data.
 func NewMemory() *Memory {
 	return &Memory{
-		users:      map[string]models.User{},
-		workspaces: map[string]models.Workspace{},
-		channels:   map[string]models.Channel{},
-		messages:   map[string]models.Message{},
-		cards:      []models.Card{},
+		users:         map[string]models.User{},
+		workspaces:    map[string]models.Workspace{},
+		channels:      map[string]models.Channel{},
+		messages:      map[string]models.Message{},
+		cards:         []models.Card{},
+		formTemplates: map[string]models.FormTemplate{},
+		forms:         []models.Form{},
 	}
 }
 
@@ -328,6 +332,160 @@ func (m *Memory) UpdateApproval(id string, mutate func(*models.Approval)) (model
 	}
 	mutate(a)
 	return *a, true
+}
+
+// CreateApproval appends a new approval card and returns the persisted
+// approval. Phase 3 — supports the POST /api/kapps/approvals submit flow.
+func (m *Memory) CreateApproval(a models.Approval) models.Approval {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if a.Status == "" {
+		a.Status = models.ApprovalStatusPending
+	}
+	if a.DecisionLog == nil {
+		a.DecisionLog = []models.ApprovalDecisionEntry{}
+	}
+	if a.Approvers == nil {
+		a.Approvers = []string{}
+	}
+	threadID := a.SourceThreadID
+	m.cards = append(m.cards, models.Card{Kind: models.CardKindApproval, ThreadID: threadID, Approval: &a})
+	return a
+}
+
+// ---- Artifacts ----
+
+func (m *Memory) findArtifactLocked(id string) (*models.Artifact, int) {
+	for i := range m.cards {
+		c := &m.cards[i]
+		if c.Kind == models.CardKindArtifact && c.Artifact != nil && c.Artifact.ID == id {
+			return c.Artifact, i
+		}
+	}
+	return nil, -1
+}
+
+// CreateArtifact appends a new artifact card and returns the persisted artifact.
+func (m *Memory) CreateArtifact(a models.Artifact) models.Artifact {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if a.Status == "" {
+		a.Status = models.ArtifactStatusDraft
+	}
+	if a.Versions == nil {
+		a.Versions = []models.ArtifactVersion{}
+	}
+	threadID := ""
+	if len(a.SourceRefs) > 0 {
+		threadID = a.SourceRefs[0].ID
+	}
+	m.cards = append(m.cards, models.Card{Kind: models.CardKindArtifact, ThreadID: threadID, Artifact: &a})
+	return a
+}
+
+// GetArtifact returns the full artifact (including version bodies) by ID.
+func (m *Memory) GetArtifact(id string) (models.Artifact, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	a, _ := m.findArtifactLocked(id)
+	if a == nil {
+		return models.Artifact{}, false
+	}
+	return *a, true
+}
+
+// ListArtifacts returns artifact cards, optionally filtered by channel.
+// Versions are returned with bodies stripped — callers needing the full
+// body should call GetArtifact for the specific id.
+func (m *Memory) ListArtifacts(channelID string) []models.Artifact {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []models.Artifact{}
+	for _, c := range m.cards {
+		if c.Kind != models.CardKindArtifact || c.Artifact == nil {
+			continue
+		}
+		if channelID != "" && c.Artifact.ChannelID != channelID {
+			continue
+		}
+		// Copy versions but elide bodies for list payload size.
+		copy := *c.Artifact
+		stripped := make([]models.ArtifactVersion, len(c.Artifact.Versions))
+		for i, v := range c.Artifact.Versions {
+			v.Body = ""
+			stripped[i] = v
+		}
+		copy.Versions = stripped
+		out = append(out, copy)
+	}
+	return out
+}
+
+// UpdateArtifact applies a mutator to the stored artifact. Returns the updated
+// artifact and true on success.
+func (m *Memory) UpdateArtifact(id string, mutate func(*models.Artifact)) (models.Artifact, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, _ := m.findArtifactLocked(id)
+	if a == nil {
+		return models.Artifact{}, false
+	}
+	mutate(a)
+	return *a, true
+}
+
+// ---- Form templates / forms ----
+
+func (m *Memory) PutFormTemplate(t models.FormTemplate) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.formTemplates[t.ID] = t
+}
+
+func (m *Memory) GetFormTemplate(id string) (models.FormTemplate, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	t, ok := m.formTemplates[id]
+	return t, ok
+}
+
+func (m *Memory) ListFormTemplates() []models.FormTemplate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]models.FormTemplate, 0, len(m.formTemplates))
+	for _, t := range m.formTemplates {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// CreateForm persists a new Form intake. Phase 3 — backs POST /api/kapps/forms.
+func (m *Memory) CreateForm(f models.Form) models.Form {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if f.Status == "" {
+		f.Status = models.FormStatusDraft
+	}
+	if f.Fields == nil {
+		f.Fields = map[string]string{}
+	}
+	m.forms = append(m.forms, f)
+	return f
+}
+
+// ListForms returns forms scoped to a channel (empty channelID returns all).
+func (m *Memory) ListForms(channelID string) []models.Form {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []models.Form{}
+	for _, f := range m.forms {
+		if channelID != "" && f.ChannelID != channelID {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 // CardsForThread returns every card whose ThreadID matches threadID.

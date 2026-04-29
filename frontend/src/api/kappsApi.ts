@@ -4,6 +4,15 @@ import { getElectronAI } from './electronBridge';
 import type {
   Approval,
   ApprovalDecision,
+  ApprovalFields,
+  Artifact,
+  ArtifactSourcePin,
+  ArtifactStatus,
+  ArtifactType,
+  ArtifactVersion,
+  Form,
+  FormStatus,
+  FormTemplate,
   KAppCard,
   Task,
   TaskStatus,
@@ -204,6 +213,150 @@ export async function closeTask(taskId: string): Promise<void> {
   await apiFetch<void>(`/api/kapps/tasks/${encodeURIComponent(taskId)}`, {
     method: 'DELETE',
   });
+}
+
+// ---------- Phase 3: approvals submit, artifacts CRUD + versions, forms ----------
+
+export interface CreateApprovalPayload {
+  channelId: string;
+  templateId?: string;
+  title: string;
+  requester?: string;
+  approvers?: string[];
+  fields: ApprovalFields;
+  sourceThreadId?: string;
+  aiGenerated?: boolean;
+}
+
+// createApproval persists a new pending approval card. Used by both the
+// manual CreateApprovalForm and the AI ApprovalPrefillCard "Accept" flow.
+export async function createApproval(payload: CreateApprovalPayload): Promise<Approval> {
+  const data = await apiFetch<{ approval: Approval }>('/api/kapps/approvals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return data.approval;
+}
+
+export interface CreateArtifactPayload {
+  channelId: string;
+  type: ArtifactType;
+  title: string;
+  templateId?: string;
+  sourceThreadId?: string;
+  author?: string;
+  body?: string;
+  summary?: string;
+  sourcePins?: ArtifactSourcePin[];
+  aiGenerated?: boolean;
+}
+
+export async function createArtifact(payload: CreateArtifactPayload): Promise<Artifact> {
+  const data = await apiFetch<{ artifact: Artifact }>('/api/kapps/artifacts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return data.artifact;
+}
+
+export async function listArtifacts(channelId?: string): Promise<Artifact[]> {
+  const qs = channelId ? `?channelId=${encodeURIComponent(channelId)}` : '';
+  const data = await apiFetch<{ artifacts: Artifact[] }>(`/api/kapps/artifacts${qs}`);
+  return data.artifacts ?? [];
+}
+
+export async function getArtifact(id: string): Promise<Artifact> {
+  const data = await apiFetch<{ artifact: Artifact }>(
+    `/api/kapps/artifacts/${encodeURIComponent(id)}`,
+  );
+  return data.artifact;
+}
+
+export interface UpdateArtifactPayload {
+  title?: string;
+  status?: ArtifactStatus;
+  url?: string;
+}
+
+export async function updateArtifact(
+  id: string,
+  payload: UpdateArtifactPayload,
+): Promise<Artifact> {
+  const data = await apiFetch<{ artifact: Artifact }>(
+    `/api/kapps/artifacts/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  );
+  return data.artifact;
+}
+
+export interface CreateArtifactVersionPayload {
+  author?: string;
+  summary?: string;
+  body: string;
+  sourcePins?: ArtifactSourcePin[];
+}
+
+export async function createArtifactVersion(
+  id: string,
+  payload: CreateArtifactVersionPayload,
+): Promise<ArtifactVersion> {
+  const data = await apiFetch<{ version: ArtifactVersion }>(
+    `/api/kapps/artifacts/${encodeURIComponent(id)}/versions`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  );
+  return data.version;
+}
+
+export async function getArtifactVersion(
+  id: string,
+  version: number,
+): Promise<ArtifactVersion> {
+  const data = await apiFetch<{ version: ArtifactVersion }>(
+    `/api/kapps/artifacts/${encodeURIComponent(id)}/versions/${version}`,
+  );
+  return data.version;
+}
+
+export async function listFormTemplates(): Promise<FormTemplate[]> {
+  const data = await apiFetch<{ templates: FormTemplate[] }>(
+    '/api/kapps/form-templates',
+  );
+  return data.templates ?? [];
+}
+
+export interface CreateFormPayload {
+  channelId: string;
+  templateId: string;
+  title?: string;
+  fields?: Record<string, string>;
+  sourceThreadId?: string;
+  status?: FormStatus;
+  aiGenerated?: boolean;
+}
+
+export async function createForm(payload: CreateFormPayload): Promise<Form> {
+  const data = await apiFetch<{ form: Form }>('/api/kapps/forms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return data.form;
+}
+
+export async function listForms(channelId?: string): Promise<Form[]> {
+  const qs = channelId ? `?channelId=${encodeURIComponent(channelId)}` : '';
+  const data = await apiFetch<{ forms: Form[] }>(`/api/kapps/forms${qs}`);
+  return data.forms ?? [];
 }
 
 // submitApprovalDecision appends a decision to the approval's immutable

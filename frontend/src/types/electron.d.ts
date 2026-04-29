@@ -12,6 +12,7 @@ import type {
   ExtractTasksResponse,
   FamilyChecklistResponse,
   PrefillApprovalResponse,
+  PrefillFormResponse,
   ShoppingNudgesResponse,
   SmartReplyResponse,
   ThreadSummaryResponse,
@@ -217,6 +218,12 @@ interface ElectronAIBridge {
     templateId?: ApprovalTemplate;
     messages: { id: string; channelId: string; senderId: string; content: string }[];
   }): Promise<PrefillApprovalResponse>;
+  prefillForm(req: {
+    threadId: string;
+    templateId: string;
+    fields: string[];
+    messages: { id: string; channelId: string; senderId: string; content: string }[];
+  }): Promise<PrefillFormResponse>;
   draftArtifact(req: {
     threadId: string;
     artifactType: ArtifactKind;

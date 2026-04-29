@@ -32,14 +32,27 @@ type ArtifactSourceRef struct {
 	Note string `json:"note,omitempty"`
 }
 
+// ArtifactSourcePin links a section of an artifact body to the chat message
+// (or thread) that produced it. Phase 3 — surfaced inline in the artifact
+// workspace as clickable footnote markers (PROPOSAL.md §6.2 source pins).
+type ArtifactSourcePin struct {
+	SectionID       string `json:"sectionId"`
+	SourceMessageID string `json:"sourceMessageId,omitempty"`
+	SourceThreadID  string `json:"sourceThreadId,omitempty"`
+	Excerpt         string `json:"excerpt,omitempty"`
+	Sender          string `json:"sender,omitempty"`
+}
+
 // ArtifactVersion is a single immutable version of an artifact. Versions
 // accumulate as drafts are revised; only published versions are sealed in
 // the audit log.
 type ArtifactVersion struct {
-	Version   int       `json:"version"`
-	CreatedAt time.Time `json:"createdAt"`
-	Author    string    `json:"author"`
-	Summary   string    `json:"summary,omitempty"`
+	Version    int                 `json:"version"`
+	CreatedAt  time.Time           `json:"createdAt"`
+	Author     string              `json:"author"`
+	Summary    string              `json:"summary,omitempty"`
+	Body       string              `json:"body,omitempty"`
+	SourcePins []ArtifactSourcePin `json:"sourcePins,omitempty"`
 }
 
 // Artifact is the Artifacts KApp object from ARCHITECTURE.md section 6.1.

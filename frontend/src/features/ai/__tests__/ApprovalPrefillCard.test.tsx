@@ -64,6 +64,35 @@ describe('ApprovalPrefillCard', () => {
     expect(accept).toHaveTextContent(/submitted/i);
   });
 
+  it('keeps the form editable and surfaces an error when onAccept rejects', async () => {
+    const onAccept = vi.fn().mockRejectedValueOnce(new Error('network down'));
+    renderWithProviders(<ApprovalPrefillCard prefill={sample} onAccept={onAccept} />);
+    const accept = screen.getByTestId('approval-prefill-accept');
+    await userEvent.click(accept);
+
+    expect(await screen.findByTestId('approval-prefill-error')).toHaveTextContent(
+      /network down/i,
+    );
+    expect(accept).not.toBeDisabled();
+    expect(accept).toHaveTextContent(/submit for approval/i);
+    expect(screen.getByTestId('approval-prefill-vendor')).not.toBeDisabled();
+  });
+
+  it('retries successfully after a transient onAccept failure', async () => {
+    const onAccept = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('transient'))
+      .mockResolvedValueOnce(undefined);
+    renderWithProviders(<ApprovalPrefillCard prefill={sample} onAccept={onAccept} />);
+    const accept = screen.getByTestId('approval-prefill-accept');
+    await userEvent.click(accept);
+    await screen.findByTestId('approval-prefill-error');
+    await userEvent.click(accept);
+    expect(onAccept).toHaveBeenCalledTimes(2);
+    expect(accept).toBeDisabled();
+    expect(accept).toHaveTextContent(/submitted/i);
+  });
+
   it('surfaces missing fields in the missing list', () => {
     const incomplete: PrefillApprovalResponse = {
       ...sample,

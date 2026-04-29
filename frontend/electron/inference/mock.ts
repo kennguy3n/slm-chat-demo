@@ -67,6 +67,14 @@ function mockOutputFor(req: InferenceRequest): string {
         'justification: Lowest-cost SOC 2-cleared bidder.',
         'risk: medium',
       ].join('\n');
+    case 'prefill_form':
+      return [
+        'vendor: Acme Logs',
+        'amount: $42,000',
+        'compliance: SOC 2',
+        'justification: Logging vendor selection — see thread.',
+        'requester: alice',
+      ].join('\n');
     case 'draft_artifact':
       return [
         '# Inline translation PRD (draft v1)',
@@ -100,6 +108,7 @@ export function mockLatencyMS(t: InferenceRequest['taskType'], tokens: number): 
     extract_tasks: 220,
     smart_reply: 80,
     prefill_approval: 260,
+    prefill_form: 240,
     draft_artifact: 620,
   };
   return (base[t] ?? 150) + Math.floor(tokens / 2);

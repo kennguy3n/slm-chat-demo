@@ -134,8 +134,8 @@ frontend/
     │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces)
     │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, activityLog) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), ThreadSummaryCard for the B2B thread summary, ApprovalPrefillCard for B2B approval prefill, and ArtifactDraftCard for the B2B PRD / RFC / Proposal / SOP / QBR drafting flow; Phase 2 adds TaskCreatedPill (inline AI badges below messages), MorningDigestPanel (B2C right-rail catch-up), FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard (B2C trip / event planning skill), GuardrailRewriteCard (pre-send PII / tone / unverified-claim review), and MetricsDashboard backed by the new `activityLog` module which records every AI run; PrivacyStrip itself gained an expandable `whyDetails[]` list in Phase 2
     │   ├── memory/ (AIMemoryPage, memoryStore) — Phase 2: local-only IndexedDB-backed second brain (DB `kchat-slm-memory`, store `facts`) with an in-memory fallback for jsdom / SSR; the AI never auto-writes — every fact passes through the AIMemoryPage UI
-    │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, TasksKApp, CreateTaskForm) — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, and the new `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle. FormCard lands later in Phase 3.
-    │   ├── artifacts/ (ArtifactWorkspace)                                    — Phase 3
+    │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm) — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, and the `FormCard` AI-prefilled intake surface.
+    │   ├── artifacts/ (ArtifactWorkspace, ArtifactDiffView, SourcePin) — Phase 3 right-rail viewer for full artifacts: section split, inline source pins, version history, line-by-line diff, status transitions.
     │   ├── ai-employees/ (AIEmployeePanel)                                   — Phase 4
     │   └── knowledge/ (SourcePicker)                                         — Phase 5
     ├── stores/ (chatStore, aiStore, workspaceStore, kappsStore — Phase 3 task/approval CRUD with optimistic merge)
@@ -305,7 +305,17 @@ POST   /api/kapps/tasks                                   (Phase 3)
 PATCH  /api/kapps/tasks/{id}                              (Phase 3)
 PATCH  /api/kapps/tasks/{id}/status                       (Phase 3)
 DELETE /api/kapps/tasks/{id}                              (Phase 3)
+POST   /api/kapps/approvals                               (Phase 3)
 POST   /api/kapps/approvals/{id}/decide                   (Phase 3)
+GET    /api/kapps/artifacts (?channelId=…)                (Phase 3)
+POST   /api/kapps/artifacts                               (Phase 3)
+GET    /api/kapps/artifacts/{id}                          (Phase 3)
+PATCH  /api/kapps/artifacts/{id}                          (Phase 3)
+GET    /api/kapps/artifacts/{id}/versions/{version}       (Phase 3)
+POST   /api/kapps/artifacts/{id}/versions                 (Phase 3)
+GET    /api/kapps/form-templates                          (Phase 3)
+GET    /api/kapps/forms (?channelId=…)                    (Phase 3)
+POST   /api/kapps/forms                                   (Phase 3)
 GET    /api/privacy/egress-preview
 ```
 
@@ -334,6 +344,7 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:unread-summary`    | `unreadSummary(req)`                      | `buildUnreadSummary` (`taskType: summarize`, E2B) |
 | `ai:kapps-extract`     | `extractKAppTasks(req)`                   | `runKAppsExtractTasks` (B2B thread → tasks with provenance) |
 | `ai:prefill-approval`  | `prefillApproval(req)`                    | `runPrefillApproval` (B2B thread → vendor / amount / risk / justification fields, prefers E4B) |
+| `ai:prefill-form`      | `prefillForm(req)`                        | `runPrefillForm` (B2B thread → arbitrary intake form fields per template, prefers E4B) |
 | `ai:draft-artifact`    | `draftArtifact(req)`                      | `buildDraftArtifact` (B2B thread → prompt + sources for streaming a PRD / RFC / Proposal / SOP / QBR section, prefers E4B) |
 | `ai:family-checklist`  | `familyChecklist(req)`                    | `runFamilyChecklist` in `secondBrain.ts` (B2C family chat → titled checklist with optional event focus, E2B) |
 | `ai:shopping-nudges`   | `shoppingNudges(req)`                     | `runShoppingNudges` (B2C family chat + local shopping list → grounded item / reason pairs that dedupe against the existing list, E2B) |
@@ -525,8 +536,24 @@ fields{}, status, decision_log[], source_thread_id
 
 ```
 id, channel_id, type (PRD | RFC | Proposal | SOP | QBR),
-template_id, source_refs[], versions[], status, published_card_id
+template_id, title, body, source_refs[],
+versions[ { version, summary, body, source_pins[ { section_id,
+source_message_id, source_thread_id, excerpt, sender } ] } ],
+status (draft | in_review | published), source_thread_id, ai_generated,
+published_card_id
 ```
+
+**Form** (Phase 3)
+
+```
+id, channel_id, template_id, title,
+fields { <name>: <value> }, source_thread_id,
+status (draft | submitted), ai_generated
+```
+
+`FormTemplate` (seeded; not user-editable in Phase 3): `id, title,
+fields[ { name, label, required } ]`. Phase 3 ships
+`vendor_onboarding_v1`, `expense_report_v1`, and `access_request_v1`.
 
 ### 6.2 Events
 

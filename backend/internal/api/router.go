@@ -42,6 +42,8 @@ func NewRouter(d Deps) http.Handler {
 	chatH := handlers.NewChat(d.Chat)
 	wsH := handlers.NewWorkspace(d.Workspaces, d.Identity)
 	kH := handlers.NewKApps(d.KApps)
+	aH := handlers.NewArtifacts(d.KApps)
+	fH := handlers.NewForms(d.KApps)
 	pH := handlers.NewPrivacy()
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +76,23 @@ func NewRouter(d Deps) http.Handler {
 		r.Patch("/kapps/tasks/{id}", kH.UpdateTask)
 		r.Patch("/kapps/tasks/{id}/status", kH.UpdateTaskStatus)
 		r.Delete("/kapps/tasks/{id}", kH.DeleteTask)
+		r.Post("/kapps/approvals", kH.CreateApproval)
 		r.Post("/kapps/approvals/{id}/decide", kH.SubmitApprovalDecision)
+
+		// Artifacts CRUD + versioning. AI drafting itself runs in the
+		// Electron main process; the renderer hands the streamed body
+		// here to persist it.
+		r.Get("/kapps/artifacts", aH.List)
+		r.Post("/kapps/artifacts", aH.Create)
+		r.Get("/kapps/artifacts/{id}", aH.Get)
+		r.Patch("/kapps/artifacts/{id}", aH.Update)
+		r.Get("/kapps/artifacts/{id}/versions/{version}", aH.GetVersion)
+		r.Post("/kapps/artifacts/{id}/versions", aH.CreateVersion)
+
+		// Forms intake — templates + form instances.
+		r.Get("/kapps/form-templates", fH.Templates)
+		r.Get("/kapps/forms", fH.List)
+		r.Post("/kapps/forms", fH.Create)
 
 		// Privacy preview is still hosted here since it's a static
 		// declaration about the on-device guarantee.

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type {
   DraftArtifactResponse,
   PrivacyStripData,
@@ -9,7 +10,10 @@ interface Props {
   draft: DraftArtifactResponse;
   streamingText?: string;
   isStreaming?: boolean;
-  onAccept?: () => void;
+  // onAccept may be async — the card guards against double-submits and
+  // surfaces an inline error if it rejects, so the parent can simply
+  // await its persistence call (e.g. createArtifact) and let it throw.
+  onAccept?: () => void | Promise<void>;
   onEdit?: () => void;
   onDiscard?: () => void;
 }
@@ -35,6 +39,30 @@ export function ArtifactDraftCard({
   onDiscard,
 }: Props) {
   const text = streamingText ?? '';
+  const [accepted, setAccepted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
+
+  // Reset local action state when a fresh draft arrives.
+  useEffect(() => {
+    setAccepted(false);
+    setSubmitting(false);
+    setAcceptError(null);
+  }, [draft.threadId, draft.artifactType, draft.section]);
+
+  async function handleAccept() {
+    if (submitting || accepted) return;
+    setAcceptError(null);
+    setSubmitting(true);
+    try {
+      await onAccept?.();
+      setAccepted(true);
+    } catch (err) {
+      setAcceptError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   const whyDetails: PrivacyStripWhyDetail[] = [
     { signal: `Artifact type: ${draft.artifactType}` },
@@ -123,16 +151,40 @@ export function ArtifactDraftCard({
         role="group"
         aria-label="Artifact draft actions"
       >
-        <button type="button" onClick={onAccept} data-testid="artifact-draft-accept">
-          Save as draft
+        <button
+          type="button"
+          onClick={handleAccept}
+          disabled={accepted || submitting || isStreaming}
+          data-testid="artifact-draft-accept"
+        >
+          {accepted ? 'Saved' : submitting ? 'Saving…' : 'Save as draft'}
         </button>
-        <button type="button" onClick={onEdit} data-testid="artifact-draft-edit">
+        <button
+          type="button"
+          onClick={onEdit}
+          disabled={accepted || submitting}
+          data-testid="artifact-draft-edit"
+        >
           Edit
         </button>
-        <button type="button" onClick={onDiscard} data-testid="artifact-draft-discard">
+        <button
+          type="button"
+          onClick={onDiscard}
+          disabled={accepted || submitting}
+          data-testid="artifact-draft-discard"
+        >
           Discard
         </button>
       </div>
+      {acceptError && (
+        <p
+          className="artifact-draft-card__error"
+          role="alert"
+          data-testid="artifact-draft-error"
+        >
+          {acceptError}
+        </p>
+      )}
       <PrivacyStrip data={privacy} />
     </article>
   );

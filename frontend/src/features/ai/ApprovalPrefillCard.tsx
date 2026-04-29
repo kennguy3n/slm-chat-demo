@@ -13,7 +13,7 @@ interface Props {
   // can show provenance. The keys are message ids from
   // prefill.sourceMessageIds.
   sourceExcerpts?: Record<string, string>;
-  onAccept?: (fields: PrefilledApprovalFields) => void;
+  onAccept?: (fields: PrefilledApprovalFields) => void | Promise<void>;
   onEdit?: (fields: PrefilledApprovalFields) => void;
   onDiscard?: () => void;
 }
@@ -49,6 +49,8 @@ export function ApprovalPrefillCard({
   const [justification, setJustification] = useState(prefill.fields.justification ?? '');
   const [risk, setRisk] = useState(prefill.fields.risk ?? '');
   const [accepted, setAccepted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
 
   // Keep the fields in sync if a fresh prefill response arrives.
   useEffect(() => {
@@ -57,6 +59,8 @@ export function ApprovalPrefillCard({
     setJustification(prefill.fields.justification ?? '');
     setRisk(prefill.fields.risk ?? '');
     setAccepted(false);
+    setSubmitting(false);
+    setAcceptError(null);
   }, [prefill]);
 
   const merged: PrefilledApprovalFields = {
@@ -113,9 +117,18 @@ export function ApprovalPrefillCard({
     },
   };
 
-  function accept() {
-    setAccepted(true);
-    onAccept?.(merged);
+  async function accept() {
+    if (submitting || accepted) return;
+    setAcceptError(null);
+    setSubmitting(true);
+    try {
+      await onAccept?.(merged);
+      setAccepted(true);
+    } catch (err) {
+      setAcceptError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function edit() {
@@ -153,28 +166,28 @@ export function ApprovalPrefillCard({
           label={FIELD_LABEL.vendor}
           value={vendor}
           onChange={setVendor}
-          disabled={accepted}
+          disabled={accepted || submitting}
         />
         <Field
           name="amount"
           label={FIELD_LABEL.amount}
           value={amount}
           onChange={setAmount}
-          disabled={accepted}
+          disabled={accepted || submitting}
         />
         <Field
           name="risk"
           label={FIELD_LABEL.risk}
           value={risk}
           onChange={setRisk}
-          disabled={accepted}
+          disabled={accepted || submitting}
         />
         <Field
           name="justification"
           label={FIELD_LABEL.justification}
           value={justification}
           onChange={setJustification}
-          disabled={accepted}
+          disabled={accepted || submitting}
           multiline
         />
       </dl>
@@ -191,15 +204,15 @@ export function ApprovalPrefillCard({
         <button
           type="button"
           onClick={accept}
-          disabled={accepted}
+          disabled={accepted || submitting}
           data-testid="approval-prefill-accept"
         >
-          {accepted ? 'Submitted' : 'Submit for approval'}
+          {accepted ? 'Submitted' : submitting ? 'Submitting…' : 'Submit for approval'}
         </button>
         <button
           type="button"
           onClick={edit}
-          disabled={accepted}
+          disabled={accepted || submitting}
           data-testid="approval-prefill-edit"
         >
           Save edits
@@ -207,12 +220,21 @@ export function ApprovalPrefillCard({
         <button
           type="button"
           onClick={discard}
-          disabled={accepted}
+          disabled={accepted || submitting}
           data-testid="approval-prefill-discard"
         >
           Discard
         </button>
       </div>
+      {acceptError && (
+        <p
+          className="approval-prefill-card__error"
+          role="alert"
+          data-testid="approval-prefill-error"
+        >
+          {acceptError}
+        </p>
+      )}
       <PrivacyStrip data={privacy} />
     </article>
   );

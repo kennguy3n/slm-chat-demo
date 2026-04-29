@@ -12,6 +12,7 @@ export type TaskType =
   | 'extract_tasks'
   | 'smart_reply'
   | 'prefill_approval'
+  | 'prefill_form'
   | 'draft_artifact';
 
 export const TaskTypes = {
@@ -20,6 +21,7 @@ export const TaskTypes = {
   ExtractTasks: 'extract_tasks',
   SmartReply: 'smart_reply',
   PrefillApproval: 'prefill_approval',
+  PrefillForm: 'prefill_form',
   DraftArtifact: 'draft_artifact',
 } as const satisfies Record<string, TaskType>;
 
@@ -228,6 +230,33 @@ export interface PrefillApprovalResponse {
   dataEgressBytes: 0;
 }
 
+// PrefillForm — Phase 3 Forms intake. Reads a thread, fills a form
+// template's fields with on-device inference, returns provenance per
+// field. Same opt-in pattern as PrefillApproval.
+
+export interface PrefillFormRequest {
+  threadId: string;
+  templateId: string;
+  // Field names the renderer wants the AI to fill — usually all of the
+  // template's fields, but the contract allows the renderer to ask for
+  // a subset (e.g. just the missing ones).
+  fields: string[];
+  messages: { id: string; channelId: string; senderId: string; content: string }[];
+}
+
+export interface PrefillFormResponse {
+  threadId: string;
+  channelId: string;
+  templateId: string;
+  fields: Record<string, string>;
+  sourceMessageIds: string[];
+  model: string;
+  tier: Tier;
+  reason: string;
+  computeLocation: 'on_device';
+  dataEgressBytes: 0;
+}
+
 // DraftArtifact — B2B Phase 1 surface. Same prompt-then-stream
 // pattern as ThreadSummaryRequest: the helper builds a prompt + source
 // list deterministically and the renderer streams the actual body via
@@ -388,6 +417,7 @@ export interface ElectronAI {
   summarizeThread(req: ThreadSummaryRequest): Promise<ThreadSummaryResponse>;
   extractKAppTasks(req: KAppsExtractTasksRequest): Promise<KAppsExtractTasksResponse>;
   prefillApproval(req: PrefillApprovalRequest): Promise<PrefillApprovalResponse>;
+  prefillForm(req: PrefillFormRequest): Promise<PrefillFormResponse>;
   draftArtifact(req: DraftArtifactRequest): Promise<DraftArtifactResponse>;
   unreadSummary(req: UnreadSummaryRequest): Promise<UnreadSummaryResponse>;
   familyChecklist(req: FamilyChecklistRequest): Promise<FamilyChecklistResponse>;

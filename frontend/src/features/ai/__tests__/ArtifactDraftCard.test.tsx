@@ -55,7 +55,7 @@ describe('ArtifactDraftCard', () => {
     expect(sources).toHaveTextContent('Need inline translation');
   });
 
-  it('fires accept / edit / discard callbacks', async () => {
+  it('fires edit, discard, and accept callbacks', async () => {
     const onAccept = vi.fn();
     const onEdit = vi.fn();
     const onDiscard = vi.fn();
@@ -68,11 +68,67 @@ describe('ArtifactDraftCard', () => {
         onDiscard={onDiscard}
       />,
     );
-    await userEvent.click(screen.getByTestId('artifact-draft-accept'));
+    // Click edit/discard before accept — accepting transitions the
+    // card into a locked "Saved" state where the other actions are
+    // intentionally disabled.
     await userEvent.click(screen.getByTestId('artifact-draft-edit'));
     await userEvent.click(screen.getByTestId('artifact-draft-discard'));
+    await userEvent.click(screen.getByTestId('artifact-draft-accept'));
     expect(onAccept).toHaveBeenCalledOnce();
     expect(onEdit).toHaveBeenCalledOnce();
     expect(onDiscard).toHaveBeenCalledOnce();
+  });
+
+  it('disables the accept button while saving and after a successful save', async () => {
+    let resolve!: () => void;
+    const onAccept = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolve = r;
+        }),
+    );
+    renderWithProviders(
+      <ArtifactDraftCard draft={sample} streamingText="ok" onAccept={onAccept} />,
+    );
+    const btn = screen.getByTestId('artifact-draft-accept');
+    await userEvent.click(btn);
+    // Concurrent click while the first save is in flight must NOT
+    // dispatch a second onAccept call.
+    await userEvent.click(btn);
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveTextContent(/saving/i);
+    expect(onAccept).toHaveBeenCalledTimes(1);
+    resolve();
+    await screen.findByText(/saved/i);
+    expect(btn).toBeDisabled();
+  });
+
+  it('disables the accept button while the body is still streaming', () => {
+    renderWithProviders(
+      <ArtifactDraftCard draft={sample} streamingText="partial" isStreaming />,
+    );
+    expect(screen.getByTestId('artifact-draft-accept')).toBeDisabled();
+  });
+
+  it('surfaces an error and re-enables the button when onAccept rejects', async () => {
+    const onAccept = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(undefined);
+    renderWithProviders(
+      <ArtifactDraftCard draft={sample} streamingText="ok" onAccept={onAccept} />,
+    );
+    const btn = screen.getByTestId('artifact-draft-accept');
+    await userEvent.click(btn);
+    expect(await screen.findByTestId('artifact-draft-error')).toHaveTextContent(
+      /network down/i,
+    );
+    expect(btn).not.toBeDisabled();
+    expect(btn).toHaveTextContent(/save as draft/i);
+    // Retry on the same button now succeeds.
+    await userEvent.click(btn);
+    expect(onAccept).toHaveBeenCalledTimes(2);
+    expect(btn).toHaveTextContent(/saved/i);
+    expect(btn).toBeDisabled();
   });
 });

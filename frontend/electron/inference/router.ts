@@ -29,6 +29,7 @@ export function taskPreference(t: TaskType): Tier {
   switch (t) {
     case 'draft_artifact':
     case 'prefill_approval':
+    case 'prefill_form':
       return 'e4b';
     default:
       return 'e2b';

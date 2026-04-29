@@ -1,8 +1,18 @@
-import type { Approval, ApprovalDecision, Artifact, KAppCard, Task, TaskStatus } from '../../types/kapps';
+import type {
+  Approval,
+  ApprovalDecision,
+  Artifact,
+  Form,
+  FormFieldDef,
+  KAppCard,
+  Task,
+  TaskStatus,
+} from '../../types/kapps';
 import { TaskCard } from './TaskCard';
 import { ApprovalCard } from './ApprovalCard';
 import { ArtifactCard } from './ArtifactCard';
 import { EventCard } from './EventCard';
+import { FormCard } from './FormCard';
 
 // CardAction is the union of every callback parents can hook into. Phase 3
 // renders cards as live KApp objects (status transitions, approve / reject,
@@ -16,7 +26,9 @@ export type CardAction =
   | { type: 'task:open-source'; task: Task; sourceId: string }
   | { type: 'approval:decide'; approval: Approval; decision: ApprovalDecision; note?: string }
   | { type: 'approval:open-source'; approval: Approval; sourceId: string }
-  | { type: 'artifact:view'; artifact: Artifact };
+  | { type: 'artifact:view'; artifact: Artifact }
+  | { type: 'form:submit'; form: Form; fields: Record<string, string> }
+  | { type: 'form:discard'; form: Form };
 
 interface Props {
   card: KAppCard;
@@ -24,13 +36,22 @@ interface Props {
   // mode controls density across all card kinds. 'compact' is used by
   // ThreadPanel's "Linked Objects" rail.
   mode?: 'full' | 'compact';
+  // Optional template lookup so FormCard can render its layout. Without
+  // this, form cards fall back to a minimal 1-column grid using the
+  // field names that exist on Form.fields.
+  formTemplateLookup?: (templateId: string) => FormFieldDef[] | undefined;
 }
 
 // KAppCardRenderer is the dispatcher referenced in ARCHITECTURE.md section
 // 2.1 — it inspects the card kind and forwards to the matching component.
 // It returns null for an unknown / mis-shaped card so consumers can map over
 // a heterogeneous list without filtering first.
-export function KAppCardRenderer({ card, onAction, mode = 'full' }: Props) {
+export function KAppCardRenderer({
+  card,
+  onAction,
+  mode = 'full',
+  formTemplateLookup,
+}: Props) {
   switch (card.kind) {
     case 'task':
       if (!card.task) return null;
@@ -89,6 +110,29 @@ export function KAppCardRenderer({ card, onAction, mode = 'full' }: Props) {
       );
     case 'event':
       return card.event ? <EventCard event={card.event} /> : null;
+    case 'form': {
+      if (!card.form) return null;
+      const tmplFields =
+        formTemplateLookup?.(card.form.templateId) ??
+        Object.keys(card.form.fields).map((name) => ({ name, label: name }));
+      return (
+        <FormCard
+          form={card.form}
+          templateFields={tmplFields}
+          aiPrefilledFieldNames={card.form.aiGenerated ? Object.keys(card.form.fields) : []}
+          sourceThreadId={card.form.sourceThreadId}
+          onSubmit={
+            onAction
+              ? async (fields) =>
+                  onAction({ type: 'form:submit', form: card.form!, fields })
+              : undefined
+          }
+          onDiscard={
+            onAction ? () => onAction({ type: 'form:discard', form: card.form! }) : undefined
+          }
+        />
+      );
+    }
     default:
       return null;
   }

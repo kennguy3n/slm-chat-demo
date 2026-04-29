@@ -1,3 +1,4 @@
-// Phase 0 placeholder for the artifacts feature module. See PHASES.md for when
-// concrete components land.
-export {};
+export { ArtifactWorkspace } from './ArtifactWorkspace';
+export { ArtifactDiffView } from './ArtifactDiffView';
+export { computeLineDiff } from './lineDiff';
+export { SourcePin } from './SourcePin';

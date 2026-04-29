@@ -242,6 +242,21 @@ export interface PrefillApprovalResponse {
   dataEgressBytes: number;
 }
 
+// PrefillForm — Phase 3 Forms intake. Renderer-side mirror of the
+// adapter type in `electron/inference/adapter.ts`.
+export interface PrefillFormResponse {
+  threadId: string;
+  channelId: string;
+  templateId: string;
+  fields: Record<string, string>;
+  sourceMessageIds: string[];
+  model: string;
+  tier: 'e2b' | 'e4b';
+  reason: string;
+  computeLocation: ComputeLocation;
+  dataEgressBytes: number;
+}
+
 // DraftArtifact — B2B Phase 1 surface. Same prompt-then-stream contract
 // as ThreadSummaryResponse.
 export type ArtifactKind = 'PRD' | 'RFC' | 'Proposal' | 'SOP' | 'QBR';
