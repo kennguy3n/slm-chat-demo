@@ -153,6 +153,7 @@ func seedConnectors(m *Memory, now time.Time) {
 			Excerpt:     "Q3 logging platform PRD — replace the legacy syslog ingest with a managed observability vendor. Goals: 99.9% delivery, 30-day retention, SOC 2 Type II vendor, < $45k/yr. Out of scope: client-side telemetry rewrites.",
 			URL:         "https://drive.google.com/file/d/file_acme_q3_prd/view",
 			Permissions: []string{"alice@acme.com:owner", "dave@acme.com:editor", "eve@acme.com:viewer"},
+			ACL:         []string{"user_alice", "user_bob", "user_dave"},
 		},
 		{
 			ID:          "file_acme_vendor_contract",
@@ -163,6 +164,7 @@ func seedConnectors(m *Memory, now time.Time) {
 			Excerpt:     "Master services agreement between Acme Corp and Acme Logs Inc. Annual fee: $42,000 USD billed quarterly. Termination: 60 days written notice. SLA: 99.9% delivery, 1-hour incident response. Data residency: us-east-1.",
 			URL:         "https://drive.google.com/file/d/file_acme_vendor_contract/view",
 			Permissions: []string{"alice@acme.com:owner", "dave@acme.com:editor"},
+			ACL:         []string{"user_alice", "user_bob", "user_dave"},
 		},
 		{
 			ID:          "file_acme_budget",
@@ -173,6 +175,7 @@ func seedConnectors(m *Memory, now time.Time) {
 			Excerpt:     "FY26 engineering budget. Tooling line item: $180k (logging $45k, observability $60k, CI/CD $35k, security $40k). Variance vs FY25: +6%. Approved by CFO Eve Johnson on 2026-03-12.",
 			URL:         "https://drive.google.com/file/d/file_acme_budget/view",
 			Permissions: []string{"alice@acme.com:viewer", "eve@acme.com:owner"},
+			ACL:         []string{"user_alice", "user_bob"},
 		},
 		{
 			ID:          "file_acme_design_brief",
@@ -183,9 +186,61 @@ func seedConnectors(m *Memory, now time.Time) {
 			Excerpt:     "Design brief for the new logging dashboard. Primary persona: on-call engineer triaging an incident at 3am. Must surface: error rate, top failing services, recent deploys, and a one-click pivot to traces. Avoid burying the search box.",
 			URL:         "https://drive.google.com/file/d/file_acme_design_brief/view",
 			Permissions: []string{"alice@acme.com:editor", "dave@acme.com:editor"},
+			ACL:         []string{"user_alice", "user_bob", "user_dave"},
 		},
 	}
 	for _, f := range files {
+		m.AppendConnectorFile(f)
+	}
+
+	// Phase 5 — second seeded connector: a mocked OneDrive account
+	// attached to the engineering channel so both B2B channels have a
+	// connector. Files mirror the demo's Acme storyline.
+	m.PutConnector(models.Connector{
+		ID:          "conn_onedrive_acme",
+		Kind:        models.ConnectorKindOneDrive,
+		Name:        "Acme OneDrive",
+		WorkspaceID: "ws_acme",
+		ChannelIDs:  []string{"ch_engineering"},
+		Status:      models.ConnectorStatusConnected,
+		CreatedAt:   now,
+	})
+	onedriveFiles := []models.ConnectorFile{
+		{
+			ID:          "file_acme_eng_meeting_notes",
+			ConnectorID: "conn_onedrive_acme",
+			Name:        "Engineering weekly — meeting notes.docx",
+			MimeType:    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+			Size:        9_600,
+			Excerpt:     "Engineering weekly meeting notes — discussed logging vendor pilot, on-call rotation gaps, and the ticket-triage SLA. Action items: Dave to draft RFC by Friday; Alice to review the Q3 PRD; Eve to confirm budget approval.",
+			URL:         "https://acme-my.sharepoint.com/personal/alice_acme_com/Documents/eng-weekly.docx",
+			Permissions: []string{"alice@acme.com:owner", "dave@acme.com:editor", "eve@acme.com:editor"},
+			ACL:         []string{"user_alice", "user_bob", "user_dave"},
+		},
+		{
+			ID:          "file_acme_quarterly_report",
+			ConnectorID: "conn_onedrive_acme",
+			Name:        "FY26 Q1 quarterly report.pptx",
+			MimeType:    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+			Size:        45_120,
+			Excerpt:     "Q1 quarterly report — revenue +12% vs plan, engineering shipped logging dashboard MVP, hiring backfilled two infra roles. Risks: vendor contract renewal slipping, on-call burn-rate trending up.",
+			URL:         "https://acme-my.sharepoint.com/personal/eve_acme_com/Documents/q1-report.pptx",
+			Permissions: []string{"alice@acme.com:viewer", "dave@acme.com:viewer", "eve@acme.com:owner"},
+			ACL:         []string{"user_alice", "user_bob"},
+		},
+		{
+			ID:          "file_acme_oncall_runbook",
+			ConnectorID: "conn_onedrive_acme",
+			Name:        "On-call runbook.docx",
+			MimeType:    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+			Size:        14_320,
+			Excerpt:     "On-call runbook — paging policy, escalation tree, common log-search queries, post-incident review template. Owner: Dave. Reviewed quarterly.",
+			URL:         "https://acme-my.sharepoint.com/personal/dave_acme_com/Documents/oncall-runbook.docx",
+			Permissions: []string{"alice@acme.com:editor", "dave@acme.com:owner", "eve@acme.com:viewer"},
+			ACL:         []string{"user_alice", "user_bob", "user_dave"},
+		},
+	}
+	for _, f := range onedriveFiles {
 		m.AppendConnectorFile(f)
 	}
 }

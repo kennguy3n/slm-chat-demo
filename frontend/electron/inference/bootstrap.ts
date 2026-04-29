@@ -11,6 +11,10 @@
 // each tier is configurable via `E2B_MODEL` and `E4B_MODEL` env vars.
 
 import type { Adapter, Loader, StatusProvider } from './adapter.js';
+import {
+  ConfidentialServerAdapter,
+  DefaultConfidentialServerURL,
+} from './confidential-server.js';
 import { MockAdapter } from './mock.js';
 import { DefaultOllamaBaseURL, OllamaAdapter } from './ollama.js';
 import { InferenceRouter } from './router.js';
@@ -32,6 +36,13 @@ export interface InferenceStack {
   // for the E4B tier. Drives UI state in DeviceCapabilityPanel and the
   // `model:status` IPC response.
   hasE4B: boolean;
+  // Phase 6 — confidential-server tier. True when the bootstrap
+  // successfully pinged the server and the workspace policy permits
+  // server compute. Drives the "Server" section in
+  // DeviceCapabilityPanel and the AI-mode dropdown.
+  hasServer: boolean;
+  defaultServerModel: string;
+  serverUrl?: string;
   // The search service is used by the trip-planner skill. Phase 2 ships
   // a mock implementation; Phase 6 swaps in a server-backed one.
   search: SearchService;
@@ -43,20 +54,37 @@ export interface BootstrapOptions {
   // of locally pulled model names so the bootstrap can decide whether
   // E4B is actually available without hitting the real Ollama daemon.
   listModels?: (signal?: AbortSignal) => Promise<string[]>;
+  // Confidential-server ping override for tests. When provided,
+  // resolves to indicate the server is reachable, rejects to indicate
+  // it is not. The default uses ConfidentialServerAdapter.ping() to
+  // probe `CONFIDENTIAL_SERVER_URL` (default localhost:8090).
+  pingServer?: (signal?: AbortSignal) => Promise<void>;
 }
 
 const DefaultE2BModel = 'gemma-4-e2b';
 const DefaultE4BModel = 'gemma-4-e4b';
+const DefaultServerModel = 'confidential-large';
 
 export async function bootstrapInference(
   optsOrFetch?: BootstrapOptions | typeof fetch,
 ): Promise<InferenceStack> {
   const opts: BootstrapOptions =
     typeof optsOrFetch === 'function' ? { fetchImpl: optsOrFetch } : optsOrFetch ?? {};
-  const { fetchImpl, listModels } = opts;
+  const { fetchImpl, listModels, pingServer } = opts;
   const baseURL = process.env.OLLAMA_BASE_URL || DefaultOllamaBaseURL;
   const e2bModel = process.env.E2B_MODEL || DefaultE2BModel;
   const e4bModel = process.env.E4B_MODEL || DefaultE4BModel;
+  const serverURL =
+    process.env.CONFIDENTIAL_SERVER_URL || DefaultConfidentialServerURL;
+  const serverModel =
+    process.env.CONFIDENTIAL_SERVER_MODEL || DefaultServerModel;
+  // Workspace-policy gate. The Phase 6 demo defaults to *deny* so the
+  // server tier is only reachable when the operator opts in via the
+  // `CONFIDENTIAL_SERVER_POLICY=allow` env var. The renderer's
+  // DeviceCapabilityPanel surfaces this as the gating reason when the
+  // tier is unavailable.
+  const policyAllowsServer =
+    (process.env.CONFIDENTIAL_SERVER_POLICY ?? '').toLowerCase() === 'allow';
 
   const e2bOllama = new OllamaAdapter({ baseURL, fetchImpl, model: e2bModel });
   const e4bOllama = new OllamaAdapter({ baseURL, fetchImpl, model: e4bModel });
@@ -104,7 +132,41 @@ export async function bootstrapInference(
     clearTimeout(timer);
   }
 
-  const router = new InferenceRouter(e2b, e4b, mock, { hasRealE4B: hasE4B });
+  const router = new InferenceRouter(e2b, e4b, mock, {
+    hasRealE4B: hasE4B,
+    policyAllowsServer,
+    defaultServerModel: serverModel,
+  });
+
+  // Probe the confidential server. Reachable AND policy-allowed →
+  // wire as the server tier. Otherwise leave the slot empty so the
+  // router refuses server-bound requests with a clear reason.
+  let hasServer = false;
+  const serverAdapter = new ConfidentialServerAdapter({
+    serverURL,
+    fetchImpl,
+    model: serverModel,
+  });
+  if (policyAllowsServer) {
+    const sac = new AbortController();
+    const sTimer = setTimeout(() => sac.abort(), 500);
+    try {
+      const probe = pingServer ?? ((sig) => serverAdapter.ping(sig));
+      await probe(sac.signal);
+      router.attachServer(serverAdapter, {
+        policyAllows: true,
+        model: serverModel,
+      });
+      hasServer = true;
+    } catch {
+      // server unreachable — leave the slot null so server-bound
+      // requests refuse with a clear error rather than silently
+      // falling back to local inference.
+    } finally {
+      clearTimeout(sTimer);
+    }
+  }
+
   const search = new MockSearchService();
   return {
     router,
@@ -117,6 +179,9 @@ export async function bootstrapInference(
     defaultQuant: 'q4_k_m',
     source,
     hasE4B,
+    hasServer,
+    defaultServerModel: serverModel,
+    serverUrl: serverURL,
     search,
   };
 }

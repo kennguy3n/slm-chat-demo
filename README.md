@@ -319,7 +319,52 @@ go test ./...
   `e4bLoaded`, `hasE4B`) reflect what actually ran. The
   `DeviceCapabilityPanel` shows both tiers side-by-side.
 
-## Phase 5 — in progress
+## Phase 6 — in progress
+
+- **Confidential server compute mode** —
+  `frontend/electron/inference/confidential-server.ts` adds a third
+  `ConfidentialServerAdapter` tier that POSTs to a configurable
+  `CONFIDENTIAL_SERVER_URL` (default `http://localhost:8090`) using the
+  same NDJSON streaming pattern as the Ollama adapter, but always with
+  `onDevice: false`. The router is now three-tier (`'e2b' | 'e4b' | 'server'`)
+  with `attachServer()` / `hasServer()` and a policy-gated `decide()`
+  that requires both adapter availability AND
+  `CONFIDENTIAL_SERVER_POLICY=allow`. Bootstrap probes
+  `${url}/v1/health` on startup and only wires the server tier when both
+  the ping resolves and the policy permits — otherwise the router refuses
+  with a clear "unreachable" error (no silent fallback). The
+  `model:status` IPC reports `serverModel` / `serverAvailable` /
+  `serverUrl`, which `DeviceCapabilityPanel` surfaces in a new
+  "Confidential server" sub-section.
+- **Redaction / tokenization before egress** —
+  `frontend/electron/inference/redaction.ts` introduces a
+  `RedactionEngine` with `tokenize` (reversible — replaces emails,
+  phones, SSNs, and two-word names with `[EMAIL_n]`, `[PHONE_n]`,
+  `[SSN_n]`, `[NAME_n]` placeholders and stores the mapping), `redact`
+  (non-reversible `[REDACTED]` substitution), and `detokenize`
+  (longest-token-first replacement so `[EMAIL_10]` doesn't get clobbered
+  by `[EMAIL_1]`). The `RedactionPolicy` carries fine-grained boolean
+  flags plus a `customPatterns` escape hatch. The router now tokenizes
+  the prompt before dispatching to the server adapter and detokenizes
+  the response (or each stream delta) before returning to the renderer
+  — so the server only ever sees placeholder tokens, and the user-facing
+  text is always restored. `PrivacyStrip` renders a "Redaction" row
+  ("3 items redacted (2 names, 1 email)") only for confidential-server
+  outputs.
+- **Data egress summary** — `frontend/electron/inference/egress-tracker.ts`
+  introduces an `EgressTracker` singleton that records every
+  server-routed inference (`{ timestamp, taskType, egressBytes,
+  redactionCount, model, channelId }`) and reports
+  `{ totalBytes, totalRequests, totalRedactions, byChannel, byModel,
+  recent }` via the new `egress:summary` / `egress:reset` IPC channels.
+  The renderer's new `EgressSummaryPanel` (`src/features/ai/`) shows a
+  prominent "0 B" zero-state, per-channel and per-model breakdowns, a
+  recent-activity timeline, and a Reset button; the existing TopBar
+  "Egress" badge now reads from the live tracker via the new
+  `useEgressSummary` hook. UTF-8 byte length drives the tally so
+  reported bytes match wire bytes.
+
+## Phase 5 — complete
 
 - **Source picker UI** — `features/knowledge/SourcePicker.tsx` +
   `types/knowledge.ts` (`SelectedSource`, `SelectedSourceKind`,
@@ -401,6 +446,27 @@ go test ./...
   double-append (regression covered by
   `TestAttachIsIdempotentForRepeatedChannel` in
   `backend/internal/api/handlers/connectors_test.go`).
+- **OneDrive connector (mock)** — second seeded connector
+  `conn_onedrive_acme` (`kind: 'onedrive'`, name "Acme OneDrive")
+  attached to `ch_engineering` with three mock files (engineering
+  kickoff notes, quarterly engineering report, OKR summary). Reuses
+  the same `ConnectorService` / handlers / `ConnectorPanel` plumbing
+  as the Drive connector, so both kinds appear automatically in the
+  workspace connector list.
+- **Connector ACL sync** — `ConnectorFile.ACL []string` carries a
+  machine-readable list of user IDs allowed to read each file (the
+  existing `Permissions` field stays as the human-readable label).
+  New `ConnectorService.SyncACL(connectorID)` rewrites every file's
+  ACL based on its `Permissions` (Phase 5 mock; OAuth-driven sync
+  is Phase 6+) and `ConnectorService.CheckFileAccess(fileID, userID)`
+  is the single gate consulted by retrieval.
+  `RetrievalService.IndexChannel(channelID, userID)` and
+  `Search(channelID, query, userID)` filter chunks against the
+  requesting user's ACL so a connector file with no entry for that
+  user produces zero retrieval hits. Endpoint:
+  `POST /api/connectors/{id}/sync-acl`. Frontend
+  `connectorApi.syncConnectorACL(connectorId)` and per-file ACL
+  rendering in `PermissionPreview.tsx`.
 
 ## Phase 4 — complete
 

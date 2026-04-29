@@ -46,7 +46,13 @@ export interface ConnectorFile {
   size: number;
   excerpt: string;
   url: string;
+  // Human-readable permission strings ("alice@acme.com:owner") used
+  // for display in the permission preview.
   permissions: string[];
+  // Machine-readable list of user IDs allowed to read this file.
+  // Populated by POST /api/connectors/{id}/sync-acl. Empty list
+  // means "ungated" (the seed before the first sync).
+  acl?: string[];
 }
 
 // Phase 5 retrieval types.

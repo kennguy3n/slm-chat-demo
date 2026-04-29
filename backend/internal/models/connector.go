@@ -56,5 +56,13 @@ type ConnectorFile struct {
 	Size        int      `json:"size"`
 	Excerpt     string   `json:"excerpt"`
 	URL         string   `json:"url"`
+	// Permissions is the human-readable display string ("alice@acme.com:owner").
 	Permissions []string `json:"permissions"`
+	// ACL is the machine-readable access-control list of user IDs that
+	// may read this file. The retrieval index, source picker, and
+	// AI-Employee dispatch all gate on ACL membership before exposing
+	// the file's content. ConnectorService.SyncACL refreshes this list
+	// from the upstream connector (Phase 5 mirrors `Permissions` since
+	// no real OAuth call is made; real OAuth sync ships in Phase 6+).
+	ACL []string `json:"acl"`
 }

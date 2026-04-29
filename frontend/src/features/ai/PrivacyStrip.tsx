@@ -25,6 +25,23 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function redactionSummaryLabel(s: {
+  totalRedactions: number;
+  byKind?: Record<string, number>;
+}): string {
+  if (s.totalRedactions === 0) return 'no PII detected';
+  const breakdown = s.byKind
+    ? Object.entries(s.byKind)
+        .filter(([, n]) => n > 0)
+        .map(([kind, n]) => `${n} ${kind}${n === 1 ? '' : 's'}`)
+        .join(', ')
+    : '';
+  const noun = s.totalRedactions === 1 ? 'item' : 'items';
+  return breakdown
+    ? `${s.totalRedactions} ${noun} redacted (${breakdown})`
+    : `${s.totalRedactions} ${noun} redacted`;
+}
+
 // PrivacyStrip renders the eight required AI UI elements from PROPOSAL.md
 // section 4.3 below an AI-generated card. It optionally syncs with the
 // backend's model status and egress preview endpoints; for Phase 0 those
@@ -77,6 +94,17 @@ export function PrivacyStrip({ data, syncWithBackend = false, onAccept, onEdit, 
           {formatBytes(dataEgressBytes)}
         </span>
       </div>
+      {data.computeLocation === 'confidential_server' && data.redactionSummary && (
+        <div className="privacy-strip__row">
+          <span className="privacy-strip__label">Redaction</span>
+          <span
+            className="privacy-strip__value"
+            data-testid="privacy-redaction"
+          >
+            {redactionSummaryLabel(data.redactionSummary)}
+          </span>
+        </div>
+      )}
       <div className="privacy-strip__row">
         <span className="privacy-strip__label">Sources</span>
         <ul className="privacy-strip__sources" data-testid="privacy-sources">

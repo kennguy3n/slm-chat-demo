@@ -691,11 +691,45 @@ func (m *Memory) UpdateConnector(id string, mutate func(*models.Connector)) (mod
 }
 
 // AppendConnectorFile records a new connector file. Phase 5 seeds
-// every file at startup; there is no public mutator for files.
+// every file at startup; SyncACL is the only public mutator for
+// existing files.
 func (m *Memory) AppendConnectorFile(f models.ConnectorFile) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.connectorFiles = append(m.connectorFiles, f)
+}
+
+// GetConnectorFile returns the file matching `fileID` plus a bool
+// indicating whether one was found.
+func (m *Memory) GetConnectorFile(fileID string) (models.ConnectorFile, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, f := range m.connectorFiles {
+		if f.ID == fileID {
+			return f, true
+		}
+	}
+	return models.ConnectorFile{}, false
+}
+
+// UpdateConnectorFile applies `mutate` to every file whose connector
+// is `connectorID`, persists the change, and returns the updated
+// file slice. Used by ConnectorService.SyncACL to refresh the
+// machine-readable ACL list on every file in a connector under a
+// single write lock.
+func (m *Memory) UpdateConnectorFile(connectorID string, mutate func(*models.ConnectorFile)) []models.ConnectorFile {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []models.ConnectorFile{}
+	for i := range m.connectorFiles {
+		if m.connectorFiles[i].ConnectorID != connectorID {
+			continue
+		}
+		mutate(&m.connectorFiles[i])
+		out = append(out, m.connectorFiles[i])
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
 }
 
 // ListConnectorFiles returns every file stored for a single connector,

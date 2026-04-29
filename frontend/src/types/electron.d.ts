@@ -286,6 +286,29 @@ interface ElectronAIBridge {
   loadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
   unloadModel(model?: string): Promise<{ loaded: boolean; model: string }>;
   route(req: AIRunRequest): Promise<AIRouteResponse>;
+  // Phase 6 — confidential-server egress tally. The renderer reads
+  // these for the EgressSummaryPanel and the TopBar badge. Reset is
+  // an explicit user-driven action (the panel surfaces a button).
+  egressSummary(): Promise<EgressSummaryResult>;
+  egressReset(): Promise<EgressSummaryResult>;
+}
+
+export interface EgressSummaryEntry {
+  timestamp: number;
+  taskType: string;
+  egressBytes: number;
+  redactionCount: number;
+  model: string;
+  channelId?: string;
+}
+
+export interface EgressSummaryResult {
+  totalBytes: number;
+  totalRequests: number;
+  totalRedactions: number;
+  byChannel: Record<string, { bytes: number; requests: number }>;
+  byModel: Record<string, { bytes: number; requests: number }>;
+  recent: EgressSummaryEntry[];
 }
 
 declare global {

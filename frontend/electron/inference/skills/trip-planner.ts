@@ -264,7 +264,7 @@ export async function runTripPlanner(
     rawOutput = resp.output ?? '';
     model = resp.model;
     const decision = router.lastDecision();
-    if (decision.tier) tier = decision.tier;
+    if (decision.tier && decision.tier !== 'server') tier = decision.tier;
     routeReason = decision.reason;
   } catch (e) {
     return {

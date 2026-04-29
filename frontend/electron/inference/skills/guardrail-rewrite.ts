@@ -193,7 +193,10 @@ export async function runGuardrailRewrite(
     return refuse(e instanceof Error ? e.message : 'inference failed');
   }
   const decision = router.lastDecision();
-  const tier = decision.tier ?? guardrailRewriteSkill.preferredTier;
+  const decisionTier =
+    decision.tier && decision.tier !== 'server' ? decision.tier : undefined;
+  const tier: 'e2b' | 'e4b' =
+    decisionTier ?? guardrailRewriteSkill.preferredTier;
   const routeReason = decision.reason || `Routed guardrail review to ${tier.toUpperCase()}.`;
 
   if (detectInsufficient(resp.output)) {

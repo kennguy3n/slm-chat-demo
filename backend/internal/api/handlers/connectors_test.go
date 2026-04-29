@@ -9,6 +9,46 @@ import (
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/models"
 )
 
+// TestSyncACLEndpointPopulatesACL verifies that POST
+// /api/connectors/{id}/sync-acl returns the updated file list with
+// each file's `acl` field populated from the human-readable
+// permissions strings.
+func TestSyncACLEndpointPopulatesACL(t *testing.T) {
+	h := newTestServer()
+	rec := doRequest(t, h, "POST", "/api/connectors/conn_gdrive_acme/sync-acl", "user_alice", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		ConnectorID string                  `json:"connectorId"`
+		Files       []models.ConnectorFile  `json:"files"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.ConnectorID != "conn_gdrive_acme" {
+		t.Errorf("connectorId = %q, want conn_gdrive_acme", body.ConnectorID)
+	}
+	if len(body.Files) == 0 {
+		t.Fatalf("expected non-zero files in sync response")
+	}
+	for _, f := range body.Files {
+		if len(f.ACL) == 0 {
+			t.Errorf("file %s ACL empty after sync", f.ID)
+		}
+	}
+}
+
+// TestSyncACLEndpointUnknownConnectorReturns404 ensures the handler
+// surfaces a 404 when the connector is unknown.
+func TestSyncACLEndpointUnknownConnectorReturns404(t *testing.T) {
+	h := newTestServer()
+	rec := doRequest(t, h, "POST", "/api/connectors/conn_unknown/sync-acl", "user_alice", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
 func TestListConnectorsReturnsSeededDriveConnector(t *testing.T) {
 	h := newTestServer()
 	rec := doGet(t, h, "/api/connectors?workspaceId=ws_acme", "user_alice")
@@ -21,18 +61,92 @@ func TestListConnectorsReturnsSeededDriveConnector(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body.Connectors) != 1 {
-		t.Fatalf("expected 1 connector for ws_acme, got %d", len(body.Connectors))
+	// Phase 5 ships two seeded connectors per acme workspace: a
+	// Google Drive connector (vendor-management) and a OneDrive
+	// connector (engineering).
+	var gdrive *models.Connector
+	for i := range body.Connectors {
+		if body.Connectors[i].ID == "conn_gdrive_acme" {
+			gdrive = &body.Connectors[i]
+		}
 	}
-	c := body.Connectors[0]
-	if c.ID != "conn_gdrive_acme" {
-		t.Errorf("expected id=conn_gdrive_acme, got %q", c.ID)
+	if gdrive == nil {
+		t.Fatalf("expected conn_gdrive_acme in workspace connectors, got %+v", body.Connectors)
 	}
-	if c.Kind != models.ConnectorKindGoogleDrive {
-		t.Errorf("expected kind=google_drive, got %q", c.Kind)
+	if gdrive.Kind != models.ConnectorKindGoogleDrive {
+		t.Errorf("expected kind=google_drive, got %q", gdrive.Kind)
 	}
-	if c.Status != models.ConnectorStatusConnected {
-		t.Errorf("expected status=connected, got %q", c.Status)
+	if gdrive.Status != models.ConnectorStatusConnected {
+		t.Errorf("expected status=connected, got %q", gdrive.Status)
+	}
+}
+
+// TestListConnectorsReturnsOneDriveConnector verifies the second
+// Phase 5 seeded connector — a mocked OneDrive integration attached
+// to ch_engineering — is surfaced for the acme workspace.
+func TestListConnectorsReturnsOneDriveConnector(t *testing.T) {
+	h := newTestServer()
+	rec := doGet(t, h, "/api/connectors?workspaceId=ws_acme", "user_alice")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Connectors []models.Connector `json:"connectors"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var onedrive *models.Connector
+	for i := range body.Connectors {
+		if body.Connectors[i].ID == "conn_onedrive_acme" {
+			onedrive = &body.Connectors[i]
+		}
+	}
+	if onedrive == nil {
+		t.Fatalf("expected conn_onedrive_acme in workspace connectors, got %+v", body.Connectors)
+	}
+	if onedrive.Kind != models.ConnectorKindOneDrive {
+		t.Errorf("expected kind=onedrive, got %q", onedrive.Kind)
+	}
+	if onedrive.Name != "Acme OneDrive" {
+		t.Errorf("expected name=Acme OneDrive, got %q", onedrive.Name)
+	}
+	attached := false
+	for _, cid := range onedrive.ChannelIDs {
+		if cid == "ch_engineering" {
+			attached = true
+		}
+	}
+	if !attached {
+		t.Errorf("expected OneDrive connector attached to ch_engineering, got %v", onedrive.ChannelIDs)
+	}
+}
+
+// TestOneDriveFilesReturnedForAttachedChannel verifies the engineering
+// channel sees its OneDrive files via the channel-scoped files
+// endpoint after seed time.
+func TestOneDriveFilesReturnedForAttachedChannel(t *testing.T) {
+	h := newTestServer()
+	rec := doGet(t, h, "/api/channels/ch_engineering/connector-files", "user_alice")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Files []models.ConnectorFile `json:"files"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Files) == 0 {
+		t.Fatalf("expected files for ch_engineering, got 0")
+	}
+	for _, f := range body.Files {
+		if f.ConnectorID != "conn_onedrive_acme" {
+			t.Errorf("expected file %s scoped to OneDrive connector, got %q", f.ID, f.ConnectorID)
+		}
+		if f.Excerpt == "" {
+			t.Errorf("OneDrive file %s missing excerpt", f.ID)
+		}
 	}
 }
 
@@ -117,13 +231,13 @@ func TestChannelConnectorFilesReturnsAttachedFiles(t *testing.T) {
 		t.Fatalf("expected attached files for vendor-management, got 0")
 	}
 
-	// engineering has no connectors attached at seed time.
-	rec = doGet(t, h, "/api/channels/ch_engineering/connector-files", "user_alice")
+	// ch_general has no connectors attached at seed time.
+	rec = doGet(t, h, "/api/channels/ch_general/connector-files", "user_alice")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode engineering: %v", err)
+		t.Fatalf("decode general: %v", err)
 	}
 	if len(body.Files) != 0 {
 		t.Fatalf("expected 0 files for unattached channel, got %d", len(body.Files))
@@ -133,8 +247,10 @@ func TestChannelConnectorFilesReturnsAttachedFiles(t *testing.T) {
 func TestAttachAndDetachChannel(t *testing.T) {
 	h := newTestServer()
 
-	// Attach the connector to ch_engineering.
-	body := bytes.NewBufferString(`{"channelId":"ch_engineering"}`)
+	// Attach the gdrive connector to ch_general (which has no
+	// connectors attached at seed time — ch_engineering is now
+	// owned by the OneDrive seed).
+	body := bytes.NewBufferString(`{"channelId":"ch_general"}`)
 	rec := doRequest(t, h, "POST", "/api/connectors/conn_gdrive_acme/channels", "user_alice", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("attach: expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -147,17 +263,17 @@ func TestAttachAndDetachChannel(t *testing.T) {
 	}
 	found := false
 	for _, cid := range attach.Connector.ChannelIDs {
-		if cid == "ch_engineering" {
+		if cid == "ch_general" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected ch_engineering in channelIds, got %v", attach.Connector.ChannelIDs)
+		t.Fatalf("expected ch_general in channelIds, got %v", attach.Connector.ChannelIDs)
 	}
 
-	// Engineering should now see the connector's files.
-	rec = doGet(t, h, "/api/channels/ch_engineering/connector-files", "user_alice")
+	// ch_general should now see the gdrive connector's files.
+	rec = doGet(t, h, "/api/channels/ch_general/connector-files", "user_alice")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("post-attach files: expected 200, got %d", rec.Code)
 	}
@@ -168,15 +284,15 @@ func TestAttachAndDetachChannel(t *testing.T) {
 		t.Fatalf("decode files: %v", err)
 	}
 	if len(filesBody.Files) == 0 {
-		t.Fatalf("expected files visible from ch_engineering after attach, got 0")
+		t.Fatalf("expected files visible from ch_general after attach, got 0")
 	}
 
 	// Detach.
-	rec = doRequest(t, h, "DELETE", "/api/connectors/conn_gdrive_acme/channels/ch_engineering", "user_alice", nil)
+	rec = doRequest(t, h, "DELETE", "/api/connectors/conn_gdrive_acme/channels/ch_general", "user_alice", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("detach: expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	rec = doGet(t, h, "/api/channels/ch_engineering/connector-files", "user_alice")
+	rec = doGet(t, h, "/api/channels/ch_general/connector-files", "user_alice")
 	if err := json.Unmarshal(rec.Body.Bytes(), &filesBody); err != nil {
 		t.Fatalf("decode post-detach: %v", err)
 	}
@@ -221,13 +337,13 @@ func TestAttachUnknownConnectorReturns404(t *testing.T) {
 func TestAttachIsIdempotentForRepeatedChannel(t *testing.T) {
 	h := newTestServer()
 
-	body1 := bytes.NewBufferString(`{"channelId":"ch_engineering"}`)
+	body1 := bytes.NewBufferString(`{"channelId":"ch_general"}`)
 	rec := doRequest(t, h, "POST", "/api/connectors/conn_gdrive_acme/channels", "user_alice", body1)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("first attach: expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	body2 := bytes.NewBufferString(`{"channelId":"ch_engineering"}`)
+	body2 := bytes.NewBufferString(`{"channelId":"ch_general"}`)
 	rec = doRequest(t, h, "POST", "/api/connectors/conn_gdrive_acme/channels", "user_alice", body2)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("second attach: expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -240,12 +356,12 @@ func TestAttachIsIdempotentForRepeatedChannel(t *testing.T) {
 	}
 	count := 0
 	for _, cid := range resp.Connector.ChannelIDs {
-		if cid == "ch_engineering" {
+		if cid == "ch_general" {
 			count++
 		}
 	}
 	if count != 1 {
-		t.Fatalf("expected ch_engineering once in channelIds, got %d (channelIds=%v)",
+		t.Fatalf("expected ch_general once in channelIds, got %d (channelIds=%v)",
 			count, resp.Connector.ChannelIDs)
 	}
 }

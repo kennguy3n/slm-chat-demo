@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/models"
@@ -112,8 +113,11 @@ func TestIndexUnknownChannelReturns404(t *testing.T) {
 
 func TestSearchRespectsChannelScoping(t *testing.T) {
 	h := newTestServer()
-	// Index both channels and verify a vendor-only file does not leak
-	// into engineering's search results.
+	// Index both channels and verify a Drive-only file does not leak
+	// into engineering's search results. Engineering attaches the
+	// OneDrive connector, so OneDrive file hits are legitimate; the
+	// test asserts (a) channel scoping (no chunks from another
+	// channel) and (b) no Drive files leak in.
 	doRequest(t, h, "POST", "/api/channels/ch_vendor_management/index", "user_alice", nil)
 	doRequest(t, h, "POST", "/api/channels/ch_engineering/index", "user_alice", nil)
 
@@ -128,11 +132,14 @@ func TestSearchRespectsChannelScoping(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	for _, r := range body.Results {
-		if r.Chunk.SourceKind == models.RetrievalSourceKindFile {
-			t.Errorf("expected no file chunks in engineering (no connector attached); got file %q", r.Chunk.SourceID)
-		}
 		if r.Chunk.ChannelID != "ch_engineering" {
 			t.Errorf("cross-channel leakage: %q", r.Chunk.ChannelID)
+		}
+		if r.Chunk.SourceKind == models.RetrievalSourceKindFile &&
+			!strings.HasPrefix(r.Chunk.SourceID, "file_acme_eng_") &&
+			!strings.HasPrefix(r.Chunk.SourceID, "file_acme_quarterly_") &&
+			!strings.HasPrefix(r.Chunk.SourceID, "file_acme_oncall_") {
+			t.Errorf("vendor-only Drive file leaked into engineering search: %q", r.Chunk.SourceID)
 		}
 	}
 }

@@ -144,6 +144,64 @@ describe('ConnectorPanel', () => {
     });
   });
 
+  it('renders both Drive and OneDrive connectors with their kind labels', async () => {
+    const onedrive: Connector = {
+      id: 'conn_onedrive_acme',
+      kind: 'onedrive',
+      name: 'Acme OneDrive',
+      workspaceId: 'ws_acme',
+      channelIds: ['ch_engineering'],
+      status: 'connected',
+      createdAt: '2026-04-02T00:00:00Z',
+    };
+    const onedriveFiles: ConnectorFile[] = [
+      {
+        id: 'fo1',
+        connectorId: 'conn_onedrive_acme',
+        name: 'meeting-notes.docx',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        size: 1_200,
+        excerpt: '',
+        url: '',
+        permissions: [],
+      },
+    ];
+    const api = makeApi({
+      fetchConnectors: vi
+        .fn<(workspaceId: string) => Promise<Connector[]>>()
+        .mockResolvedValue([CONNECTOR, onedrive]),
+      fetchConnectorFiles: vi
+        .fn<(connectorId: string) => Promise<ConnectorFile[]>>()
+        .mockImplementation(async (cid) =>
+          cid === 'conn_onedrive_acme' ? onedriveFiles : FILES,
+        ),
+    });
+    render(
+      <ConnectorPanel
+        workspaceId="ws_acme"
+        channelId="ch_engineering"
+        channelName="engineering"
+        api={api}
+      />,
+    );
+    const drive = await screen.findByTestId(
+      'connector-panel-row-conn_gdrive_acme',
+    );
+    expect(drive).toHaveTextContent(/Acme Corp Drive/);
+    expect(drive).toHaveTextContent(/Google Drive/);
+    const od = await screen.findByTestId(
+      'connector-panel-row-conn_onedrive_acme',
+    );
+    expect(od).toHaveTextContent(/Acme OneDrive/);
+    expect(od).toHaveTextContent(/OneDrive/);
+    // OneDrive is attached to ch_engineering, drive is not.
+    const odToggle = screen.getByTestId(
+      'connector-panel-toggle-conn_onedrive_acme',
+    ) as HTMLInputElement;
+    expect(odToggle.checked).toBe(true);
+  });
+
   it('renders an empty state when the workspace has no connectors', async () => {
     render(
       <ConnectorPanel

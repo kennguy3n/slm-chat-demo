@@ -102,6 +102,23 @@ func (h *Connectors) Attach(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"connector": connector})
 }
 
+// SyncACL handles POST /api/connectors/{id}/sync-acl. It refreshes
+// the machine-readable ACL on every file in the connector and
+// returns the updated file list. Phase 5 mocks the upstream sync;
+// real OAuth ships in Phase 6+.
+func (h *Connectors) SyncACL(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	files, err := h.svc.SyncACL(id)
+	if err != nil {
+		h.mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"connectorId": id,
+		"files":       files,
+	})
+}
+
 // Detach handles DELETE /api/connectors/{id}/channels/{channelId}.
 func (h *Connectors) Detach(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

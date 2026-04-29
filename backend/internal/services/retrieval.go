@@ -32,9 +32,14 @@ func NewRetrievalService(s *store.Memory) *RetrievalService {
 // inserted per message in the channel and one per connector file
 // excerpt accessible from the channel.
 //
+// Phase 5+: connector files are skipped when the requesting user is
+// not in the file's ACL. Empty ACL falls open so unsynced demo files
+// continue to flow. Pass an empty `userID` to opt out of the ACL
+// gate (for unit-tests or background system jobs).
+//
 // Returns ErrNotFound if the channel does not exist so handlers can
 // surface a 404.
-func (s *RetrievalService) IndexChannel(channelID string) (int, error) {
+func (s *RetrievalService) IndexChannel(channelID, userID string) (int, error) {
 	if _, ok := s.store.GetChannel(channelID); !ok {
 		return 0, ErrNotFound
 	}
@@ -54,6 +59,9 @@ func (s *RetrievalService) IndexChannel(channelID string) (int, error) {
 		})
 	}
 	for _, f := range s.store.ListConnectorFilesByChannel(channelID) {
+		if userID != "" && !fileACLAllows(f, userID) {
+			continue
+		}
 		body := strings.TrimSpace(f.Excerpt)
 		if body == "" {
 			continue
@@ -72,8 +80,11 @@ func (s *RetrievalService) IndexChannel(channelID string) (int, error) {
 
 // Search returns the top-K chunks ranked by term-overlap score for
 // `query` within `channelID`. Returns ErrNotFound if the channel does
-// not exist. Empty queries return an empty slice.
-func (s *RetrievalService) Search(channelID, query string, topK int) ([]models.RetrievalResult, error) {
+// not exist. Empty queries return an empty slice. File-backed chunks
+// the requesting user is not allowed to see (per the file's ACL) are
+// filtered out post-scoring. Pass an empty `userID` to bypass the
+// ACL gate.
+func (s *RetrievalService) Search(channelID, query, userID string, topK int) ([]models.RetrievalResult, error) {
 	if _, ok := s.store.GetChannel(channelID); !ok {
 		return nil, ErrNotFound
 	}
@@ -87,6 +98,11 @@ func (s *RetrievalService) Search(channelID, query string, topK int) ([]models.R
 	chunks := s.store.ListChunksByChannel(channelID)
 	results := make([]models.RetrievalResult, 0, len(chunks))
 	for _, c := range chunks {
+		if userID != "" && c.SourceKind == models.RetrievalSourceKindFile {
+			if f, ok := s.store.GetConnectorFile(c.SourceID); ok && !fileACLAllows(f, userID) {
+				continue
+			}
+		}
 		score := scoreChunk(c.Content, terms)
 		if score <= 0 {
 			continue
