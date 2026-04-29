@@ -331,6 +331,9 @@ export function ThreadPanel({ channel }: Props) {
       refreshLinkedObjects();
     } catch (err) {
       setSubmitErr(err instanceof Error ? err.message : String(err));
+      // Rethrow so ArtifactDraftCard surfaces a retry-able error state
+      // instead of staying locked. Matches the ApprovalPrefillCard wiring.
+      throw err;
     }
   }
 
