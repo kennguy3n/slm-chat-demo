@@ -85,8 +85,15 @@ export function PolicyAdminPanel({
 
   const dirty = useMemo(() => {
     if (!policy || !form) return false;
-    const a = JSON.stringify(toFormState(policy));
-    const b = JSON.stringify(form);
+    const normalize = (s: FormState) => ({
+      allowServerCompute: s.allowServerCompute,
+      requireRedaction: s.requireRedaction,
+      maxEgressBytesPerDay: s.maxEgressBytesPerDay,
+      allowed: Array.from(s.allowed).sort(),
+      denied: Array.from(s.denied).sort(),
+    });
+    const a = JSON.stringify(normalize(toFormState(policy)));
+    const b = JSON.stringify(normalize(form));
     return a !== b;
   }, [policy, form]);
 
