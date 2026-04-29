@@ -41,7 +41,9 @@ async function createWindow(): Promise<BrowserWindow> {
 
   if (isDev) {
     await win.loadURL(devURL);
-    win.webContents.openDevTools({ mode: 'detach' });
+    if (process.env.ELECTRON_DEVTOOLS !== '0') {
+      win.webContents.openDevTools({ mode: 'detach' });
+    }
   } else {
     // Packaged layout: dist-electron/main.js next to ../dist/index.html.
     const indexPath = path.join(__dirname, '..', 'dist', 'index.html');
