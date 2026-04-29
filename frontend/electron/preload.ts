@@ -53,6 +53,7 @@ const api: ElectronAI = {
   summarizeThread: (req) => ipcRenderer.invoke('ai:summarize-thread', req),
   extractKAppTasks: (req) => ipcRenderer.invoke('ai:kapps-extract-tasks', req),
   prefillApproval: (req) => ipcRenderer.invoke('ai:prefill-approval', req),
+  prefillForm: (req) => ipcRenderer.invoke('ai:prefill-form', req),
   draftArtifact: (req) => ipcRenderer.invoke('ai:draft-artifact', req),
   unreadSummary: (req) => ipcRenderer.invoke('ai:unread-summary', req),
   familyChecklist: (req) => ipcRenderer.invoke('ai:family-checklist', req),

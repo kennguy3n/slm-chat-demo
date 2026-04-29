@@ -16,6 +16,7 @@ import {
   runExtractTasks,
   runKAppsExtractTasks,
   runPrefillApproval,
+  runPrefillForm,
   runSmartReply,
   runTranslate,
 } from './inference/tasks.js';
@@ -40,6 +41,7 @@ import type {
   InferenceRequest,
   KAppsExtractTasksRequest,
   PrefillApprovalRequest,
+  PrefillFormRequest,
   RouteDecision,
   ShoppingNudgesRequest,
   SmartReplyRequest,
@@ -141,6 +143,11 @@ export function registerIPCHandlers(): void {
   ipcMain.handle('ai:prefill-approval', async (_e, req: PrefillApprovalRequest) => {
     const { router } = await getStack();
     return runPrefillApproval(router, req);
+  });
+
+  ipcMain.handle('ai:prefill-form', async (_e, req: PrefillFormRequest) => {
+    const { router } = await getStack();
+    return runPrefillForm(router, req);
   });
 
   ipcMain.handle('ai:draft-artifact', async (_e, req: DraftArtifactRequest) => {

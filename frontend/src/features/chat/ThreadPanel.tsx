@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchChannelMessages, fetchThreadMessages } from '../../api/chatApi';
 import { fetchThreadSummary } from '../../api/aiApi';
 import {
+  createApproval,
+  createArtifact,
+  createForm,
   draftArtifact,
   extractKAppTasks,
   fetchLinkedObjects,
+  listFormTemplates,
   prefillApproval,
 } from '../../api/kappsApi';
 import { KAppCardRenderer } from '../kapps/KAppCardRenderer';
+import { CreateApprovalForm } from '../kapps/CreateApprovalForm';
+import { FormCard } from '../kapps/FormCard';
+import { ArtifactWorkspace } from '../artifacts/ArtifactWorkspace';
 import { streamAITask } from '../../api/streamAI';
 import type { Channel } from '../../types/workspace';
 import type {
@@ -19,6 +26,12 @@ import type {
   PrefillApprovalResponse,
   ThreadSummaryResponse,
 } from '../../types/ai';
+import type {
+  Artifact,
+  ArtifactSourcePin,
+  Form,
+  FormTemplate,
+} from '../../types/kapps';
 import { ApprovalPrefillCard } from '../ai/ApprovalPrefillCard';
 import { ArtifactDraftCard } from '../ai/ArtifactDraftCard';
 import { ThreadSummaryCard } from '../ai/ThreadSummaryCard';
@@ -103,6 +116,49 @@ export function ThreadPanel({ channel }: Props) {
   const [isArtifactStreaming, setIsArtifactStreaming] = useState(false);
   const [artifactErr, setArtifactErr] = useState<string | null>(null);
 
+  // Phase 3 — submitted KApps surfaced from accept actions.
+  const [createdApprovalId, setCreatedApprovalId] = useState<string | null>(null);
+  const [createdArtifact, setCreatedArtifact] = useState<Artifact | null>(null);
+  const [openArtifact, setOpenArtifact] = useState<Artifact | null>(null);
+  const [showApprovalForm, setShowApprovalForm] = useState(false);
+  const [activeForm, setActiveForm] = useState<Form | null>(null);
+  const [activeTemplate, setActiveTemplate] = useState<FormTemplate | null>(null);
+  const [submitErr, setSubmitErr] = useState<string | null>(null);
+
+  const formTemplatesQ = useQuery({
+    queryKey: ['form-templates'],
+    queryFn: () => listFormTemplates(),
+    enabled,
+  });
+
+  const queryClient = useQueryClient();
+  function refreshLinkedObjects() {
+    if (selectedThreadId) {
+      void queryClient.invalidateQueries({ queryKey: ['linked-objects', selectedThreadId] });
+    }
+  }
+
+  // ChatSurface dispatches a `kapps:launcher` custom event when the user
+  // picks Approve / Create from the ActionLauncher menu. ThreadPanel is
+  // the only component that owns the selected thread so it handles the
+  // event here and routes to the existing helpers.
+  useEffect(() => {
+    function onLauncher(e: Event) {
+      const detail = (e as CustomEvent).detail as
+        | { kind: 'prefill_approval'; templateId: ApprovalTemplate }
+        | { kind: 'draft_artifact'; artifactType: ArtifactKind };
+      if (!detail || !selectedThreadId) return;
+      if (detail.kind === 'prefill_approval') {
+        runPrefillApproval(detail.templateId);
+      } else if (detail.kind === 'draft_artifact') {
+        runDraftArtifact(detail.artifactType);
+      }
+    }
+    window.addEventListener('kapps:launcher', onLauncher as EventListener);
+    return () => window.removeEventListener('kapps:launcher', onLauncher as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedThreadId]);
+
   function summarizeThread() {
     if (!selectedThreadId) return;
     setSummaryErr(null);
@@ -150,6 +206,122 @@ export function ThreadPanel({ channel }: Props) {
     void prefillApproval({ threadId: selectedThreadId, templateId })
       .then(setPrefill)
       .catch((err: Error) => setPrefillErr(err.message));
+  }
+
+  // runPrefillForm — Phase 3 Forms intake. Reads the selected thread,
+  // forwards messages to the Electron main-process inference router (or
+  // falls back to a deterministic prefill in the browser demo) and
+  // surfaces a FormCard with AI-prefilled values.
+  async function runPrefillForm(templateId = 'vendor_onboarding_v1') {
+    if (!selectedThreadId || !channel) return;
+    setSubmitErr(null);
+    const tmpl = (formTemplatesQ.data ?? []).find((t) => t.id === templateId);
+    if (!tmpl) {
+      setSubmitErr(`Unknown form template: ${templateId}`);
+      return;
+    }
+    let prefilled: Record<string, string> = {};
+    try {
+      // Electron main provides ai:prefill-form; in the browser demo the
+      // window.electronAI object is undefined and we synthesise a
+      // best-effort prefill from the existing approval prefill output
+      // when one is in scope.
+      const ai = window.electronAI ?? null;
+      if (ai?.prefillForm) {
+        const messages = await fetchThreadMessages(selectedThreadId);
+        const res = await ai.prefillForm({
+          threadId: selectedThreadId,
+          templateId,
+          fields: tmpl.fields.map((f) => f.name),
+          messages: messages.map((m) => ({
+            id: m.id,
+            channelId: m.channelId,
+            senderId: m.senderId,
+            content: m.content,
+          })),
+        });
+        prefilled = res.fields;
+      } else if (prefill) {
+        prefilled = {
+          vendor: prefill.fields.vendor ?? '',
+          amount: prefill.fields.amount ?? '',
+          justification: prefill.fields.justification ?? '',
+        };
+      }
+    } catch (err) {
+      // Treat prefill failure as empty form.
+      setSubmitErr(`Prefill failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      const f = await createForm({
+        channelId: channel.id,
+        templateId,
+        fields: prefilled,
+        sourceThreadId: selectedThreadId,
+        aiGenerated: Object.keys(prefilled).length > 0,
+      });
+      setActiveForm(f);
+      setActiveTemplate(tmpl);
+      refreshLinkedObjects();
+    } catch (err) {
+      setSubmitErr(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // Wire ApprovalPrefillCard "Accept" → POST /api/kapps/approvals.
+  async function handleApprovalAccept(fields: PrefillApprovalResponse['fields']) {
+    if (!prefill || !channel) return;
+    try {
+      const a = await createApproval({
+        channelId: channel.id,
+        templateId: prefill.templateId,
+        title: prefill.title,
+        approvers: [],
+        fields: {
+          vendor: fields.vendor,
+          amount: fields.amount,
+          justification: fields.justification,
+          risk: fields.risk,
+        },
+        sourceThreadId: prefill.threadId,
+        aiGenerated: true,
+      });
+      setCreatedApprovalId(a.id);
+      refreshLinkedObjects();
+    } catch (err) {
+      setSubmitErr(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // Wire ArtifactDraftCard "Save" → POST /api/kapps/artifacts. Carries
+  // the streamed body + sources from the draft response into the new
+  // artifact's source pins.
+  async function handleArtifactAccept() {
+    if (!artifact || !channel) return;
+    const sourcePins: ArtifactSourcePin[] = artifact.sources.map((s) => ({
+      sectionId: artifact.section,
+      sourceMessageId: s.id,
+      sourceThreadId: artifact.threadId,
+      excerpt: s.excerpt,
+      sender: s.sender,
+    }));
+    try {
+      const a = await createArtifact({
+        channelId: channel.id,
+        type: artifact.artifactType,
+        title: artifact.title,
+        sourceThreadId: artifact.threadId,
+        body: artifactStreamingText,
+        summary: 'Drafted from thread',
+        sourcePins,
+        aiGenerated: true,
+      });
+      setCreatedArtifact(a);
+      setOpenArtifact(a);
+      refreshLinkedObjects();
+    } catch (err) {
+      setSubmitErr(err instanceof Error ? err.message : String(err));
+    }
   }
 
   function runDraftArtifact(artifactType: ArtifactKind = 'PRD') {
@@ -249,7 +421,74 @@ export function ThreadPanel({ channel }: Props) {
           >
             Draft PRD
           </button>
+          <button
+            type="button"
+            className="thread-panel__action"
+            data-testid="thread-prefill-form"
+            onClick={() => runPrefillForm('vendor_onboarding_v1')}
+          >
+            Vendor onboarding form
+          </button>
+          <button
+            type="button"
+            className="thread-panel__action"
+            data-testid="thread-create-approval"
+            onClick={() => setShowApprovalForm((v) => !v)}
+          >
+            New approval (manual)
+          </button>
         </div>
+      )}
+      {showApprovalForm && channel && (
+        <CreateApprovalForm
+          channelId={channel.id}
+          sourceThreadId={selectedThreadId ?? undefined}
+          onCreated={() => {
+            setShowApprovalForm(false);
+            refreshLinkedObjects();
+          }}
+          onCancel={() => setShowApprovalForm(false)}
+        />
+      )}
+      {submitErr && (
+        <div role="alert" className="thread-panel__error" data-testid="thread-panel-submit-error">
+          {submitErr}
+        </div>
+      )}
+      {createdApprovalId && (
+        <p className="thread-panel__notice" data-testid="thread-panel-approval-created">
+          Approval created: <code>{createdApprovalId}</code>
+        </p>
+      )}
+      {createdArtifact && !openArtifact && (
+        <p className="thread-panel__notice" data-testid="thread-panel-artifact-created">
+          Artifact saved: <code>{createdArtifact.id}</code>
+        </p>
+      )}
+      {activeForm && activeTemplate && (
+        <FormCard
+          form={activeForm}
+          templateFields={activeTemplate.fields}
+          aiPrefilledFieldNames={Object.keys(activeForm.fields)}
+          sourceThreadId={activeForm.sourceThreadId}
+          onSubmit={async () => {
+            // Persisting "submitted" forms is out-of-scope for the demo;
+            // we just acknowledge the submit visually and clear the card.
+            setActiveForm(null);
+            setActiveTemplate(null);
+            refreshLinkedObjects();
+          }}
+          onDiscard={() => {
+            setActiveForm(null);
+            setActiveTemplate(null);
+          }}
+        />
+      )}
+      {openArtifact && (
+        <ArtifactWorkspace
+          artifact={openArtifact}
+          onClose={() => setOpenArtifact(null)}
+        />
       )}
       {summaryErr && (
         <div role="alert" className="thread-panel__error">
@@ -292,6 +531,7 @@ export function ThreadPanel({ channel }: Props) {
               `${m.senderId}: ${m.content.slice(0, 80)}`,
             ]),
           )}
+          onAccept={handleApprovalAccept}
         />
       )}
       {artifactErr && (
@@ -304,6 +544,7 @@ export function ThreadPanel({ channel }: Props) {
           draft={artifact}
           streamingText={artifactStreamingText}
           isStreaming={isArtifactStreaming}
+          onAccept={handleArtifactAccept}
         />
       )}
       {selectedThreadId && (
@@ -328,7 +569,18 @@ export function ThreadPanel({ channel }: Props) {
             <ul className="thread-panel__linked-list">
               {linkedObjectsQ.data.map((card, idx) => (
                 <li key={idx} data-testid={`thread-panel-linked-${idx}`}>
-                  <KAppCardRenderer card={card} mode="compact" />
+                  <KAppCardRenderer
+                    card={card}
+                    mode="compact"
+                    formTemplateLookup={(tid) =>
+                      (formTemplatesQ.data ?? []).find((t) => t.id === tid)?.fields
+                    }
+                    onAction={(action) => {
+                      if (action.type === 'artifact:view') {
+                        setOpenArtifact(action.artifact);
+                      }
+                    }}
+                  />
                 </li>
               ))}
             </ul>

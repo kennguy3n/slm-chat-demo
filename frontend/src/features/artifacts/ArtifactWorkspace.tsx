@@ -1,0 +1,380 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  createArtifactVersion as apiCreateArtifactVersion,
+  getArtifact,
+  getArtifactVersion,
+  updateArtifact,
+} from '../../api/kappsApi';
+import type { Artifact, ArtifactSourcePin, ArtifactStatus, ArtifactVersion } from '../../types/kapps';
+import { SourcePin } from './SourcePin';
+import { ArtifactDiffView } from './ArtifactDiffView';
+
+interface Props {
+  // The artifact to display. The workspace fetches the full artifact
+  // (versions with bodies) so the parent can pass either a stripped
+  // list-shaped Artifact or a full one — either works.
+  artifact: Artifact;
+  onClose?: () => void;
+  onNavigateSource?: (pin: ArtifactSourcePin) => void;
+  // Optional injected fetchers for tests.
+  injectedGetArtifact?: typeof getArtifact;
+  injectedGetVersion?: typeof getArtifactVersion;
+  injectedCreateVersion?: typeof apiCreateArtifactVersion;
+  injectedUpdateArtifact?: typeof updateArtifact;
+}
+
+interface Section {
+  id: string;
+  heading: string;
+  body: string;
+  pins: ArtifactSourcePin[];
+}
+
+// splitIntoSections segments a markdown body by `# ...` headings. Each
+// heading becomes a section whose `id` is the slugified heading text
+// (lowercased, non-word chars stripped). Source pins reference these
+// section ids so the renderer can place footnote markers next to the
+// right heading. Sections with no heading are bucketed under "preamble".
+function splitIntoSections(body: string): Section[] {
+  if (!body.trim()) return [];
+  const lines = body.split('\n');
+  const sections: Section[] = [];
+  let current: Section = { id: 'preamble', heading: '', body: '', pins: [] };
+  for (const line of lines) {
+    const m = /^#+\s+(.*)$/.exec(line);
+    if (m) {
+      if (current.heading || current.body.trim()) {
+        sections.push(current);
+      }
+      const heading = m[1].trim();
+      const id = heading.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      current = { id: id || heading, heading, body: '', pins: [] };
+    } else {
+      current.body += (current.body ? '\n' : '') + line;
+    }
+  }
+  if (current.heading || current.body.trim()) sections.push(current);
+  return sections;
+}
+
+function buildSections(version: ArtifactVersion | null): Section[] {
+  if (!version) return [];
+  const secs = splitIntoSections(version.body ?? '');
+  for (const pin of version.sourcePins ?? []) {
+    const target = secs.find((s) => s.id === pin.sectionId);
+    if (target) target.pins.push(pin);
+    else if (secs.length > 0) secs[secs.length - 1].pins.push(pin);
+  }
+  return secs;
+}
+
+// ArtifactWorkspace — the right-panel artifact viewer (ARCHITECTURE.md
+// module #8). Loads the full artifact, displays the latest version's
+// body inline with source pins, and supports new-version, publish, and
+// version diff actions.
+export function ArtifactWorkspace({
+  artifact: initialArtifact,
+  onClose,
+  onNavigateSource,
+  injectedGetArtifact,
+  injectedGetVersion,
+  injectedCreateVersion,
+  injectedUpdateArtifact,
+}: Props) {
+  const fetchArtifact = injectedGetArtifact ?? getArtifact;
+  const fetchVersion = injectedGetVersion ?? getArtifactVersion;
+  const submitNewVersion = injectedCreateVersion ?? apiCreateArtifactVersion;
+  const patchArtifact = injectedUpdateArtifact ?? updateArtifact;
+
+  const [artifact, setArtifact] = useState<Artifact>(initialArtifact);
+  const [selectedVersion, setSelectedVersion] = useState<number>(
+    initialArtifact.versions[initialArtifact.versions.length - 1]?.version ?? 1,
+  );
+  const [versionBodies, setVersionBodies] = useState<Record<number, ArtifactVersion>>({});
+  const [editing, setEditing] = useState(false);
+  const [editorBody, setEditorBody] = useState('');
+  const [editorSummary, setEditorSummary] = useState('');
+  const [diffWith, setDiffWith] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Fetch full artifact (with bodies) on mount when it looks list-shaped.
+  useEffect(() => {
+    let cancelled = false;
+    if (!initialArtifact.versions.some((v) => v.body)) {
+      fetchArtifact(initialArtifact.id)
+        .then((full) => {
+          if (cancelled) return;
+          setArtifact(full);
+          const next = full.versions[full.versions.length - 1];
+          if (next) setSelectedVersion(next.version);
+        })
+        .catch((e) => !cancelled && setErr(e instanceof Error ? e.message : String(e)));
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchArtifact, initialArtifact.id, initialArtifact.versions]);
+
+  const currentVersion = useMemo<ArtifactVersion | null>(() => {
+    const onArtifact = artifact.versions.find((v) => v.version === selectedVersion);
+    if (onArtifact?.body) return onArtifact;
+    if (versionBodies[selectedVersion]) return versionBodies[selectedVersion];
+    return onArtifact ?? null;
+  }, [artifact.versions, selectedVersion, versionBodies]);
+
+  // If the user picks a version we haven't fetched the body for, lazy-load it.
+  useEffect(() => {
+    if (!currentVersion || currentVersion.body || versionBodies[selectedVersion]) return;
+    let cancelled = false;
+    fetchVersion(artifact.id, selectedVersion)
+      .then((v) => {
+        if (cancelled) return;
+        setVersionBodies((prev) => ({ ...prev, [selectedVersion]: v }));
+      })
+      .catch((e) => !cancelled && setErr(e instanceof Error ? e.message : String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [artifact.id, currentVersion, fetchVersion, selectedVersion, versionBodies]);
+
+  const sections = useMemo(() => buildSections(currentVersion), [currentVersion]);
+
+  function startEdit() {
+    setEditorBody(currentVersion?.body ?? '');
+    setEditorSummary('');
+    setEditing(true);
+    setErr(null);
+  }
+
+  async function handleSaveVersion() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const v = await submitNewVersion(artifact.id, {
+        body: editorBody,
+        summary: editorSummary,
+        sourcePins: currentVersion?.sourcePins ?? [],
+      });
+      setArtifact((prev) => ({ ...prev, versions: [...prev.versions, v] }));
+      setVersionBodies((prev) => ({ ...prev, [v.version]: v }));
+      setSelectedVersion(v.version);
+      setEditing(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleStatus(status: ArtifactStatus) {
+    setBusy(true);
+    setErr(null);
+    try {
+      const next = await patchArtifact(artifact.id, { status });
+      setArtifact((prev) => ({ ...prev, status: next.status }));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Compute the diff against an earlier version when requested.
+  const diffSource = useMemo<ArtifactVersion | null>(() => {
+    if (diffWith == null) return null;
+    return (
+      artifact.versions.find((v) => v.version === diffWith) ??
+      versionBodies[diffWith] ??
+      null
+    );
+  }, [artifact.versions, diffWith, versionBodies]);
+
+  const reversed = [...artifact.versions].sort((a, b) => b.version - a.version);
+
+  return (
+    <section className="artifact-workspace" data-testid="artifact-workspace">
+      <header className="artifact-workspace__header">
+        <div>
+          <h2 className="artifact-workspace__title">
+            <span className="artifact-workspace__type">{artifact.type}</span>
+            {artifact.title}
+          </h2>
+          <p className="artifact-workspace__meta">
+            <span
+              className={`artifact-workspace__status artifact-workspace__status--${artifact.status}`}
+              data-testid="artifact-workspace-status"
+            >
+              {artifact.status}
+            </span>
+            <span> · v{selectedVersion}</span>
+          </p>
+        </div>
+        <div className="artifact-workspace__header-actions">
+          <button
+            type="button"
+            disabled={busy || editing}
+            onClick={startEdit}
+            data-testid="artifact-workspace-new-version"
+          >
+            New version
+          </button>
+          {artifact.status !== 'in_review' && artifact.status !== 'published' && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => handleStatus('in_review')}
+              data-testid="artifact-workspace-submit-review"
+            >
+              Submit for review
+            </button>
+          )}
+          {artifact.status !== 'published' && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => handleStatus('published')}
+              data-testid="artifact-workspace-publish"
+            >
+              Publish
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="artifact-workspace__close"
+              data-testid="artifact-workspace-close"
+            >
+              Close
+            </button>
+          )}
+        </div>
+      </header>
+
+      {err && (
+        <p className="artifact-workspace__error" role="alert">
+          {err}
+        </p>
+      )}
+
+      <div className="artifact-workspace__layout">
+        <main className="artifact-workspace__body" data-testid="artifact-workspace-body">
+          {editing ? (
+            <div className="artifact-workspace__editor">
+              <label>
+                <span>Summary</span>
+                <input
+                  type="text"
+                  value={editorSummary}
+                  onChange={(e) => setEditorSummary(e.target.value)}
+                  data-testid="artifact-workspace-editor-summary"
+                />
+              </label>
+              <textarea
+                value={editorBody}
+                onChange={(e) => setEditorBody(e.target.value)}
+                rows={18}
+                aria-label="Artifact body"
+                data-testid="artifact-workspace-editor-body"
+              />
+              <div className="artifact-workspace__editor-actions">
+                <button
+                  type="button"
+                  disabled={busy || !editorBody.trim()}
+                  onClick={handleSaveVersion}
+                  data-testid="artifact-workspace-save-version"
+                >
+                  {busy ? 'Saving…' : 'Save new version'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setEditing(false)}
+                  data-testid="artifact-workspace-editor-cancel"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : sections.length === 0 ? (
+            <p className="artifact-workspace__empty">No body for this version.</p>
+          ) : (
+            sections.map((s) => (
+              <section
+                key={s.id}
+                className="artifact-workspace__section"
+                data-section-id={s.id}
+              >
+                {s.heading && <h3>{s.heading}</h3>}
+                <pre className="artifact-workspace__section-body">{s.body}</pre>
+                {s.pins.length > 0 && (
+                  <div className="artifact-workspace__pins" data-testid={`pins-${s.id}`}>
+                    {s.pins.map((p, i) => (
+                      <SourcePin
+                        key={`${p.sourceMessageId ?? p.sectionId}-${i}`}
+                        pin={p}
+                        index={i}
+                        onNavigate={onNavigateSource}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            ))
+          )}
+
+          {diffSource && currentVersion && (
+            <ArtifactDiffView
+              fromBody={diffSource.body ?? ''}
+              toBody={currentVersion.body ?? ''}
+              fromVersion={diffSource.version}
+              toVersion={currentVersion.version}
+            />
+          )}
+        </main>
+        <aside className="artifact-workspace__history" data-testid="artifact-workspace-history">
+          <h4>Versions</h4>
+          <ol>
+            {reversed.map((v) => (
+              <li key={v.version} className="artifact-workspace__version-row">
+                <button
+                  type="button"
+                  onClick={() => setSelectedVersion(v.version)}
+                  className={
+                    v.version === selectedVersion
+                      ? 'artifact-workspace__version-row--active'
+                      : ''
+                  }
+                  data-testid={`artifact-workspace-version-${v.version}`}
+                >
+                  v{v.version} — {v.summary || v.author}
+                </button>
+                {v.version !== selectedVersion && (
+                  <button
+                    type="button"
+                    className="artifact-workspace__version-diff"
+                    onClick={() => setDiffWith(v.version)}
+                    data-testid={`artifact-workspace-diff-${v.version}`}
+                  >
+                    Diff vs current
+                  </button>
+                )}
+              </li>
+            ))}
+          </ol>
+          {diffWith != null && (
+            <button
+              type="button"
+              className="artifact-workspace__diff-clear"
+              onClick={() => setDiffWith(null)}
+              data-testid="artifact-workspace-diff-clear"
+            >
+              Clear diff
+            </button>
+          )}
+        </aside>
+      </div>
+    </section>
+  );
+}

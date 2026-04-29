@@ -232,15 +232,19 @@ go test ./...
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
   plus four seeded KApp cards (family task, neighborhood event, vendor
   approval, engineering PRD draft)
-- 285 frontend tests (renderer components + Electron main-process
-  inference) covering the Phase 2 skills framework, the new Phase 3
+- 319 frontend tests (renderer components + Electron main-process
+  inference) covering the Phase 2 skills framework, the Phase 3
   KApp lifecycle (`TaskCard`, `ApprovalCard`, `ArtifactCard`,
-  `KAppCardRenderer`, `TasksKApp`, `CreateTaskForm`, `workspaceApi`,
-  `B2BLayout`), the E4B routing tier (`bootstrap.test.ts`,
+  `KAppCardRenderer`, `TasksKApp`, `CreateTaskForm`,
+  `CreateApprovalForm`, `FormCard`, `ArtifactWorkspace`,
+  `ArtifactDiffView`, `SourcePin`, `workspaceApi`, `B2BLayout`),
+  the new `ai:prefill-form` task helper (`runPrefillForm` /
+  `parseFormFields`), the E4B routing tier (`bootstrap.test.ts`,
   `router.test.ts`), and the full Phase 0 → Phase 2 baseline plus
-  full Go test coverage of the data endpoints, including the new
-  Phase 3 task lifecycle, approval-decision, linked-objects, and
-  workspace-domain endpoints.
+  full Go test coverage of the data endpoints, including the
+  Phase 3 task lifecycle, approval submit + decision, artifact CRUD
+  + versions, forms intake, linked-objects, and workspace-domain
+  endpoints.
 
 ## Phase 1 — complete
 
@@ -279,6 +283,26 @@ go test ./...
   decision log) are wired through a zustand `useKAppsStore`,
   `TasksKApp` (filter by status, sort by due date, counts), and
   `CreateTaskForm`.
+- **Approvals KApp — submit flow** — `POST /api/kapps/approvals`
+  + `CreateApprovalForm`; the `ApprovalPrefillCard` Accept button
+  and Action Launcher's `Approve > Vendor / Budget / Access` paths
+  both feed AI-prefilled fields into the new endpoint.
+- **Docs/Artifacts KApp** — full `POST/GET/PATCH /api/kapps/artifacts*`
+  CRUD plus `POST /api/kapps/artifacts/{id}/versions` and
+  `GET /api/kapps/artifacts/{id}/versions/{version}`. The new
+  `ArtifactWorkspace` (right-rail) renders the artifact body split
+  by section, source pins inline as footnote chips, version history
+  with line-by-line LCS diffs (`ArtifactDiffView`), and `Submit for
+  review` / `Publish` status transitions.
+- **Forms intake** — `Form` model + `POST/GET /api/kapps/forms` +
+  seeded `vendor_onboarding_v1` / `expense_report_v1` /
+  `access_request_v1` templates; new `FormCard` renderer (highlights
+  AI-prefilled fields) and a new `ai:prefill-form` IPC channel +
+  `runPrefillForm` task helper that prefers E4B.
+- **Source pins** — `ArtifactSourcePin` flows from the streamed
+  `ArtifactDraftCard` `sources[]` into the artifact's first
+  version's `sourcePins`, then renders inline next to the
+  referenced section in `ArtifactWorkspace`.
 
 ## Earlier — what's already in place
 

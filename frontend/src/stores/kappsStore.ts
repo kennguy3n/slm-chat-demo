@@ -1,14 +1,20 @@
 import { create } from 'zustand';
 import {
+  type CreateApprovalPayload,
+  type CreateArtifactPayload,
+  type CreateFormPayload,
   type CreateTaskPayload,
   type UpdateTaskPayload,
   closeTask as apiCloseTask,
+  createApproval as apiCreateApproval,
+  createArtifact as apiCreateArtifact,
+  createForm as apiCreateForm,
   createTask as apiCreateTask,
   fetchTasks as apiFetchTasks,
   updateTask as apiUpdateTask,
   updateTaskStatus as apiUpdateTaskStatus,
 } from '../api/kappsApi';
-import type { Task, TaskStatus } from '../types/kapps';
+import type { Approval, Artifact, Form, Task, TaskStatus } from '../types/kapps';
 
 export type TasksByChannel = Record<string, Task[]>;
 
@@ -25,6 +31,12 @@ interface KAppsState {
   updateTask: (taskId: string, payload: UpdateTaskPayload) => Promise<Task>;
   updateStatus: (taskId: string, status: TaskStatus, note?: string) => Promise<Task>;
   removeTask: (taskId: string) => Promise<void>;
+  // Phase 3 — approvals submit, artifacts persist, forms intake.
+  // These remain action-only (no list state in the store) because the
+  // demo surfaces fresh artifacts/forms per render via direct fetches.
+  createApproval: (payload: CreateApprovalPayload) => Promise<Approval>;
+  createArtifact: (payload: CreateArtifactPayload) => Promise<Artifact>;
+  createForm: (payload: CreateFormPayload) => Promise<Form>;
   // Test helpers — direct reset of state for unit tests.
   _replaceTasks: (channelId: string, tasks: Task[]) => void;
 }
@@ -98,6 +110,33 @@ export const useKAppsStore = create<KAppsState>((set) => ({
     try {
       await apiCloseTask(taskId);
       set((state) => ({ tasksByChannel: withoutTask(state, taskId) }));
+    } catch (err) {
+      set({ error: errorMessage(err) });
+      throw err;
+    }
+  },
+  createApproval: async (payload) => {
+    set({ error: null });
+    try {
+      return await apiCreateApproval(payload);
+    } catch (err) {
+      set({ error: errorMessage(err) });
+      throw err;
+    }
+  },
+  createArtifact: async (payload) => {
+    set({ error: null });
+    try {
+      return await apiCreateArtifact(payload);
+    } catch (err) {
+      set({ error: errorMessage(err) });
+      throw err;
+    }
+  },
+  createForm: async (payload) => {
+    set({ error: null });
+    try {
+      return await apiCreateForm(payload);
     } catch (err) {
       set({ error: errorMessage(err) });
       throw err;

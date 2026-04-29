@@ -1,6 +1,6 @@
 # KChat SLM Demo — Progress Tracker
 
-Last updated: 2026-04-28 (Phase 1 close — E4B routing; Phase 3 kickoff — workspace navigation, thread linked objects, KApp card lifecycle, Tasks KApp)
+Last updated: 2026-04-29 (Phase 3 mid — Approvals submit, Artifacts CRUD + versioning + source pins, Forms intake)
 
 ---
 
@@ -11,7 +11,7 @@ Last updated: 2026-04-28 (Phase 1 close — E4B routing; Phase 3 kickoff — wor
 | Phase 0: Consolidated prototype foundation | Complete | 100% |
 | Phase 1: Local LLM MVP | Complete | 100% |
 | Phase 2: B2C second-brain demo | Complete | 100% |
-| Phase 3: B2B KApps MVP | In progress | ~35% |
+| Phase 3: B2B KApps MVP | In progress | ~55% |
 | Phase 4: AI Employees and recipe engine | Not started | 0% |
 | Phase 5: Connectors and knowledge graph | Not started | 0% |
 | Phase 6: Confidential server mode | Not started | 0% |
@@ -80,11 +80,11 @@ Last updated: 2026-04-28 (Phase 1 close — E4B routing; Phase 3 kickoff — wor
 - [x] Thread view with linked objects — `GET /api/threads/{id}/linked-objects` plus a `Linked objects (n)` section in `ThreadPanel` rendering compact KApp cards.
 - [x] KApp card renderer — `KAppCardRenderer` now takes an `onAction` callback union and a `mode` prop; `TaskCard` ships status transitions + inline edit, `ApprovalCard` ships approve/reject/comment with a confirmation pane and decision-log timeline, `ArtifactCard` ships `View` + version history.
 - [x] Tasks KApp (create, assign, track, close) — `POST /api/kapps/tasks`, `GET /api/kapps/tasks?channelId=`, `PATCH /api/kapps/tasks/{id}`, `PATCH /api/kapps/tasks/{id}/status`, `DELETE /api/kapps/tasks/{id}` plus `TasksKApp` (filter / sort / counts), `CreateTaskForm`, and a `useKAppsStore` zustand store.
-- [ ] Approvals KApp (submit, review, approve/reject, decision log) — partial: `POST /api/kapps/approvals/{id}/decide` + `ApprovalCard` actions are live; full submit flow lands later in Phase 3.
-- [ ] Docs/Artifacts KApp (PRD, RFC, Proposal, SOP, QBR)
-- [ ] Forms intake (AI-prefilled from thread context)
-- [ ] Artifact versioning (v1, v2, ... with diffs)
-- [ ] Source pins (link artifact sections to source messages)
+- [x] Approvals KApp (submit, review, approve/reject, decision log) — `POST /api/kapps/approvals` + `CreateApprovalForm`; the `ApprovalPrefillCard` Accept button persists via the new endpoint, and the Action Launcher `Approve > Vendor / Budget / Access` paths feed the same prefill → submit flow.
+- [x] Docs/Artifacts KApp (PRD, RFC, Proposal, SOP, QBR) — `POST/GET/PATCH /api/kapps/artifacts*` plus `ArtifactWorkspace` (right-rail viewer) and `ArtifactDraftCard` Accept wiring.
+- [x] Forms intake (AI-prefilled from thread context) — `Form` model + `POST/GET /api/kapps/forms`, seeded vendor / expense / access templates, `FormCard`, and a new `ai:prefill-form` IPC channel + `runPrefillForm` task helper.
+- [x] Artifact versioning (v1, v2, ... with diffs) — `POST /api/kapps/artifacts/{id}/versions` and `GET /api/kapps/artifacts/{id}/versions/{version}` plus an `ArtifactDiffView` (LCS line diff) and a `Publish` button that transitions `draft → in_review → published`.
+- [x] Source pins (link artifact sections to source messages) — `ArtifactSourcePin` carried end-to-end (artifact / version models, create + version endpoints, `SourcePin` inline footnote chip rendered next to the section it references).
 - [ ] Audit log (immutable event log)
 - [ ] Human review gates (review before publish)
 - [ ] Action Launcher integration (Create/Analyze/Plan/Approve)
@@ -153,6 +153,9 @@ Last updated: 2026-04-28 (Phase 1 close — E4B routing; Phase 3 kickoff — wor
 | 2026-04-28 | Phase 3: Thread linked-objects — `Card.ThreadID`, `GET /api/threads/{id}/linked-objects`, `fetchLinkedObjects()`, and a `Linked objects (n)` `<details>` section in `ThreadPanel` rendering compact KApp cards. |
 | 2026-04-28 | Phase 3: KApp card lifecycle — `KAppCardRenderer` accepts `onAction` (typed union) and `mode` (`full`/`compact`); `TaskCard` ships transitions + inline edit, `ApprovalCard` ships approve/reject/comment with a confirmation pane and decision-log timeline, `ArtifactCard` ships `View` + version history. |
 | 2026-04-28 | Phase 3: Tasks KApp — `POST/GET/PATCH/DELETE /api/kapps/tasks*`, `POST /api/kapps/approvals/{id}/decide` plus `useKAppsStore`, `TasksKApp` (filter / sort / counts), and `CreateTaskForm`. Backend records every change in `Task.History` / `Approval.DecisionLog` (immutable audit trail). |
+| 2026-04-29 | Phase 3: Approvals submit flow — `POST /api/kapps/approvals` + `CreateApprovalForm` + `useKAppsStore.createApproval`; `ApprovalPrefillCard` Accept and Action Launcher `Approve > Vendor / Budget / Access` both persist via the new endpoint. |
+| 2026-04-29 | Phase 3: Docs/Artifacts CRUD + versioning + source pins — real `POST/GET/PATCH /api/kapps/artifacts*`, `POST /api/kapps/artifacts/{id}/versions`, `GET /api/kapps/artifacts/{id}/versions/{version}`; `ArtifactWorkspace` (right-rail) renders sections, source pins inline, version history with diffs, and `Publish`/`Submit for review` status transitions. `ArtifactDraftCard` Accept persists the streamed body + `sources[]` as the artifact's first version's `sourcePins`. |
+| 2026-04-29 | Phase 3: Forms intake — `Form` model + `POST/GET /api/kapps/forms` + seeded `vendor_onboarding_v1` / `expense_report_v1` / `access_request_v1` templates; `FormCard` renderer with AI-prefilled field highlights; `ai:prefill-form` IPC channel + `runPrefillForm` task helper (preferring E4B). |
 | 2026-04-28 | Initial progress tracker created. Project kickoff. |
 | 2026-04-28 | Phase 1: Go inference proxy adapter interface landed (`backend/internal/inference/adapter.go`). |
 | 2026-04-28 | Phase 1: Ollama HTTP adapter landed (`backend/internal/inference/ollama.go`) — `Run`, `Stream`, `Ping`, `Status` (via `/api/ps`), `Load`, `Unload` (via `keep_alive=0`, never `DELETE /api/delete`). |

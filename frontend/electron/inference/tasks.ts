@@ -19,6 +19,8 @@ import type {
   KAppsExtractedTask,
   PrefillApprovalRequest,
   PrefillApprovalResponse,
+  PrefillFormRequest,
+  PrefillFormResponse,
   PrefilledApprovalFields,
   SmartReplyRequest,
   SmartReplyResponse,
@@ -620,4 +622,107 @@ export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResp
     computeLocation: 'on_device',
     dataEgressBytes: 0,
   };
+}
+
+// ---------- Phase 3: form prefill ----------
+//
+// Same opt-in / single-inference pattern as runPrefillApproval. The
+// helper builds a prompt asking the model to fill the requested form
+// fields one per line ("<field>: <value>"), parses the output back
+// into a Record<string, string>, and surfaces source provenance.
+
+const PREFILL_FORM_MAX_MESSAGES = 30;
+
+export async function runPrefillForm(
+  router: InferenceRouter,
+  req: PrefillFormRequest,
+): Promise<PrefillFormResponse> {
+  if (req.messages.length === 0) {
+    throw new Error('thread not found');
+  }
+  const limited = req.messages.slice(0, PREFILL_FORM_MAX_MESSAGES);
+  const fields = req.fields.length > 0 ? req.fields : ['vendor', 'amount', 'justification'];
+
+  let prompt = '';
+  prompt += `Fill the following intake form fields from the work thread below. `;
+  prompt += `Output one "<field>: <value>" pair per line. `;
+  prompt += `Leave a value blank if the thread does not mention it. `;
+  prompt += `Fields: ${fields.join(', ')}.\n\n`;
+  for (const m of limited) {
+    prompt += `- ${m.senderId}: ${truncateForPrompt(m.content, 200)}\n`;
+  }
+
+  const resp = await router.run({
+    taskType: 'prefill_form',
+    prompt,
+    channelId: limited[0].channelId,
+  });
+  const decision = router.lastDecision();
+
+  const parsed = parseFormFields(resp.output, fields);
+  const sourceMessageIds = collectFormSources(parsed, limited);
+  const tier: Tier = decision.tier ?? 'e4b';
+  const reason = decision.reason || `Routed prefill_form to ${tier.toUpperCase()}.`;
+
+  return {
+    threadId: req.threadId,
+    channelId: limited[0].channelId,
+    templateId: req.templateId,
+    fields: parsed,
+    sourceMessageIds,
+    model: resp.model,
+    tier,
+    reason,
+    computeLocation: 'on_device',
+    dataEgressBytes: 0,
+  };
+}
+
+// parseFormFields parses one "<field>: <value>" line per row. Unknown
+// fields are dropped silently — only the requested template fields are
+// kept on the response so the renderer never has to reconcile the AI's
+// invented keys.
+export function parseFormFields(out: string, allowed: string[]): Record<string, string> {
+  if (detectInsufficient(out)) return {};
+  const allowedSet = new Set(allowed.map((a) => a.toLowerCase()));
+  const fields: Record<string, string> = {};
+  for (const raw of out.split('\n')) {
+    let line = raw.trim();
+    if (!line) continue;
+    line = line.replace(/^[-*•·\s\t]+/, '');
+    const colon = line.indexOf(':');
+    if (colon <= 0) continue;
+    const key = line.slice(0, colon).trim().toLowerCase();
+    let value = line.slice(colon + 1).trim();
+    value = value.replace(/^["']|["']$/g, '');
+    if (!value) continue;
+    if (allowedSet.has(key)) {
+      fields[key] = value;
+    }
+  }
+  return fields;
+}
+
+function collectFormSources(
+  fields: Record<string, string>,
+  messages: { id: string; content: string }[],
+): string[] {
+  const values = Object.values(fields).filter((v) => v).map((v) => v.toLowerCase());
+  if (values.length === 0) {
+    return messages.length > 0 ? [messages[0].id] : [];
+  }
+  const seen = new Set<string>();
+  for (const m of messages) {
+    const c = m.content.toLowerCase();
+    for (const v of values) {
+      const words = v.split(/[^a-z0-9]+/).filter((w) => w.length >= 4);
+      if (words.length === 0) continue;
+      if (words.some((w) => c.includes(w)) && !seen.has(m.id)) {
+        seen.add(m.id);
+        break;
+      }
+    }
+  }
+  if (seen.size === 0 && messages.length > 0) seen.add(messages[0].id);
+  return Array.from(seen);
 }

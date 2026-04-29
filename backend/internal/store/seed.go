@@ -114,6 +114,48 @@ func Seed(m *Memory) {
 
 	// KApp cards (Phase 0 demo dataset for GET /api/kapps/cards).
 	seedCards(m, now)
+
+	// Phase 3 — seeded form templates that back the Forms intake KApp.
+	seedFormTemplates(m)
+}
+
+// seedFormTemplates loads the three intake templates surfaced by the demo
+// (vendor onboarding, expense report, access request). The renderer uses
+// these definitions to lay out the FormCard even when the AI has not yet
+// prefilled values.
+func seedFormTemplates(m *Memory) {
+	m.PutFormTemplate(models.FormTemplate{
+		ID:    "vendor_onboarding_v1",
+		Title: "Vendor onboarding",
+		Fields: []models.FormFieldDef{
+			{Name: "vendor", Label: "Vendor name", Required: true},
+			{Name: "contact", Label: "Primary contact"},
+			{Name: "service", Label: "Service / product"},
+			{Name: "amount", Label: "Estimated annual spend"},
+			{Name: "compliance", Label: "Compliance notes"},
+		},
+	})
+	m.PutFormTemplate(models.FormTemplate{
+		ID:    "expense_report_v1",
+		Title: "Expense report",
+		Fields: []models.FormFieldDef{
+			{Name: "category", Label: "Category", Required: true},
+			{Name: "amount", Label: "Amount", Required: true},
+			{Name: "vendor", Label: "Vendor / merchant"},
+			{Name: "justification", Label: "Justification"},
+			{Name: "date", Label: "Date"},
+		},
+	})
+	m.PutFormTemplate(models.FormTemplate{
+		ID:    "access_request_v1",
+		Title: "Access request",
+		Fields: []models.FormFieldDef{
+			{Name: "system", Label: "System", Required: true},
+			{Name: "role", Label: "Role / permission"},
+			{Name: "justification", Label: "Justification"},
+			{Name: "duration", Label: "Duration"},
+		},
+	})
 }
 
 func seedMessages(m *Memory, base time.Time) {
@@ -228,6 +270,36 @@ func seedCards(m *Memory, base time.Time) {
 					CreatedAt: base.Add(-22 * time.Minute),
 					Author:    "user_alice",
 					Summary:   "Initial draft from engineering thread",
+					Body: "# Goal\n" +
+						"Render per-message inline translation under each chat bubble.\n\n" +
+						"# Requirements\n" +
+						"- Locale auto-detect; fall back to original on low confidence.\n" +
+						"- On-device only.\n\n" +
+						"# Metrics\n" +
+						"- > 90% of messages translated successfully without user toggle, top 5 locales.\n",
+					SourcePins: []models.ArtifactSourcePin{
+						{
+							SectionID:       "goal",
+							SourceMessageID: "msg_eng_root",
+							SourceThreadID:  "msg_eng_root",
+							Sender:          "user_alice",
+							Excerpt:         "Kicking off the inline-translation feature.",
+						},
+						{
+							SectionID:       "requirements",
+							SourceMessageID: "msg_eng_r1",
+							SourceThreadID:  "msg_eng_root",
+							Sender:          "user_dave",
+							Excerpt:         "locale auto-detect, on-device only, fall back to original on low confidence",
+						},
+						{
+							SectionID:       "metrics",
+							SourceMessageID: "msg_eng_r2",
+							SourceThreadID:  "msg_eng_root",
+							Sender:          "user_eve",
+							Excerpt:         "metric: % messages translated successfully ... target > 90% for top 5 locales",
+						},
+					},
 				},
 			},
 			Status:      models.ArtifactStatusDraft,

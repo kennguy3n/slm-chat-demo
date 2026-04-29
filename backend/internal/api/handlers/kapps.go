@@ -182,6 +182,42 @@ func (h *KApps) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type createApprovalBody struct {
+	ChannelID      string                `json:"channelId"`
+	TemplateID     string                `json:"templateId,omitempty"`
+	Title          string                `json:"title"`
+	Requester      string                `json:"requester,omitempty"`
+	Approvers      []string              `json:"approvers,omitempty"`
+	Fields         models.ApprovalFields `json:"fields"`
+	SourceThreadID string                `json:"sourceThreadId,omitempty"`
+	AIGenerated    bool                  `json:"aiGenerated,omitempty"`
+}
+
+// CreateApproval handles POST /api/kapps/approvals — Phase 3 submit flow.
+func (h *KApps) CreateApproval(w http.ResponseWriter, r *http.Request) {
+	var body createApprovalBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	approval, err := h.kapps.CreateApproval(services.CreateApprovalInput{
+		ChannelID:      body.ChannelID,
+		TemplateID:     body.TemplateID,
+		Title:          body.Title,
+		Requester:      body.Requester,
+		Approvers:      body.Approvers,
+		Fields:         body.Fields,
+		SourceThreadID: body.SourceThreadID,
+		AIGenerated:    body.AIGenerated,
+		Actor:          actorFromContext(r),
+	})
+	if err != nil {
+		mapKAppsError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"approval": approval})
+}
+
 // SubmitApprovalDecision handles POST /api/kapps/approvals/{id}/decide.
 func (h *KApps) SubmitApprovalDecision(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

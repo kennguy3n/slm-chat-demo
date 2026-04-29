@@ -65,11 +65,24 @@ export interface ArtifactSourceRef {
   note?: string;
 }
 
+// ArtifactSourcePin links a section of an artifact body back to the chat
+// message that produced it. Phase 3 — surfaced inline in the artifact
+// workspace as clickable footnote markers (PROPOSAL.md §6.2 source pins).
+export interface ArtifactSourcePin {
+  sectionId: string;
+  sourceMessageId?: string;
+  sourceThreadId?: string;
+  excerpt?: string;
+  sender?: string;
+}
+
 export interface ArtifactVersion {
   version: number;
   createdAt: string;
   author: string;
   summary?: string;
+  body?: string;
+  sourcePins?: ArtifactSourcePin[];
 }
 
 export interface Artifact {
@@ -100,7 +113,35 @@ export interface EventCard {
   aiGenerated: boolean;
 }
 
-export type CardKind = 'task' | 'approval' | 'artifact' | 'event';
+// Forms intake — Phase 3 KApp surface. Templates are seeded by the
+// backend (vendor onboarding, expense report, access request); a Form
+// is a structured instance — usually AI-prefilled from a thread.
+export interface FormFieldDef {
+  name: string;
+  label: string;
+  required?: boolean;
+}
+
+export interface FormTemplate {
+  id: string;
+  title: string;
+  fields: FormFieldDef[];
+}
+
+export type FormStatus = 'draft' | 'submitted';
+
+export interface Form {
+  id: string;
+  channelId: string;
+  templateId: string;
+  title: string;
+  fields: Record<string, string>;
+  sourceThreadId?: string;
+  status: FormStatus;
+  aiGenerated: boolean;
+}
+
+export type CardKind = 'task' | 'approval' | 'artifact' | 'event' | 'form';
 
 export interface KAppCard {
   kind: CardKind;
@@ -112,4 +153,5 @@ export interface KAppCard {
   approval?: Approval;
   artifact?: Artifact;
   event?: EventCard;
+  form?: Form;
 }
