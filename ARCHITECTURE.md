@@ -279,8 +279,8 @@ object.
 Phase 4 ships six canonical recipes, all self-registered through
 `recipes/index.ts`:
 
-- `summarize` — wraps `buildThreadSummary`; `preferredTierForThread`
-  advertises `preferredTier: 'local'`.
+- `summarize` — wraps `buildThreadSummary`; advertises
+  `preferredTier: 'local'`.
 - `extract_tasks` — wraps `runKAppsExtractTasks`, preserves per-task
   source provenance through `sourceMessageId`, and returns a
   `refused` envelope for empty threads rather than throwing.
