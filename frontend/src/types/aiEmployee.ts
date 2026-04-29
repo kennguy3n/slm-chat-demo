@@ -34,3 +34,23 @@ export interface AIEmployeeRecipe {
   name: string;
   description: string;
 }
+
+// RecipeRunStatus mirrors backend/internal/models/recipe_run.go. Runs
+// are recorded as pending/running when an AI Employee kicks a recipe
+// off and transition to completed/failed once the recipe finishes.
+export type RecipeRunStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+// RecipeRun is the on-the-wire shape returned by
+// `GET /api/ai-employees/{id}/queue` and accepted by the POST
+// counterpart. It powers the right-rail Queue view.
+export interface RecipeRun {
+  id: string;
+  aiEmployeeId: string;
+  recipeId: string;
+  channelId: string;
+  threadId?: string;
+  status: RecipeRunStatus;
+  createdAt: string;
+  completedAt?: string;
+  resultSummary?: string;
+}

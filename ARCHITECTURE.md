@@ -72,7 +72,7 @@ Meilisearch land in later phases.
 | 6 | `ModelStatusBadge` | Active model (E2B / E4B / server), loaded state, battery. |
 | 7 | `KAppCardRenderer` | Renders Task / Approval / Form / Artifact / Sheet / Base cards. |
 | 8 | `ArtifactWorkspace` | PRD / RFC / proposal editor with citations and versions. |
-| 9 | `AIEmployeePanel` | B2B AI employee profile, queue, and channel assignments. |
+| 9 | `AIEmployeePanel` | B2B AI employee profile, queue, and channel assignments. Hosts `QueueView` (Phase 4) beneath the budget section for pending / completed recipe runs. |
 | 10 | `DeviceCapabilityPanel` | RAM, WebGPU support, sidecar status, currently-loaded model. |
 | 11 | `SourcePicker` | Pick channels, threads, files, and connectors as AI sources. |
 | 12 | `OutputReview` | Human review gate: renders AI-generated content with Accept / Edit / Discard controls before any KApp write. Supports `allowEdit` for creation flows vs. read-only confirmation for status transitions. |
@@ -131,7 +131,11 @@ frontend/
 │       │   ├── registry.ts           (RecipeDefinition + RECIPE_REGISTRY + register / get / list)
 │       │   ├── summarize.ts          (wraps buildThreadSummary; E2B short / E4B long via preferredTierForThread)
 │       │   ├── extract-tasks.ts      (wraps runKAppsExtractTasks; source provenance + empty-thread refusal)
-│       │   └── index.ts              (barrel — side-effect registers canonical recipes)
+│       │   ├── draft-prd.ts          (wraps buildDraftArtifact with artifactType='PRD'; E4B)
+│       │   ├── draft-proposal.ts     (wraps buildDraftArtifact with artifactType='Proposal'; E4B)
+│       │   ├── create-qbr.ts         (wraps buildDraftArtifact with artifactType='QBR'; E4B)
+│       │   ├── prefill-approval.ts   (wraps runPrefillApproval; flattens vendor/amount/risk/justification; E4B)
+│       │   └── index.ts              (barrel — side-effect registers all 6 canonical recipes)
 │       └── bootstrap.ts              (pings Ollama; chooses real vs. mock adapter set; instantiates SearchService)
 └── src/
     ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
@@ -141,10 +145,10 @@ frontend/
     │   ├── memory/ (AIMemoryPage, memoryStore) — Phase 2: local-only IndexedDB-backed second brain (DB `kchat-slm-memory`, store `facts`) with an in-memory fallback for jsdom / SSR; the AI never auto-writes — every fact passes through the AIMemoryPage UI
     │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)  — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation. — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation.
     │   ├── artifacts/ (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections) — Phase 3 right-rail viewer for full artifacts: section split, inline source pins, version history, line-by-line diff, status transitions.
-    │   ├── ai-employees/ (AIEmployeeList, AIEmployeePanel, recipeCatalog) — Phase 4 (B2B sidebar cards + right-rail profile panel with inline channel picker + recipe list; `recipeCatalog.ts` is the renderer-side display map for recipe ids)
+    │   ├── ai-employees/ (AIEmployeeList, AIEmployeePanel, QueueView, recipeCatalog) — Phase 4 (B2B sidebar cards + right-rail profile panel with inline channel picker + recipe list + `QueueView` pending-AI-tasks panel; `recipeCatalog.ts` is the renderer-side display map for recipe ids)
     │   └── knowledge/ (SourcePicker)                                         — Phase 5
     ├── stores/ (chatStore, aiStore, workspaceStore, kappsStore — Phase 3 task/approval CRUD with optimistic merge)
-    ├── api/ (client, aiApi, chatApi, kappsApi, workspaceApi — Phase 3 navigation, streamAI, aiEmployeeApi — Phase 4, electronBridge)
+    ├── api/ (client, aiApi, chatApi, kappsApi, workspaceApi — Phase 3 navigation, streamAI, aiEmployeeApi — Phase 4, recipeRunApi — Phase 4, electronBridge)
     ├── types/ (chat, ai, kapps, workspace, aiEmployee, electron.d.ts)
     ├── router.tsx
     ├── styles.css
@@ -256,19 +260,38 @@ up by id, refuses recipes the caller's AI Employee is not
 authorised for, and delegates to `recipe.execute`. Authorisation
 is currently enforced by passing the AI Employee's
 `allowedRecipes[]` through the request payload (loaded from the Go
-backend in the renderer). Phase 4 ships two canonical recipes:
-`summarize` (wraps `buildThreadSummary`, E2B for ≤ 8 messages and
-E4B otherwise via `preferredTierForThread`) and `extract_tasks`
-(wraps `runKAppsExtractTasks`, preserves per-task source
-provenance through `sourceMessageId`, returns a `refused` envelope
-for empty threads rather than throwing).
+backend in the renderer). Phase 4 ships six canonical recipes, all self-registered through
+`recipes/index.ts`:
+
+- `summarize` — wraps `buildThreadSummary`; `preferredTierForThread`
+  picks E2B for ≤ 8 messages and E4B otherwise.
+- `extract_tasks` — wraps `runKAppsExtractTasks`, preserves per-task
+  source provenance through `sourceMessageId`, and returns a
+  `refused` envelope for empty threads rather than throwing.
+- `draft_prd` — wraps `buildDraftArtifact({ artifactType: 'PRD' })`
+  with `preferredTier: 'e4b'`; returns `{ prompt, sources,
+  threadId, channelId }` so the renderer streams the body via
+  `ai:stream`.
+- `draft_proposal` — same shape as `draft_prd` with
+  `artifactType: 'Proposal'`.
+- `create_qbr` — same shape as `draft_prd` with
+  `artifactType: 'QBR'`; surfaces the wins / gaps / asks /
+  next-quarter prompt.
+- `prefill_approval` — wraps `runPrefillApproval`, advertises
+  `preferredTier: 'e4b'`, and flattens the parsed
+  `{ vendor, amount, risk, justification, sourceMessageIds }` fields
+  into `RecipeResult.output` so the renderer can pin every field to
+  the messages that justified it before a human confirms.
+
+All six recipes refuse empty threads with `status: 'refused'`
+instead of throwing, so the registry stays crash-safe under
+partial data.
 
 The renderer also ships a display-only catalogue in
 `src/features/ai-employees/recipeCatalog.ts` — it maps recipe ids
 to human-readable name + description strings so the
-`AIEmployeePanel` can render assigned recipes even for ids the
-Electron registry does not own yet (e.g. `prefill_approval`,
-`draft_prd`, `draft_proposal`). The executor lives in the main
+`AIEmployeePanel` can render assigned recipes consistently with
+the Electron registry. The executor lives in the main
 process; the renderer never imports the registry directly.
 
 ---
@@ -307,15 +330,18 @@ backend/
 │   │   ├── middleware.go
 │   │   ├── handlers/             (chat.go, workspace.go, kapps.go, privacy.go,
 │   │   │                          artifacts.go, audit.go [Phase 3],
-│   │   │                          ai_employees.go [Phase 4])
+│   │   │                          ai_employees.go [Phase 4],
+│   │   │                          recipe_runs.go [Phase 4])
 │   │   └── userctx/              (request-scoped user helpers)
 │   ├── services/                 (identity.go, workspace.go, chat.go, kapps.go,
 │   │                              audit.go [Phase 3],
-│   │                              ai_employees.go [Phase 4])
+│   │                              ai_employees.go [Phase 4],
+│   │                              recipe_runs.go [Phase 4])
 │   ├── models/                   (user.go, workspace.go, message.go, task.go,
 │   │                              approval.go, artifact.go, event.go, card.go,
 │   │                              audit.go [Phase 3],
-│   │                              ai_employee.go [Phase 4])
+│   │                              ai_employee.go [Phase 4],
+│   │                              recipe_run.go [Phase 4])
 │   └── store/                    (memory.go + seed.go + seedAIEmployees;
 │                                   Phase 6+ adds postgres.go)
 └── go.mod
@@ -382,6 +408,8 @@ GET    /api/ai-employees                                  (Phase 4)
 GET    /api/ai-employees/{id}                             (Phase 4)
 PATCH  /api/ai-employees/{id}/channels                    (Phase 4)
 PATCH  /api/ai-employees/{id}/recipes                     (Phase 4)
+GET    /api/ai-employees/{id}/queue                       (Phase 4)
+POST   /api/ai-employees/{id}/queue                       (Phase 4)
 GET    /api/privacy/egress-preview
 ```
 

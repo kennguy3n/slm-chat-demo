@@ -21,6 +21,7 @@ type Deps struct {
 	KApps       *services.KApps
 	Audit       *services.AuditService
 	AIEmployees *services.AIEmployeeService
+	RecipeRuns  *services.RecipeRunService
 }
 
 // NewRouter wires the chi router with CORS, JSON content-type, mock auth, and
@@ -49,6 +50,7 @@ func NewRouter(d Deps) http.Handler {
 	pH := handlers.NewPrivacy()
 	auH := handlers.NewAudit(d.Audit, d.KApps)
 	aiEmpH := handlers.NewAIEmployees(d.AIEmployees)
+	rrH := handlers.NewRecipeRuns(d.RecipeRuns, d.AIEmployees)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
@@ -115,6 +117,13 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/ai-employees/{id}", aiEmpH.Get)
 		r.Patch("/ai-employees/{id}/channels", aiEmpH.UpdateChannels)
 		r.Patch("/ai-employees/{id}/recipes", aiEmpH.UpdateRecipes)
+
+		// AI Employee recipe-run queue — the renderer records a run
+		// when a recipe is kicked off (executor lives in the Electron
+		// main process); GET returns the queue + completion log so the
+		// right-rail Queue view stays in sync across refreshes.
+		r.Get("/ai-employees/{id}/queue", rrH.List)
+		r.Post("/ai-employees/{id}/queue", rrH.Record)
 	})
 
 	return r

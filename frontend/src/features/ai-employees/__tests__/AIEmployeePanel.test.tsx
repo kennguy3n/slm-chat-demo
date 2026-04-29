@@ -58,7 +58,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 describe('AIEmployeePanel', () => {
   const fetchSpy = vi.spyOn(globalThis, 'fetch');
-  beforeEach(() => fetchSpy.mockReset());
+  beforeEach(() => {
+    fetchSpy.mockReset();
+    // Default the queue endpoint to an empty list so the mounted
+    // QueueView resolves without eating channel-PATCH mocks.
+    fetchSpy.mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/queue')) return jsonResponse({ recipeRuns: [] });
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+  });
   afterEach(() => fetchSpy.mockReset());
 
   it('renders empty state when no employee is selected', () => {
@@ -101,14 +110,19 @@ describe('AIEmployeePanel', () => {
   });
 
   it('configures channels and saves via PATCH with optimistic update', async () => {
-    fetchSpy.mockResolvedValueOnce(
-      jsonResponse({
-        aiEmployee: {
-          ...kara,
-          allowedChannelIds: ['ch_general', 'ch_engineering'],
-        },
-      }),
-    );
+    fetchSpy.mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/queue')) return jsonResponse({ recipeRuns: [] });
+      if (url.includes('/channels')) {
+        return jsonResponse({
+          aiEmployee: {
+            ...kara,
+            allowedChannelIds: ['ch_general', 'ch_engineering'],
+          },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
     const onChange = vi.fn();
     renderWithProviders(
       <AIEmployeePanel
@@ -129,13 +143,22 @@ describe('AIEmployeePanel', () => {
     fireEvent.click(screen.getByTestId('ai-employee-panel-save-channels'));
 
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const patchCalls = fetchSpy.mock.calls.filter(
+        ([url, init]) =>
+          typeof url === 'string' &&
+          url.includes('/channels') &&
+          (init as RequestInit | undefined)?.method === 'PATCH',
+      );
+      expect(patchCalls).toHaveLength(1);
     });
-    const call = fetchSpy.mock.calls[0];
-    expect(call[0]).toBe('/api/ai-employees/ai_kara_ops/channels');
-    const init = call[1] as RequestInit;
-    expect(init.method).toBe('PATCH');
-    const body = JSON.parse(String(init.body));
+    const patchCall = fetchSpy.mock.calls.find(
+      ([url, init]) =>
+        typeof url === 'string' &&
+        url.includes('/channels') &&
+        (init as RequestInit | undefined)?.method === 'PATCH',
+    )!;
+    expect(patchCall[0]).toBe('/api/ai-employees/ai_kara_ops/channels');
+    const body = JSON.parse(String((patchCall[1] as RequestInit).body));
     expect(new Set(body.channelIds)).toEqual(
       new Set(['ch_general', 'ch_engineering']),
     );

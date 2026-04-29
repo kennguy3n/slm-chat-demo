@@ -24,6 +24,7 @@ func newTestServer() http.Handler {
 		KApps:       services.NewKApps(mem).WithAudit(audit),
 		Audit:       audit,
 		AIEmployees: services.NewAIEmployeeService(mem),
+		RecipeRuns:  services.NewRecipeRunService(mem),
 	})
 }
 
