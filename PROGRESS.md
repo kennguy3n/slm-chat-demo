@@ -1,6 +1,6 @@
 # KChat SLM Demo — Progress Tracker
 
-Last updated: 2026-04-29 (Phase 3 mid — Modelfiles + setup-models.sh for Gemma 4 E2B / E4B aliases)
+Last updated: 2026-04-29 (Phase 3 complete — audit log, human review gates, Action Launcher integration)
 
 ---
 
@@ -11,7 +11,7 @@ Last updated: 2026-04-29 (Phase 3 mid — Modelfiles + setup-models.sh for Gemma
 | Phase 0: Consolidated prototype foundation | Complete | 100% |
 | Phase 1: Local LLM MVP | Complete | 100% |
 | Phase 2: B2C second-brain demo | Complete | 100% |
-| Phase 3: B2B KApps MVP | In progress | ~55% |
+| Phase 3: B2B KApps MVP | Complete | 100% |
 | Phase 4: AI Employees and recipe engine | Not started | 0% |
 | Phase 5: Connectors and knowledge graph | Not started | 0% |
 | Phase 6: Confidential server mode | Not started | 0% |
@@ -85,9 +85,9 @@ Last updated: 2026-04-29 (Phase 3 mid — Modelfiles + setup-models.sh for Gemma
 - [x] Forms intake (AI-prefilled from thread context) — `Form` model + `POST/GET /api/kapps/forms`, seeded vendor / expense / access templates, `FormCard`, and a new `ai:prefill-form` IPC channel + `runPrefillForm` task helper.
 - [x] Artifact versioning (v1, v2, ... with diffs) — `POST /api/kapps/artifacts/{id}/versions` and `GET /api/kapps/artifacts/{id}/versions/{version}` plus an `ArtifactDiffView` (LCS line diff) and a `Publish` button that transitions `draft → in_review → published`.
 - [x] Source pins (link artifact sections to source messages) — `ArtifactSourcePin` carried end-to-end (artifact / version models, create + version endpoints, `SourcePin` inline footnote chip rendered next to the section it references).
-- [ ] Audit log (immutable event log)
-- [ ] Human review gates (review before publish)
-- [ ] Action Launcher integration (Create/Analyze/Plan/Approve)
+- [x] Audit log (immutable event log) — `GET /api/audit` endpoint + `AuditService` recording all KApp mutations (`task.created`, `task.updated`, `task.closed`, `approval.submitted`, `approval.decisioned`, `artifact.created`, `artifact.version_added`, `artifact.status_changed`, `form.submitted`); `AuditLogPanel` renders a per-object timeline.
+- [x] Human review gates (review before publish) — `OutputReview` component (ARCHITECTURE.md module #12) gates artifact `draft → in_review` and `in_review → published` status transitions and AI-generated KApp creation with Accept / Edit / Discard plus the privacy strip and source attribution.
+- [x] Action Launcher integration (Create/Analyze/Plan/Approve) — all B2B paths wired end-to-end: Create > PRD/RFC/Proposal triggers `draftArtifact`; Create > Task opens the right-rail `CreateTaskForm`; Analyze > Thread/Risks/Decisions triggers `summarizeThread` with a focus hint; Plan > Milestones/Sprint/Rollout reuses the artifact draft pipeline with a section hint; Approve > Vendor/Budget/Access triggers `prefillApproval` → `OutputReview` → persist.
 
 ---
 
@@ -157,6 +157,9 @@ Last updated: 2026-04-29 (Phase 3 mid — Modelfiles + setup-models.sh for Gemma
 | 2026-04-29 | Phase 3: Approvals submit flow — `POST /api/kapps/approvals` + `CreateApprovalForm` + `useKAppsStore.createApproval`; `ApprovalPrefillCard` Accept and Action Launcher `Approve > Vendor / Budget / Access` both persist via the new endpoint. |
 | 2026-04-29 | Phase 3: Docs/Artifacts CRUD + versioning + source pins — real `POST/GET/PATCH /api/kapps/artifacts*`, `POST /api/kapps/artifacts/{id}/versions`, `GET /api/kapps/artifacts/{id}/versions/{version}`; `ArtifactWorkspace` (right-rail) renders sections, source pins inline, version history with diffs, and `Publish`/`Submit for review` status transitions. `ArtifactDraftCard` Accept persists the streamed body + `sources[]` as the artifact's first version's `sourcePins`. |
 | 2026-04-29 | Phase 3: Forms intake — `Form` model + `POST/GET /api/kapps/forms` + seeded `vendor_onboarding_v1` / `expense_report_v1` / `access_request_v1` templates; `FormCard` renderer with AI-prefilled field highlights; `ai:prefill-form` IPC channel + `runPrefillForm` task helper (preferring E4B). |
+| 2026-04-29 | Phase 3: Audit log — `models/audit.go` (`AuditEntry` + 9 event types), `Memory.AppendAuditEntry` / `ListAuditEntries`, `services/AuditService.Record`, `KApps.WithAudit` integration recording every task / approval / artifact / form mutation, `GET /api/audit?objectId=…&objectKind=…&channelId=…`, plus frontend `auditApi.ts`, `types/audit.ts`, and `AuditLogPanel` rendering the per-object timeline. |
+| 2026-04-29 | Phase 3: Human review gates — `OutputReview` component (ARCHITECTURE.md module #12) gates AI-generated KApp creation and artifact `draft → in_review → published` status transitions; renders the proposed body, source attribution, privacy strip, and Accept / Edit / Discard actions. Wired into `ArtifactWorkspace` Publish / Submit-for-review buttons. |
+| 2026-04-29 | Phase 3: Action Launcher integration — `frontend/src/features/chat/launcherDispatch.ts` maps every B2B path to a `kapps:launcher` CustomEvent: Create > PRD/RFC/Proposal/Task, Analyze > Thread/Risks/Decisions (via `summarize_thread` with a focus hint), Plan > Milestones/Sprint/Rollout (via `draft_artifact` with a section hint), Approve > Vendor/Budget/Access. `ChatSurface.handleAIAction` returns true for every wired path so the launcher suppresses its placeholder toast. |
 | 2026-04-28 | Initial progress tracker created. Project kickoff. |
 | 2026-04-28 | Phase 1: Go inference proxy adapter interface landed (`backend/internal/inference/adapter.go`). |
 | 2026-04-28 | Phase 1: Ollama HTTP adapter landed (`backend/internal/inference/ollama.go`) — `Run`, `Stream`, `Ping`, `Status` (via `/api/ps`), `Load`, `Unload` (via `keep_alive=0`, never `DELETE /api/delete`). |

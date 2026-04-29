@@ -172,10 +172,10 @@ slm-chat-demo/
 │   │   ├── api/
 │   │   │   ├── router.go        (data-only routes)
 │   │   │   ├── middleware.go
-│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts*)
+│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts, audit)
 │   │   │   └── userctx/         (request-scoped user helpers)
-│   │   ├── services/            (identity, workspace, chat, kapps)
-│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card)
+│   │   ├── services/            (identity, workspace, chat, kapps, audit)
+│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card, audit)
 │   │   └── store/               (memory store + Phase-0 seed)
 │   └── go.mod
 ├── frontend/
@@ -200,16 +200,16 @@ slm-chat-demo/
 │   ├── src/
 │   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
 │   │   ├── features/
-│   │   │   ├── chat/            (ChatSurface, ThreadPanel, MessageList, MessageBubble, Composer)
+│   │   │   ├── chat/            (ChatSurface, ThreadPanel, MessageList, MessageBubble, Composer, launcherDispatch)
 │   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, activityLog)
 │   │   │   ├── memory/          (AIMemoryPage + memoryStore — local-only IndexedDB-backed second brain)
-│   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer)
-│   │   │   ├── artifacts/       (placeholder)
+│   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer, TasksKApp, CreateTaskForm, CreateApprovalForm, FormCard, AuditLogPanel, OutputReview)
+│   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, sections)
 │   │   │   ├── ai-employees/    (placeholder)
 │   │   │   └── knowledge/       (placeholder)
 │   │   ├── stores/              (workspaceStore, chatStore*, aiStore*)
-│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, electronBridge)
-│   │   ├── types/               (chat, ai, kapps, workspace, electron.d.ts)
+│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, electronBridge)
+│   │   ├── types/               (chat, ai, kapps, workspace, audit, electron.d.ts)
 │   │   ├── router.tsx
 │   │   ├── styles.css
 │   │   └── main.tsx
@@ -275,19 +275,21 @@ go test ./...
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
   plus four seeded KApp cards (family task, neighborhood event, vendor
   approval, engineering PRD draft)
-- 319 frontend tests (renderer components + Electron main-process
+- 356 frontend tests (renderer components + Electron main-process
   inference) covering the Phase 2 skills framework, the Phase 3
   KApp lifecycle (`TaskCard`, `ApprovalCard`, `ArtifactCard`,
   `KAppCardRenderer`, `TasksKApp`, `CreateTaskForm`,
   `CreateApprovalForm`, `FormCard`, `ArtifactWorkspace`,
   `ArtifactDiffView`, `SourcePin`, `workspaceApi`, `B2BLayout`),
-  the new `ai:prefill-form` task helper (`runPrefillForm` /
-  `parseFormFields`), the E4B routing tier (`bootstrap.test.ts`,
-  `router.test.ts`), and the full Phase 0 → Phase 2 baseline plus
-  full Go test coverage of the data endpoints, including the
-  Phase 3 task lifecycle, approval submit + decision, artifact CRUD
-  + versions, forms intake, linked-objects, and workspace-domain
-  endpoints.
+  the Phase 3 audit log (`AuditLogPanel`), human review gates
+  (`OutputReview`), and Action Launcher integration
+  (`launcherDispatch`), the `ai:prefill-form` task helper
+  (`runPrefillForm` / `parseFormFields`), the E4B routing tier
+  (`bootstrap.test.ts`, `router.test.ts`), and the full Phase 0 →
+  Phase 2 baseline plus full Go test coverage of the data
+  endpoints, including the Phase 3 task lifecycle, approval submit
+  + decision, artifact CRUD + versions, forms intake, audit log
+  (`audit_test.go`), linked-objects, and workspace-domain endpoints.
 
 ## Phase 1 — complete
 
@@ -300,8 +302,35 @@ go test ./...
   `e4bLoaded`, `hasE4B`) reflect what actually ran. The
   `DeviceCapabilityPanel` shows both tiers side-by-side.
 
-## Phase 3 — what's in progress
+## Phase 3 — complete
 
+- **Audit log (immutable event log)** — `models/audit.go`
+  (`AuditEntry` + 9 event types: `task.created`, `task.updated`,
+  `task.closed`, `approval.submitted`, `approval.decisioned`,
+  `artifact.created`, `artifact.version_added`,
+  `artifact.status_changed`, `form.submitted`),
+  `Memory.AppendAuditEntry` / `ListAuditEntries`, an
+  `AuditService.Record` writer wired into every `KApps` mutation
+  via `WithAudit`, and `GET /api/audit` supporting `?objectId=` /
+  `?objectKind=` / `?channelId=` filters. The renderer's
+  `AuditLogPanel` (`features/kapps/AuditLogPanel.tsx`) renders the
+  per-object timeline.
+- **Human review gates (review before publish)** — `OutputReview`
+  (ARCHITECTURE.md module #12) is the formal human-confirmation
+  gate from PROPOSAL.md §4.3. It renders the AI-generated content
+  with source attribution, a privacy strip, and Accept / Edit /
+  Discard. `ArtifactWorkspace` now opens it before every
+  `draft → in_review` and `in_review → published` status PATCH so
+  no transition lands without explicit confirmation.
+- **Action Launcher integration** — every B2B path is wired
+  end-to-end via `frontend/src/features/chat/launcherDispatch.ts`:
+  Create > PRD/RFC/Proposal/Task, Analyze > Thread/Risks/Decisions
+  (reuses the thread summarizer with a focus hint), Plan >
+  Milestones/Sprint/Rollout (reuses the artifact draft pipeline
+  with a section hint), Approve > Vendor/Budget/Access (reuses
+  approval prefill). `ChatSurface.handleAIAction` returns true for
+  every wired path so the launcher suppresses its placeholder
+  toast.
 - **Workspace → Domain → Channel navigation** — backend exposes
   `GET /api/workspaces/{id}/domains` and
   `GET /api/domains/{id}/channels`; frontend's `B2BLayout` renders a

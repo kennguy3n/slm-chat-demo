@@ -19,6 +19,7 @@ type Memory struct {
 	cards         []models.Card
 	formTemplates map[string]models.FormTemplate
 	forms         []models.Form
+	auditLog      []models.AuditEntry
 }
 
 // NewMemory returns an empty Memory store. Call Seed to populate it with the
@@ -32,6 +33,7 @@ func NewMemory() *Memory {
 		cards:         []models.Card{},
 		formTemplates: map[string]models.FormTemplate{},
 		forms:         []models.Form{},
+		auditLog:      []models.AuditEntry{},
 	}
 }
 
@@ -511,4 +513,34 @@ func contains(ss []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// ---- Audit log (immutable, append-only) ----
+
+// AppendAuditEntry records a single audit row. The log is append-only:
+// entries are never mutated or removed.
+func (m *Memory) AppendAuditEntry(e models.AuditEntry) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.auditLog = append(m.auditLog, e)
+}
+
+// ListAuditEntries returns audit entries filtered by objectId and/or
+// objectKind. An empty filter for either argument disables that filter;
+// passing both empty strings returns the full log. Entries are returned
+// in insertion (chronological) order.
+func (m *Memory) ListAuditEntries(objectID string, objectKind string) []models.AuditEntry {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := []models.AuditEntry{}
+	for _, e := range m.auditLog {
+		if objectID != "" && e.ObjectID != objectID {
+			continue
+		}
+		if objectKind != "" && string(e.ObjectKind) != objectKind {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }

@@ -19,6 +19,7 @@ type Deps struct {
 	Workspaces *services.Workspace
 	Chat       *services.Chat
 	KApps      *services.KApps
+	Audit      *services.AuditService
 }
 
 // NewRouter wires the chi router with CORS, JSON content-type, mock auth, and
@@ -45,6 +46,7 @@ func NewRouter(d Deps) http.Handler {
 	aH := handlers.NewArtifacts(d.KApps)
 	fH := handlers.NewForms(d.KApps)
 	pH := handlers.NewPrivacy()
+	auH := handlers.NewAudit(d.Audit, d.KApps)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
@@ -97,6 +99,12 @@ func NewRouter(d Deps) http.Handler {
 		// Privacy preview is still hosted here since it's a static
 		// declaration about the on-device guarantee.
 		r.Get("/privacy/egress-preview", pH.EgressPreview)
+
+		// Audit log — immutable event log for KApp mutations
+		// (Phase 3). ?objectId=… and ?objectKind=… filter to a
+		// single object; ?channelId=… returns all entries for
+		// objects in the channel.
+		r.Get("/audit", auH.List)
 	})
 
 	return r

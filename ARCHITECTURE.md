@@ -131,11 +131,11 @@ frontend/
 └── src/
     ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
     ├── features/
-    │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces)
+    │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer, launcherDispatch) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces); Phase 3 adds `launcherDispatch.ts`, the pure helper that maps every B2B Action Launcher path to a `kapps:launcher` CustomEvent the right-rail ThreadPanel listens for
     │   ├── ai/ (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, activityLog) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), ThreadSummaryCard for the B2B thread summary, ApprovalPrefillCard for B2B approval prefill, and ArtifactDraftCard for the B2B PRD / RFC / Proposal / SOP / QBR drafting flow; Phase 2 adds TaskCreatedPill (inline AI badges below messages), MorningDigestPanel (B2C right-rail catch-up), FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard (B2C trip / event planning skill), GuardrailRewriteCard (pre-send PII / tone / unverified-claim review), and MetricsDashboard backed by the new `activityLog` module which records every AI run; PrivacyStrip itself gained an expandable `whyDetails[]` list in Phase 2
     │   ├── memory/ (AIMemoryPage, memoryStore) — Phase 2: local-only IndexedDB-backed second brain (DB `kchat-slm-memory`, store `facts`) with an in-memory fallback for jsdom / SSR; the AI never auto-writes — every fact passes through the AIMemoryPage UI
-    │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm) — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, and the `FormCard` AI-prefilled intake surface.
-    │   ├── artifacts/ (ArtifactWorkspace, ArtifactDiffView, SourcePin) — Phase 3 right-rail viewer for full artifacts: section split, inline source pins, version history, line-by-line diff, status transitions.
+    │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview) — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation.
+    │   ├── artifacts/ (ArtifactWorkspace, ArtifactDiffView, SourcePin, sections) — Phase 3 right-rail viewer for full artifacts: section split, inline source pins, version history, line-by-line diff, status transitions, `OutputReview` gate before every status PATCH.
     │   ├── ai-employees/ (AIEmployeePanel)                                   — Phase 4
     │   └── knowledge/ (SourcePicker)                                         — Phase 5
     ├── stores/ (chatStore, aiStore, workspaceStore, kappsStore — Phase 3 task/approval CRUD with optimistic merge)
@@ -238,7 +238,7 @@ are the data services that persist Phase-0+ state and stream events.
 | 7 | `retrieval-service` | Local + source retrieval, citations, chunking. |
 | 8 | `connector-service` | Drive / OneDrive / Jira, with permission preview. |
 | 9 | `event-service` | NATS JetStream event publication and subscriptions. |
-| 10 | `audit-service` | Immutable event log for approvals and artifacts. |
+| 10 | `audit-service` | Immutable event log for approvals and artifacts. **Phase 3: implemented in-memory** as `services/audit.go` + `models/audit.go`; recorded by `KApps.WithAudit` for every task / approval / artifact / form mutation; surfaced via `GET /api/audit`. Phase 6+ swaps the in-memory log for NATS JetStream durable streams. |
 
 ### 3.2 Directory structure
 
@@ -249,13 +249,14 @@ backend/
 │   ├── api/
 │   │   ├── router.go             (data routes only)
 │   │   ├── middleware.go
-│   │   ├── handlers/             (chat.go, workspace.go, kapps.go, privacy.go;
-│   │   │                          artifacts.go is a Phase 3 placeholder)
+│   │   ├── handlers/             (chat.go, workspace.go, kapps.go, privacy.go,
+│   │   │                          artifacts.go, audit.go [Phase 3])
 │   │   └── userctx/              (request-scoped user helpers)
-│   ├── services/                 (identity.go, workspace.go, chat.go, kapps.go;
-│   │                              Phase 3 adds artifacts.go)
+│   ├── services/                 (identity.go, workspace.go, chat.go, kapps.go,
+│   │                              audit.go [Phase 3])
 │   ├── models/                   (user.go, workspace.go, message.go, task.go,
-│   │                              approval.go, artifact.go, event.go, card.go)
+│   │                              approval.go, artifact.go, event.go, card.go,
+│   │                              audit.go [Phase 3])
 │   └── store/                    (memory.go + seed.go; Phase 6+ adds postgres.go)
 └── go.mod
 ```
@@ -316,6 +317,7 @@ POST   /api/kapps/artifacts/{id}/versions                 (Phase 3)
 GET    /api/kapps/form-templates                          (Phase 3)
 GET    /api/kapps/forms (?channelId=…)                    (Phase 3)
 POST   /api/kapps/forms                                   (Phase 3)
+GET    /api/audit (?objectId=…&objectKind=…&channelId=…)  (Phase 3)
 GET    /api/privacy/egress-preview
 ```
 
@@ -566,12 +568,19 @@ fields[ { name, label, required } ]`. Phase 3 ships
 
 KApps emit the following events via NATS JetStream:
 
-- `task.created`, `task.updated`
+- `task.created`, `task.updated`, `task.closed`
 - `approval.submitted`, `approval.decisioned`
-- `artifact.drafted`, `artifact.published`
+- `artifact.created`, `artifact.version_added`, `artifact.status_changed`
 - `form.submitted`
 - `base.row.updated`
 - `sheet.summary.generated`
+
+> **Phase 3 status.** Every event in this list (except `base.row.updated`
+> and `sheet.summary.generated`, which belong to KApp surfaces that land
+> in later phases) is recorded by `services/AuditService.Record` into
+> the in-memory audit log and exposed via `GET /api/audit`. Phase 6+
+> swaps the in-memory log for NATS JetStream durable streams; the
+> renderer's `AuditLogPanel` reads from `GET /api/audit` either way.
 
 ### 6.3 Event consumers
 

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ArtifactWorkspace } from '../ArtifactWorkspace';
+import { renderWithProviders as render } from '../../../test/renderWithProviders';
 import type { Artifact, ArtifactVersion } from '../../../types/kapps';
 
 function makeArtifact(overrides: Partial<Artifact> = {}): Artifact {
@@ -84,7 +85,7 @@ describe('ArtifactWorkspace', () => {
     );
   });
 
-  it('transitions status to published via injectedUpdateArtifact', async () => {
+  it('transitions status to published via injectedUpdateArtifact after OutputReview confirmation', async () => {
     const update = vi
       .fn()
       .mockResolvedValueOnce({ ...makeArtifact(), status: 'published' });
@@ -98,9 +99,32 @@ describe('ArtifactWorkspace', () => {
       />,
     );
     await userEvent.click(screen.getByTestId('artifact-workspace-publish'));
+    // Phase 3 — Publish now opens an OutputReview gate; the user must
+    // confirm before the status PATCH fires.
+    expect(await screen.findByTestId('output-review')).toBeInTheDocument();
+    expect(update).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId('output-review-accept'));
     await waitFor(() => expect(update).toHaveBeenCalledWith('art_1', { status: 'published' }));
     await waitFor(() =>
       expect(screen.getByTestId('artifact-workspace-status')).toHaveTextContent(/published/),
     );
+  });
+
+  it('cancels publish when the user discards the OutputReview gate', async () => {
+    const update = vi.fn();
+    render(
+      <ArtifactWorkspace
+        artifact={makeArtifact()}
+        injectedGetArtifact={async () => makeArtifact()}
+        injectedGetVersion={async () => makeArtifact().versions[0]}
+        injectedCreateVersion={vi.fn()}
+        injectedUpdateArtifact={update}
+      />,
+    );
+    await userEvent.click(screen.getByTestId('artifact-workspace-publish'));
+    expect(await screen.findByTestId('output-review')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('output-review-discard'));
+    await waitFor(() => expect(screen.queryByTestId('output-review')).not.toBeInTheDocument());
+    expect(update).not.toHaveBeenCalled();
   });
 });

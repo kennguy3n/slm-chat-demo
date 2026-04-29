@@ -14,6 +14,7 @@ import {
 } from '../../api/kappsApi';
 import { KAppCardRenderer } from '../kapps/KAppCardRenderer';
 import { CreateApprovalForm } from '../kapps/CreateApprovalForm';
+import { CreateTaskForm } from '../kapps/CreateTaskForm';
 import { FormCard } from '../kapps/FormCard';
 import { ArtifactWorkspace } from '../artifacts/ArtifactWorkspace';
 import { findSectionIdForExcerpt } from '../artifacts/sections';
@@ -126,6 +127,14 @@ export function ThreadPanel({ channel }: Props) {
   const [activeTemplate, setActiveTemplate] = useState<FormTemplate | null>(null);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
 
+  // Phase 3 — Action Launcher integration. The Create > Task launcher
+  // path opens the right-rail task form; Analyze paths annotate the
+  // summary card with a focus label; Plan paths annotate the artifact
+  // draft card with the requested section.
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [summaryFocus, setSummaryFocus] = useState<'overview' | 'risks' | 'decisions'>('overview');
+  const [planSection, setPlanSection] = useState<'milestones' | 'sprint' | 'rollout' | null>(null);
+
   const formTemplatesQ = useQuery({
     queryKey: ['form-templates'],
     queryFn: () => listFormTemplates(),
@@ -147,12 +156,31 @@ export function ThreadPanel({ channel }: Props) {
     function onLauncher(e: Event) {
       const detail = (e as CustomEvent).detail as
         | { kind: 'prefill_approval'; templateId: ApprovalTemplate }
-        | { kind: 'draft_artifact'; artifactType: ArtifactKind };
+        | { kind: 'draft_artifact'; artifactType: ArtifactKind }
+        | { kind: 'create_task' }
+        | { kind: 'summarize_thread'; focus?: 'overview' | 'risks' | 'decisions' }
+        | { kind: 'plan'; section: 'milestones' | 'sprint' | 'rollout' };
       if (!detail || !selectedThreadId) return;
       if (detail.kind === 'prefill_approval') {
         runPrefillApproval(detail.templateId);
       } else if (detail.kind === 'draft_artifact') {
         runDraftArtifact(detail.artifactType);
+      } else if (detail.kind === 'create_task') {
+        // Phase 3 — Create > Task: surface the right-rail CreateTaskForm
+        // by toggling the existing summary off and signalling the form.
+        setShowCreateTask(true);
+      } else if (detail.kind === 'summarize_thread') {
+        // Phase 3 — Analyze paths reuse the thread summarizer; focus is
+        // recorded on the summary state so the rendered card can label
+        // its heading.
+        setSummaryFocus(detail.focus ?? 'overview');
+        summarizeThread();
+      } else if (detail.kind === 'plan') {
+        // Phase 3 — Plan paths feed the existing draftArtifact pipeline
+        // with type=RFC so the user gets a streamed plan body they can
+        // accept (and turn into an RFC artifact) via OutputReview.
+        setPlanSection(detail.section);
+        runDraftArtifact('RFC');
       }
     }
     window.addEventListener('kapps:launcher', onLauncher as EventListener);
@@ -462,6 +490,28 @@ export function ThreadPanel({ channel }: Props) {
           }}
           onCancel={() => setShowApprovalForm(false)}
         />
+      )}
+      {showCreateTask && channel && (
+        <CreateTaskForm
+          channelId={channel.id}
+          sourceThreadId={selectedThreadId ?? undefined}
+          data-testid="thread-panel-create-task"
+          onCreated={() => {
+            setShowCreateTask(false);
+            refreshLinkedObjects();
+          }}
+          onCancel={() => setShowCreateTask(false)}
+        />
+      )}
+      {summary && summaryFocus !== 'overview' && (
+        <p className="thread-panel__notice" data-testid="thread-panel-summary-focus">
+          Summary focus: <strong>{summaryFocus}</strong>
+        </p>
+      )}
+      {planSection && artifact && (
+        <p className="thread-panel__notice" data-testid="thread-panel-plan-section">
+          Plan section: <strong>{planSection}</strong>
+        </p>
       )}
       {submitErr && (
         <div role="alert" className="thread-panel__error" data-testid="thread-panel-submit-error">

@@ -27,13 +27,15 @@ func main() {
 	identity := services.NewIdentity(mem, "user_alice")
 	workspaces := services.NewWorkspace(mem)
 	chat := services.NewChat(mem)
-	kapps := services.NewKApps(mem)
+	audit := services.NewAudit(mem)
+	kapps := services.NewKApps(mem).WithAudit(audit)
 
 	r := api.NewRouter(api.Deps{
 		Identity:   identity,
 		Workspaces: workspaces,
 		Chat:       chat,
 		KApps:      kapps,
+		Audit:      audit,
 	})
 
 	addr := os.Getenv("ADDR")
