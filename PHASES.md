@@ -29,20 +29,20 @@ Each phase has a goal, a list of deliverables, and explicit exit criteria. The i
 
 ## Phase 1 — Local LLM MVP
 
-**Goal:** Prove efficient local AI with Gemma 4 E2B/E4B.
+**Goal:** Prove efficient local AI with Ternary-Bonsai-8B (prism-ml/Ternary-Bonsai-8B-gguf) as the single on-device model.
 
 **Deliverables:**
 
 - Local model status panel (loaded/unloaded, model name, memory usage)
 - Electron main-process inference adapter to Ollama (TypeScript;
   llama.cpp and Unsloth follow as additional adapters)
-- E2B and E4B routing based on task type and device capability
+- On-device routing for all non-server tasks (the router only distinguishes `local` vs. `server`)
 - Streaming responses over IPC (`ai:stream` + chunk events)
 - Privacy strip with real model name and compute location
 - B2C AI: summarize unread, smart reply, translate, extract task
 - B2B AI: summarize thread, extract tasks, prefill approval, draft short artifact section
 
-**Exit criteria:** React UI streams real local model output through Go, with E2B/E4B routing and visible privacy state.
+**Exit criteria:** React UI streams real local model output through Go, with on-device routing and visible privacy state.
 
 ---
 
@@ -156,11 +156,11 @@ Each phase has a goal, a list of deliverables, and explicit exit criteria. The i
 4. Add KApp card renderer
 5. Add privacy strip
 6. Add local inference adapter
-7. Run E2B locally for B2C digest and task extraction
+7. Run on-device inference locally for B2C digest and task extraction
 
 ### Days 31–60
 
-1. Add E4B local route
+1. Harden on-device inference for long-context tasks
 2. Build B2B task extraction and approval prefill
 3. Add PRD draft review
 4. Add source pins and citations

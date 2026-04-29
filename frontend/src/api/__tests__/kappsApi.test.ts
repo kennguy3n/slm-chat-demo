@@ -46,14 +46,14 @@ describe('kappsApi (Phase 3)', () => {
     const task = {
       id: 't1',
       channelId: 'ch_general',
-      title: 'Wire E4B',
+      title: 'Wire Ternary-Bonsai-8B',
       status: 'open' as const,
       aiGenerated: false,
     };
     fetchSpy.mockResolvedValueOnce(jsonResponse({ task }, { status: 201 }));
     const result = await createTask({
       channelId: 'ch_general',
-      title: 'Wire E4B',
+      title: 'Wire Ternary-Bonsai-8B',
     });
     expect(result).toEqual(task);
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];

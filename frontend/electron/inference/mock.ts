@@ -14,7 +14,7 @@ import type {
 export class MockAdapter implements Adapter {
   model: string;
 
-  constructor(model = 'gemma-4-e2b') {
+  constructor(model = 'ternary-bonsai-8b') {
     this.model = model;
   }
 

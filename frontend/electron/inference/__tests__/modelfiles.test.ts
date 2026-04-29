@@ -1,13 +1,13 @@
 // Modelfile existence + content sanity tests.
 //
-// The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults the
-// E2B / E4B model names to `gemma-4-e2b` / `gemma-4-e4b`, and the
-// repo-level `scripts/setup-models.sh` creates those exact aliases
-// from the Modelfiles under `models/`. If those files drift apart the
-// installation flow documented in `README.md` silently breaks, so we
-// pin the contract here.
+// The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults
+// the model name to `ternary-bonsai-8b` (a single on-device model),
+// and the repo-level `scripts/setup-models.sh` creates that exact
+// alias from the Modelfile under `models/`. If those files drift apart
+// the installation flow documented in `README.md` silently breaks, so
+// we pin the contract here.
 
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -30,53 +30,55 @@ function fromTag(contents: string): string | null {
 }
 
 describe('models/ Modelfiles', () => {
-  it('ships an E2B Modelfile that points at a real Ollama Gemma 4 base tag', () => {
-    const body = readModelfile('Modelfile.e2b');
+  it('ships a single Modelfile.bonsai8b that points at the Ternary-Bonsai-8B GGUF repo', () => {
+    const body = readModelfile('Modelfile.bonsai8b');
     const base = fromTag(body);
     expect(base).toBeTruthy();
-    // Lock the default to a Gemma-family base so an accidental swap to
-    // a different model family is caught in CI. The exact tag suffix
-    // (e.g. `:e2b`, `:e2b-it-q4_K_M`) is left flexible so quantisation
-    // can change without breaking the test.
-    expect(base!.toLowerCase()).toMatch(/^gemma\d?:?/);
+    // Lock the default to the Ternary-Bonsai-8B HuggingFace GGUF repo
+    // (via Ollama's `hf.co/<user>/<repo>` shorthand), or to a local
+    // `.gguf` file fallback for environments where the shorthand is
+    // unsupported.
+    expect(base!.toLowerCase()).toMatch(
+      /^(hf\.co\/prism-ml\/ternary-bonsai-8b-gguf|\.\/.*\.gguf|\/.*\.gguf)/,
+    );
     expect(body).toMatch(/^PARAMETER\s+temperature\s/m);
     expect(body).toMatch(/^PARAMETER\s+num_ctx\s/m);
     expect(body).toMatch(/^SYSTEM\s/m);
   });
 
-  it('ships an E4B Modelfile that points at a real Ollama Gemma 4 base tag', () => {
-    const body = readModelfile('Modelfile.e4b');
-    const base = fromTag(body);
-    expect(base).toBeTruthy();
-    expect(base!.toLowerCase()).toMatch(/^gemma\d?:?/);
-    expect(body).toMatch(/^PARAMETER\s+temperature\s/m);
-    expect(body).toMatch(/^PARAMETER\s+num_ctx\s/m);
-    expect(body).toMatch(/^SYSTEM\s/m);
+  it('does not ship legacy Gemma Modelfiles alongside the Bonsai one', () => {
+    // Protect against a regression where both the old and the new
+    // Modelfiles end up in the tree simultaneously.
+    const entries = readdirSync(modelsDir);
+    for (const name of entries) {
+      expect(name.toLowerCase()).not.toContain('gemma');
+    }
+    expect(existsSync(path.join(modelsDir, 'Modelfile.e2b'))).toBe(false);
+    expect(existsSync(path.join(modelsDir, 'Modelfile.e4b'))).toBe(false);
   });
 
-  it('ships a models/README.md that documents both aliases', () => {
+  it('ships a models/README.md that documents the ternary-bonsai-8b alias', () => {
     const readmePath = path.join(modelsDir, 'README.md');
     expect(existsSync(readmePath)).toBe(true);
     const body = readFileSync(readmePath, 'utf8');
-    expect(body).toContain('gemma-4-e2b');
-    expect(body).toContain('gemma-4-e4b');
-    expect(body).toContain('Modelfile.e2b');
-    expect(body).toContain('Modelfile.e4b');
+    expect(body).toContain('ternary-bonsai-8b');
+    expect(body).toContain('Modelfile.bonsai8b');
+    // Legacy names should have been purged.
+    expect(body.toLowerCase()).not.toContain('gemma');
   });
 
-  it('ships an executable scripts/setup-models.sh that references both Modelfiles', () => {
+  it('ships an executable scripts/setup-models.sh that references the Modelfile and alias', () => {
     const scriptPath = path.join(scriptsDir, 'setup-models.sh');
     expect(existsSync(scriptPath)).toBe(true);
     const body = readFileSync(scriptPath, 'utf8');
     expect(body.startsWith('#!')).toBe(true);
-    expect(body).toContain('models/Modelfile.e2b');
-    expect(body).toContain('models/Modelfile.e4b');
-    // Bootstrap defaults — these are the aliases the script must create.
-    expect(body).toContain('gemma-4-e2b');
-    expect(body).toContain('gemma-4-e4b');
-    // Honours the same env-var overrides the bootstrap reads.
-    expect(body).toMatch(/E2B_MODEL/);
-    expect(body).toMatch(/E4B_MODEL/);
+    expect(body).toContain('models/Modelfile.bonsai8b');
+    // Bootstrap default — the alias the script must create.
+    expect(body).toContain('ternary-bonsai-8b');
+    // Honours `MODEL_NAME` for operator overrides.
+    expect(body).toMatch(/MODEL_NAME/);
+    // Legacy names should have been purged.
+    expect(body.toLowerCase()).not.toContain('gemma');
 
     // POSIX exec bit (skipped on platforms where stat doesn't expose
     // the bit, e.g. Windows CI).

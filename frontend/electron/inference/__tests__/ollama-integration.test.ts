@@ -4,8 +4,8 @@
 // default `http://localhost:11434`), this suite exercises the live
 // `OllamaAdapter` end-to-end: ping → list models → status. It is
 // intentionally read-only — it never pulls or evicts a model, so it
-// is safe to run on a developer machine that already has Gemma 4
-// configured via `./scripts/setup-models.sh`.
+// is safe to run on a developer machine that already has
+// Ternary-Bonsai-8B configured via `./scripts/setup-models.sh`.
 //
 // When the daemon is *not* reachable (the default in CI), the suite
 // is skipped via `describe.skipIf(...)` so it never blocks PRs.
@@ -56,17 +56,17 @@ describe.skipIf(!process.env.OLLAMA_INTEGRATION)('OllamaAdapter (live daemon)', 
     const models = await ad.listModels();
     expect(Array.isArray(models)).toBe(true);
     // We don't assert a specific model name here because the developer
-    // may have pulled gemma4:e2b, gemma-4-e2b (alias), or both. The
-    // important thing for the smoke test is that `/api/tags` returns
-    // a parseable list at all.
+    // may have pulled `hf.co/prism-ml/Ternary-Bonsai-8B-gguf`, the
+    // `ternary-bonsai-8b` alias, or both. The important thing for the
+    // smoke test is that `/api/tags` returns a parseable list at all.
   });
 
   it('reports a structured ModelStatus regardless of load state', async () => {
     if (!reachable) return;
-    const ad = new OllamaAdapter({ baseURL, model: 'gemma-4-e2b' });
+    const ad = new OllamaAdapter({ baseURL, model: 'ternary-bonsai-8b' });
     const s = await ad.status();
     expect(typeof s.loaded).toBe('boolean');
-    expect(s.model).toBe('gemma-4-e2b');
+    expect(s.model).toBe('ternary-bonsai-8b');
     expect(['running', 'stopped']).toContain(s.sidecar);
     expect(s.ramUsageMB).toBeGreaterThanOrEqual(0);
   });

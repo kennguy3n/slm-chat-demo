@@ -62,30 +62,15 @@ export function DeviceCapabilityPanel() {
     <aside className="device-capability-panel" data-testid="device-capability-panel">
       <h3 className="device-capability-panel__title">Local model</h3>
       <dl className="device-capability-panel__grid">
-        <dt>E2B model</dt>
+        <dt>Model</dt>
         <dd data-testid="device-capability-model">{s.model}</dd>
-        <dt>E2B status</dt>
+        <dt>Status</dt>
         <dd>
           <span
             className={`device-capability-panel__badge device-capability-panel__badge--${s.loaded ? 'loaded' : 'unloaded'}`}
             data-testid="device-capability-loaded"
           >
             {s.loaded ? 'Loaded' : 'Unloaded'}
-          </span>
-        </dd>
-        <dt>E4B model</dt>
-        <dd data-testid="device-capability-e4b-model">
-          {s.hasE4B ? s.e4bModel ?? '—' : 'Not pulled'}
-        </dd>
-        <dt>E4B status</dt>
-        <dd>
-          <span
-            className={`device-capability-panel__badge device-capability-panel__badge--${
-              s.hasE4B ? (s.e4bLoaded ? 'loaded' : 'unloaded') : 'unavailable'
-            }`}
-            data-testid="device-capability-e4b-loaded"
-          >
-            {s.hasE4B ? (s.e4bLoaded ? 'Loaded' : 'Unloaded') : 'Falls back to E2B'}
           </span>
         </dd>
         <dt>Quant</dt>

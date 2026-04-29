@@ -1,6 +1,7 @@
 // AI Skills Framework — the structured contract every skill in the
-// Electron main-process inference layer follows. SLMs (Gemma 4 E2B/E4B)
-// have limited world knowledge and a non-trivial hallucination rate,
+// Electron main-process inference layer follows. SLMs
+// (Ternary-Bonsai-8B) have limited world knowledge and a non-trivial
+// hallucination rate,
 // so every skill is built around four load-bearing rules:
 //
 //   1. The prompt MUST instruct the model to answer "INSUFFICIENT: <reason>"
@@ -98,7 +99,7 @@ export interface SkillDefinition<Input = unknown, Output = unknown> {
   guardrails: GuardrailPolicy;
   responseTemplate: ResponseTemplate;
 
-  preferredTier: 'e2b' | 'e4b';
+  preferredTier: 'local';
   taskType: TaskType;
 
   // Pure parser: takes the raw model output and the input context and
@@ -144,7 +145,7 @@ export interface SkillRefusal {
 export interface PrivacyStripMetadata {
   computeLocation: 'on_device';
   modelName: string;
-  tier: 'e2b' | 'e4b';
+  tier: 'local';
   reason: string;
   dataEgressBytes: 0;
   sources: SkillSource[];
@@ -375,7 +376,7 @@ export async function runSkill<I, O>(
   // 3. Run inference (unless the caller pre-supplied raw output).
   let rawOutput: string;
   let model = '';
-  let tier: 'e2b' | 'e4b' = def.preferredTier;
+  let tier: 'local' = def.preferredTier;
   let routeReason = '';
   if (opts.rawOutputOverride !== undefined) {
     rawOutput = opts.rawOutputOverride;
@@ -390,6 +391,9 @@ export async function runSkill<I, O>(
       model = resp.model;
       const decision = router.lastDecision();
       if (decision.tier && decision.tier !== 'server') tier = decision.tier;
+      // `decision.tier` is typed Tier = 'local' | 'server'; we only
+      // accept 'local' here since server-routed dispatches go through
+      // the confidential-server pathway instead of skill framework.
       routeReason = decision.reason;
     } catch (e) {
       return refuseFromError(def, e);
@@ -443,7 +447,7 @@ export async function runSkill<I, O>(
     confidence: parsed.confidence ?? 1,
     privacy: {
       computeLocation: 'on_device',
-      modelName: model || `gemma-4-${tier}`,
+      modelName: model || 'ternary-bonsai-8b',
       tier,
       reason: routeReason || `Routed ${def.id} to ${tier.toUpperCase()}.`,
       dataEgressBytes: 0,

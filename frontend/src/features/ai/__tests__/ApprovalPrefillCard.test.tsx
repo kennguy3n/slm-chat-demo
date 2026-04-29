@@ -17,9 +17,9 @@ const sample: PrefillApprovalResponse = {
     risk: 'medium',
   },
   sourceMessageIds: ['msg_vendor_1', 'msg_vendor_2'],
-  model: 'gemma-4-e4b',
-  tier: 'e4b',
-  reason: 'Routed prefill_approval to E4B for stronger reasoning.',
+  model: 'ternary-bonsai-8b',
+  tier: 'local',
+  reason: 'Routed prefill_approval to on-device Ternary-Bonsai-8B for stronger reasoning.',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
 };
@@ -30,7 +30,7 @@ describe('ApprovalPrefillCard', () => {
     expect(screen.getByTestId('approval-prefill-title')).toHaveTextContent(
       'Vendor approval — Acme Logs',
     );
-    expect(screen.getByTestId('approval-prefill-tier')).toHaveTextContent('E4B');
+    expect(screen.getByTestId('approval-prefill-tier')).toHaveTextContent('LOCAL');
   });
 
   it('renders the prefilled fields in editable inputs', () => {
@@ -107,7 +107,7 @@ describe('ApprovalPrefillCard', () => {
 
   it('renders the privacy strip with the model and on-device compute', () => {
     renderWithProviders(<ApprovalPrefillCard prefill={sample} />);
-    expect(screen.getByTestId('privacy-model')).toHaveTextContent('gemma-4-e4b');
+    expect(screen.getByTestId('privacy-model')).toHaveTextContent('ternary-bonsai-8b');
     expect(screen.getByTestId('privacy-compute')).toHaveTextContent('On-device');
   });
 });

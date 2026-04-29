@@ -1,8 +1,8 @@
 // create_qbr recipe — wraps buildDraftArtifact from tasks.ts with
-// artifactType 'QBR'. QBR drafting benefits from E4B reasoning to
-// summarise wins, gaps, asks, and the next-quarter plan from a work
-// thread; the renderer streams the body via `ai:stream` using the
-// returned prompt + source list.
+// artifactType 'QBR'. The helper summarises wins, gaps, asks, and the
+// next-quarter plan from a work thread on the on-device
+// Ternary-Bonsai-8B model; the renderer streams the body via
+// `ai:stream` using the returned prompt + source list.
 
 import { buildDraftArtifact } from '../tasks.js';
 import type { RecipeContext, RecipeDefinition, RecipeResult } from './registry.js';
@@ -14,7 +14,7 @@ export const createQBRRecipe: RecipeDefinition = {
   description:
     'Draft a quarterly business review — wins, gaps, asks, next-quarter plan — from a work thread, with source pins for human review.',
   taskType: 'draft_artifact',
-  preferredTier: 'e4b',
+  preferredTier: 'local',
   async execute(
     router: InferenceRouter,
     context: RecipeContext,
@@ -24,7 +24,7 @@ export const createQBRRecipe: RecipeDefinition = {
         status: 'refused',
         output: { prompt: '', sources: [], threadId: context.threadId ?? '', channelId: context.channelId },
         model: '',
-        tier: 'e4b',
+        tier: 'local',
         reason: 'create_qbr: thread is empty; refusing to draft a QBR.',
       };
     }

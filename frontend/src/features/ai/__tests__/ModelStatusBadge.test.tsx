@@ -20,7 +20,7 @@ describe('ModelStatusBadge', () => {
     fetchSpy.mockResolvedValueOnce(
       jsonResponse({
         loaded: true,
-        model: 'gemma-4-e2b',
+        model: 'ternary-bonsai-8b',
         quant: 'q4_k_m',
         ramUsageMB: 1024,
         sidecar: 'running',
@@ -28,7 +28,7 @@ describe('ModelStatusBadge', () => {
     );
     renderWithProviders(<ModelStatusBadge pollIntervalMs={0} />);
     await waitFor(() => {
-      expect(screen.getByTestId('model-status-badge-name')).toHaveTextContent('gemma-4-e2b');
+      expect(screen.getByTestId('model-status-badge-name')).toHaveTextContent('ternary-bonsai-8b');
     });
     expect(screen.getByTestId('model-status-badge-state')).toHaveTextContent('loaded');
     expect(screen.getByTestId('model-status-badge')).toHaveClass('model-status-badge--loaded');
@@ -38,7 +38,7 @@ describe('ModelStatusBadge', () => {
     fetchSpy.mockResolvedValueOnce(
       jsonResponse({
         loaded: false,
-        model: 'gemma-4-e2b',
+        model: 'ternary-bonsai-8b',
         quant: 'q4_k_m',
         ramUsageMB: 0,
         sidecar: 'unstarted',

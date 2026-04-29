@@ -7,7 +7,7 @@ import type { UnreadSummaryResponse } from '../../../types/ai';
 
 const sampleDigest: UnreadSummaryResponse = {
   prompt: 'Summarise these recent unread messages…',
-  model: 'gemma-4-e2b',
+  model: 'ternary-bonsai-8b',
   sources: [
     { id: 'm1', channelId: 'c1', sender: 'Bob', excerpt: 'Hey, ping' },
     { id: 'm2', channelId: 'c2', sender: 'Carol', excerpt: 'Reminder' },
@@ -24,7 +24,7 @@ describe('DigestCard', () => {
         streamingText={'You have 2 messages.\nDeadline tomorrow.'}
       />,
     );
-    expect(screen.getByTestId('digest-card-model')).toHaveTextContent('gemma-4-e2b');
+    expect(screen.getByTestId('digest-card-model')).toHaveTextContent('ternary-bonsai-8b');
     const body = screen.getByTestId('digest-card-body');
     expect(body).toHaveTextContent('You have 2 messages.');
     expect(body).toHaveTextContent('Deadline tomorrow.');

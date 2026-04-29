@@ -21,7 +21,7 @@ describe('DeviceCapabilityPanel', () => {
     fetchSpy.mockResolvedValueOnce(
       jsonResponse({
         loaded: true,
-        model: 'gemma-4-e2b',
+        model: 'ternary-bonsai-8b',
         quant: 'q4_k_m',
         ramUsageMB: 1234,
         sidecar: 'running',
@@ -29,7 +29,7 @@ describe('DeviceCapabilityPanel', () => {
     );
     renderWithProviders(<DeviceCapabilityPanel />);
     await waitFor(() => {
-      expect(screen.getByTestId('device-capability-model')).toHaveTextContent('gemma-4-e2b');
+      expect(screen.getByTestId('device-capability-model')).toHaveTextContent('ternary-bonsai-8b');
     });
     expect(screen.getByTestId('device-capability-loaded')).toHaveTextContent('Loaded');
     expect(screen.getByTestId('device-capability-quant')).toHaveTextContent('q4_k_m');
@@ -41,7 +41,7 @@ describe('DeviceCapabilityPanel', () => {
     fetchSpy.mockResolvedValueOnce(
       jsonResponse({
         loaded: false,
-        model: 'gemma-4-e2b',
+        model: 'ternary-bonsai-8b',
         quant: 'q4_k_m',
         ramUsageMB: 0,
         sidecar: 'unstarted',
@@ -66,17 +66,17 @@ describe('DeviceCapabilityPanel', () => {
       .mockResolvedValueOnce(
         jsonResponse({
           loaded: false,
-          model: 'gemma-4-e2b',
+          model: 'ternary-bonsai-8b',
           quant: 'q4_k_m',
           ramUsageMB: 0,
           sidecar: 'unstarted',
         }),
       )
-      .mockResolvedValueOnce(jsonResponse({ loaded: true, model: 'gemma-4-e2b' }))
+      .mockResolvedValueOnce(jsonResponse({ loaded: true, model: 'ternary-bonsai-8b' }))
       .mockResolvedValue(
         jsonResponse({
           loaded: true,
-          model: 'gemma-4-e2b',
+          model: 'ternary-bonsai-8b',
           quant: 'q4_k_m',
           ramUsageMB: 1024,
           sidecar: 'running',
@@ -98,7 +98,7 @@ describe('DeviceCapabilityPanel', () => {
     fetchSpy.mockResolvedValueOnce(
       jsonResponse({
         loaded: true,
-        model: 'gemma-4-e2b',
+        model: 'ternary-bonsai-8b',
         quant: 'q4_k_m',
         ramUsageMB: 100,
         sidecar: 'running',
@@ -126,7 +126,7 @@ describe('DeviceCapabilityPanel', () => {
     fetchSpy.mockResolvedValueOnce(
       jsonResponse({
         loaded: true,
-        model: 'gemma-4-e2b',
+        model: 'ternary-bonsai-8b',
         quant: 'q4_k_m',
         ramUsageMB: 100,
         sidecar: 'running',
@@ -134,7 +134,7 @@ describe('DeviceCapabilityPanel', () => {
     );
     renderWithProviders(<DeviceCapabilityPanel />);
     await waitFor(() => {
-      expect(screen.getByTestId('device-capability-model')).toHaveTextContent('gemma-4-e2b');
+      expect(screen.getByTestId('device-capability-model')).toHaveTextContent('ternary-bonsai-8b');
     });
     expect(screen.queryByTestId('device-capability-server-section')).not.toBeInTheDocument();
   });
@@ -144,17 +144,17 @@ describe('DeviceCapabilityPanel', () => {
       .mockResolvedValueOnce(
         jsonResponse({
           loaded: true,
-          model: 'gemma-4-e2b',
+          model: 'ternary-bonsai-8b',
           quant: 'q4_k_m',
           ramUsageMB: 512,
           sidecar: 'running',
         }),
       )
-      .mockResolvedValueOnce(jsonResponse({ loaded: false, model: 'gemma-4-e2b' }))
+      .mockResolvedValueOnce(jsonResponse({ loaded: false, model: 'ternary-bonsai-8b' }))
       .mockResolvedValue(
         jsonResponse({
           loaded: false,
-          model: 'gemma-4-e2b',
+          model: 'ternary-bonsai-8b',
           quant: 'q4_k_m',
           ramUsageMB: 0,
           sidecar: 'unstarted',

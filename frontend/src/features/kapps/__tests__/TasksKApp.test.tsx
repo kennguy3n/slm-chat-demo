@@ -9,7 +9,7 @@ const tasks: Task[] = [
   {
     id: 'task_a',
     channelId: 'ch_general',
-    title: 'Wire E4B routing',
+    title: 'Wire Ternary-Bonsai-8B routing',
     owner: 'user_alice',
     dueDate: '2026-05-10T00:00:00Z',
     status: 'open',
@@ -70,15 +70,15 @@ describe('TasksKApp', () => {
 
   it('filters tasks by status', async () => {
     render(<TasksKApp channelId="ch_general" />);
-    await screen.findByText('Wire E4B routing');
+    await screen.findByText('Wire Ternary-Bonsai-8B routing');
     await userEvent.click(screen.getByTestId('tasks-kapp-filter-done'));
     expect(screen.getByText('Old task')).toBeInTheDocument();
-    expect(screen.queryByText('Wire E4B routing')).toBeNull();
+    expect(screen.queryByText('Wire Ternary-Bonsai-8B routing')).toBeNull();
   });
 
   it('toggles the create form', async () => {
     render(<TasksKApp channelId="ch_general" />);
-    await screen.findByText('Wire E4B routing');
+    await screen.findByText('Wire Ternary-Bonsai-8B routing');
     await userEvent.click(screen.getByTestId('tasks-kapp-new-toggle'));
     expect(screen.getByTestId('tasks-kapp-create-form')).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('tasks-kapp-new-toggle'));

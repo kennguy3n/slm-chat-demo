@@ -193,7 +193,7 @@ export function RecipeOutputGate({
 
   const privacy: PrivacyStripData = {
     computeLocation: 'on_device',
-    modelName: result.model || 'gemma-4-e2b',
+    modelName: result.model || 'ternary-bonsai-8b',
     sources: sources.map((s) => ({
       kind: 'message' as const,
       id: s.id,

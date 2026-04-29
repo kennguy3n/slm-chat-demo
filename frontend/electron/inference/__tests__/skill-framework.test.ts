@@ -25,7 +25,7 @@ import type {
 
 class CannedAdapter implements Adapter {
   public lastReq: InferenceRequest | null = null;
-  constructor(public output: string, public modelLabel = 'gemma-4-e2b') {}
+  constructor(public output: string, public modelLabel = 'ternary-bonsai-8b') {}
   name() {
     return 'canned';
   }
@@ -80,7 +80,7 @@ function makeDemoSkill(
       format: 'card',
       requiredFields: ['destination', 'notes'],
     },
-    preferredTier: 'e2b',
+    preferredTier: 'local',
     taskType: 'extract_tasks',
     parser(raw, input) {
       const lines = raw
@@ -293,7 +293,7 @@ describe('runPostInferenceGuardrails', () => {
 describe('runSkill end-to-end', () => {
   it('executes a healthy skill and returns a structured success', async () => {
     const adapter = new CannedAdapter('Pack passport\nBook hotel');
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     const def = makeDemoSkill();
     const out: SkillResult<DemoOutput> = await runSkill(router, def, {
       input: {
@@ -309,14 +309,14 @@ describe('runSkill end-to-end', () => {
     expect(out.sources.map((s) => s.id)).toEqual(['m1']);
     expect(out.privacy.computeLocation).toBe('on_device');
     expect(out.privacy.dataEgressBytes).toBe(0);
-    expect(out.privacy.tier).toBe('e2b');
+    expect(out.privacy.tier).toBe('local');
     expect(adapter.lastReq?.prompt).toContain(INSUFFICIENT_RULE);
     expect(adapter.lastReq?.prompt).toContain('Destination: Tokyo');
   });
 
   it('refuses pre-inference when destination is missing', async () => {
     const adapter = new CannedAdapter('should not run');
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     const def = makeDemoSkill();
     const out = await runSkill(router, def, {
       input: { destination: '', duration: 0, messages: [{ id: 'm1', content: 'x' }] },
@@ -330,7 +330,7 @@ describe('runSkill end-to-end', () => {
 
   it('detects INSUFFICIENT in the model output and returns a refusal', async () => {
     const adapter = new CannedAdapter('INSUFFICIENT: no relevant chat context');
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     const def = makeDemoSkill();
     const out = await runSkill(router, def, {
       input: {
@@ -345,12 +345,12 @@ describe('runSkill end-to-end', () => {
     expect(out.refusal.reason).toBe('no relevant chat context');
     expect(out.refusal.refusalText).toContain('no relevant chat context');
     expect(out.privacy).not.toBeNull();
-    expect(out.privacy?.modelName).toBe('gemma-4-e2b');
+    expect(out.privacy?.modelName).toBe('ternary-bonsai-8b');
   });
 
   it('refuses post-inference when output matches a prohibited pattern', async () => {
     const adapter = new CannedAdapter('Call me at 555-12-1234\nMore info');
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     const def = makeDemoSkill({
       guardrails: {
         ...makeDemoSkill().guardrails,
@@ -371,7 +371,7 @@ describe('runSkill end-to-end', () => {
 
   it('honours a rawOutputOverride for guardrail-only test paths', async () => {
     const adapter = new CannedAdapter('should be ignored');
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     const def = makeDemoSkill();
     const out = await runSkill(
       router,

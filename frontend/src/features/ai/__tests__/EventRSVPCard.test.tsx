@@ -24,9 +24,9 @@ const fakeResp: EventRSVPResponse = {
     },
   ],
   sourceMessageIds: ['m1', 'm2'],
-  model: 'gemma-4-e2b',
-  tier: 'e2b',
-  reason: 'Routed RSVP extraction to E2B.',
+  model: 'ternary-bonsai-8b',
+  tier: 'local',
+  reason: 'Routed RSVP extraction to on-device Ternary-Bonsai-8B.',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
 };

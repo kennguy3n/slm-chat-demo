@@ -13,7 +13,7 @@ export const draftProposalRecipe: RecipeDefinition = {
   description:
     'Draft a sales / vendor proposal — summary, scope, cost, risks, ask — from a work thread, with source pins for human review.',
   taskType: 'draft_artifact',
-  preferredTier: 'e4b',
+  preferredTier: 'local',
   async execute(
     router: InferenceRouter,
     context: RecipeContext,
@@ -23,7 +23,7 @@ export const draftProposalRecipe: RecipeDefinition = {
         status: 'refused',
         output: { prompt: '', sources: [], threadId: context.threadId ?? '', channelId: context.channelId },
         model: '',
-        tier: 'e4b',
+        tier: 'local',
         reason: 'draft_proposal: thread is empty; refusing to draft a proposal.',
       };
     }

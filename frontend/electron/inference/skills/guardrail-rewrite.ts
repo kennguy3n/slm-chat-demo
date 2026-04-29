@@ -2,8 +2,9 @@
 // composer message for PII (phone numbers, emails, US-style SSNs),
 // aggressive / inappropriate tone, and unverified factual claims, and
 // proposes a rewritten version with the risky parts called out. Runs
-// E2B because it is short and latency-sensitive (the user is waiting
-// to send the message). Honours the INSUFFICIENT contract: if the
+// on the on-device Ternary-Bonsai-8B model because the check is short
+// and latency-sensitive (the user is waiting to send the message).
+// Honours the INSUFFICIENT contract: if the
 // model cannot determine risk level, the renderer treats the message
 // as safe and shows no card.
 
@@ -78,7 +79,7 @@ export const guardrailRewriteSkill: SkillDefinition<
       description: 'Run deterministic PII regex pre-check (phones, emails, SSN).',
     },
     { order: 2, action: 'build_prompt', description: 'Build the SLM review prompt.' },
-    { order: 3, action: 'run_inference', description: 'Run inference via the router (E2B).' },
+    { order: 3, action: 'run_inference', description: 'Run inference via the router on the on-device model.' },
     {
       order: 4,
       action: 'parse_output',
@@ -103,7 +104,7 @@ export const guardrailRewriteSkill: SkillDefinition<
     format: 'card',
     requiredFields: ['safe', 'findings', 'rationale'],
   },
-  preferredTier: 'e2b',
+  preferredTier: 'local',
   taskType: 'smart_reply',
   parser(rawOutput) {
     const parsed = parseGuardrailOutput(rawOutput);
@@ -195,9 +196,9 @@ export async function runGuardrailRewrite(
   const decision = router.lastDecision();
   const decisionTier =
     decision.tier && decision.tier !== 'server' ? decision.tier : undefined;
-  const tier: 'e2b' | 'e4b' =
+  const tier: 'local' =
     decisionTier ?? guardrailRewriteSkill.preferredTier;
-  const routeReason = decision.reason || `Routed guardrail review to ${tier.toUpperCase()}.`;
+  const routeReason = decision.reason || 'Routed guardrail review to on-device Ternary-Bonsai-8B.';
 
   if (detectInsufficient(resp.output)) {
     // Treat INSUFFICIENT as "no opinion" — return whatever the regex
@@ -218,7 +219,7 @@ export async function runGuardrailRewrite(
       rawOutput: resp.output,
       privacy: {
         computeLocation: 'on_device',
-        modelName: resp.model || `gemma-4-${tier}`,
+        modelName: resp.model || 'ternary-bonsai-8b',
         tier,
         reason: routeReason,
         dataEgressBytes: 0,
@@ -253,7 +254,7 @@ export async function runGuardrailRewrite(
     rawOutput: resp.output,
     privacy: {
       computeLocation: 'on_device',
-      modelName: resp.model || `gemma-4-${tier}`,
+      modelName: resp.model || 'ternary-bonsai-8b',
       tier,
       reason: routeReason,
       dataEgressBytes: 0,

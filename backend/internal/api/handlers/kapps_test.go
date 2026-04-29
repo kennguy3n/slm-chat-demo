@@ -177,7 +177,7 @@ func TestCreateAndUpdateTaskLifecycle(t *testing.T) {
 	h := newTestServer()
 
 	// Create.
-	body := strings.NewReader(`{"channelId":"ch_general","title":"Wire E4B","owner":"user_alice"}`)
+	body := strings.NewReader(`{"channelId":"ch_general","title":"Wire Ternary-Bonsai-8B","owner":"user_alice"}`)
 	rec := doRequest(t, h, http.MethodPost, "/api/kapps/tasks", "user_alice", body)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create: expected 201, got %d: %s", rec.Code, rec.Body.String())
@@ -235,7 +235,7 @@ func TestCreateAndUpdateTaskLifecycle(t *testing.T) {
 	}
 
 	// Patch fields.
-	patchBody := strings.NewReader(`{"title":"Wire E4B routing"}`)
+	patchBody := strings.NewReader(`{"title":"Wire Ternary-Bonsai-8B routing"}`)
 	rec = doRequest(t, h, http.MethodPatch, "/api/kapps/tasks/"+created.Task.ID, "user_alice", patchBody)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("patch: expected 200, got %d", rec.Code)

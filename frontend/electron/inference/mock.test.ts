@@ -18,14 +18,14 @@ describe('MockAdapter', () => {
       expect(resp.output.length).toBeGreaterThan(0);
       expect(resp.onDevice).toBe(true);
       expect(resp.taskType).toBe(t);
-      expect(resp.model).toBe('gemma-4-e2b');
+      expect(resp.model).toBe('ternary-bonsai-8b');
     }
   });
 
   it('respects the request model override', async () => {
     const m = new MockAdapter();
-    const resp = await m.run({ taskType: 'draft_artifact', prompt: '', model: 'gemma-4-e4b' });
-    expect(resp.model).toBe('gemma-4-e4b');
+    const resp = await m.run({ taskType: 'draft_artifact', prompt: '', model: 'ternary-bonsai-8b-override' });
+    expect(resp.model).toBe('ternary-bonsai-8b-override');
   });
 
   it('streams a single delta then done', async () => {

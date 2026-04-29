@@ -30,7 +30,7 @@ describe('OllamaAdapter.run', () => {
   it('POSTs to /api/generate with stream=false and parses the response', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({
-        model: 'gemma-4-e2b',
+        model: 'ternary-bonsai-8b',
         response: 'hello world',
         done: true,
         eval_count: 5,
@@ -45,7 +45,7 @@ describe('OllamaAdapter.run', () => {
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toContain('/api/generate');
     const body = JSON.parse((init as RequestInit).body as string);
-    expect(body).toMatchObject({ model: 'gemma-4-e2b', prompt: 'hi', stream: false });
+    expect(body).toMatchObject({ model: 'ternary-bonsai-8b', prompt: 'hi', stream: false });
 
     expect(resp.output).toBe('hello world');
     expect(resp.tokensUsed).toBe(5);
@@ -115,58 +115,58 @@ describe('OllamaAdapter.status', () => {
 
   it('reports loaded=true when /api/ps returns a model', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'gemma-4-e2b', size: 2 * 1024 * 1024 * 1024 }] }),
+      jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
     );
     const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
     const s = await ad.status();
     expect(s.loaded).toBe(true);
-    expect(s.model).toBe('gemma-4-e2b');
+    expect(s.model).toBe('ternary-bonsai-8b');
     expect(s.ramUsageMB).toBeGreaterThan(0);
   });
 
-  it('reports loaded=false when /api/ps lists only an unrelated model (E4B adapter sees only E2B)', async () => {
+  it('reports loaded=false when /api/ps lists only an unrelated model (adapter is configured with a different model)', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'gemma-4-e2b', size: 2 * 1024 * 1024 * 1024 }] }),
+      jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
     );
     const ad = new OllamaAdapter({
-      model: 'gemma-4-e4b',
+      model: 'ternary-bonsai-8b-alt',
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     const s = await ad.status();
     expect(s.loaded).toBe(false);
-    expect(s.model).toBe('gemma-4-e4b');
+    expect(s.model).toBe('ternary-bonsai-8b-alt');
     expect(s.ramUsageMB).toBe(0);
   });
 
-  it('matches even when the adapter is configured with a tagged model name (E4B_MODEL=gemma-4-e4b:q4_k_m)', async () => {
+  it('matches even when the adapter is configured with a tagged model name (e.g. MODEL_NAME=ternary-bonsai-8b:q4_k_m)', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'gemma-4-e4b', size: 3 * 1024 * 1024 * 1024 }] }),
+      jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
     );
     const ad = new OllamaAdapter({
-      model: 'gemma-4-e4b:q4_k_m',
+      model: 'ternary-bonsai-8b:q4_k_m',
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     const s = await ad.status();
     expect(s.loaded).toBe(true);
-    expect(s.model).toBe('gemma-4-e4b');
+    expect(s.model).toBe('ternary-bonsai-8b');
   });
 
   it('matches the adapter model when an Ollama tag suffix is present', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({
         models: [
-          { name: 'gemma-4-e2b:latest', size: 1 * 1024 * 1024 * 1024 },
-          { name: 'gemma-4-e4b:q4_k_m', size: 3 * 1024 * 1024 * 1024 },
+          { name: 'ternary-bonsai-8b-alt:latest', size: 1 * 1024 * 1024 * 1024 },
+          { name: 'ternary-bonsai-8b:q4_k_m', size: 5 * 1024 * 1024 * 1024 },
         ],
       }),
     );
     const ad = new OllamaAdapter({
-      model: 'gemma-4-e4b',
+      model: 'ternary-bonsai-8b',
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     const s = await ad.status();
     expect(s.loaded).toBe(true);
-    expect(s.model).toBe('gemma-4-e4b:q4_k_m');
-    expect(s.ramUsageMB).toBeGreaterThanOrEqual(3000);
+    expect(s.model).toBe('ternary-bonsai-8b:q4_k_m');
+    expect(s.ramUsageMB).toBeGreaterThanOrEqual(5000);
   });
 });

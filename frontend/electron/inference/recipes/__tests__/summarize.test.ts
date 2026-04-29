@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { summarizeRecipe, preferredTierForThread } from '../summarize.js';
+import { summarizeRecipe } from '../summarize.js';
 import { InferenceRouter } from '../../router.js';
 import { MockAdapter } from '../../mock.js';
 
@@ -17,19 +17,12 @@ describe('summarize recipe', () => {
     expect(summarizeRecipe.id).toBe('summarize');
     expect(summarizeRecipe.name).toMatch(/summarize/i);
     expect(summarizeRecipe.taskType).toBe('summarize');
-    expect(summarizeRecipe.preferredTier).toBe('e2b');
-  });
-
-  it('routes short threads to e2b and long threads to e4b', () => {
-    expect(preferredTierForThread(3)).toBe('e2b');
-    expect(preferredTierForThread(30)).toBe('e4b');
+    expect(summarizeRecipe.preferredTier).toBe('local');
   });
 
   it('returns an ok result with prompt + sources for a normal thread', async () => {
     const adapter = new MockAdapter();
-    const router = new InferenceRouter(adapter, adapter, adapter, {
-      hasRealE4B: true,
-    });
+    const router = new InferenceRouter(adapter, adapter);
     const result = await summarizeRecipe.execute(router, {
       aiEmployeeId: 'ai_kara_ops',
       channelId: 'ch_general',
@@ -45,15 +38,13 @@ describe('summarize recipe', () => {
     expect(output.prompt).toMatch(/summarise/i);
     expect(output.sources).toHaveLength(3);
     expect(output.messageCount).toBe(3);
-    expect(result.tier).toBe('e2b');
+    expect(result.tier).toBe('local');
     expect(result.model).toBeTruthy();
   });
 
   it('handles empty threads gracefully without throwing', async () => {
     const adapter = new MockAdapter();
-    const router = new InferenceRouter(adapter, adapter, adapter, {
-      hasRealE4B: true,
-    });
+    const router = new InferenceRouter(adapter, adapter);
     const result = await summarizeRecipe.execute(router, {
       aiEmployeeId: 'ai_kara_ops',
       channelId: 'ch_general',

@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 # KChat SLM Demo — model setup.
 #
-# Pulls the Gemma 4 E2B / E4B base models from the Ollama library and
-# creates local aliases that match the app's defaults
-# (`gemma-4-e2b` / `gemma-4-e4b`). Honours `E2B_MODEL` / `E4B_MODEL`
-# overrides so the aliases can be renamed if you want the bootstrap to
-# pick a different name.
+# Pulls the Ternary-Bonsai-8B GGUF base model from HuggingFace (via
+# Ollama's `hf.co/<user>/<repo>` shorthand) and creates a local alias
+# that matches the app's default (`ternary-bonsai-8b`). Honours
+# `MODEL_NAME` so the alias can be renamed if you want the bootstrap
+# to pick a different name.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-E2B_ALIAS="${E2B_MODEL:-gemma-4-e2b}"
-E4B_ALIAS="${E4B_MODEL:-gemma-4-e4b}"
+MODEL_ALIAS="${MODEL_NAME:-ternary-bonsai-8b}"
 
 echo "=== KChat SLM Demo — Model Setup ==="
 echo ""
@@ -32,33 +31,34 @@ if ! ollama list >/dev/null 2>&1; then
   sleep 3
 fi
 
-# Extract the FROM tag from each Modelfile so this script stays in sync
-# automatically when the Modelfile is updated.
-e2b_base="$(grep -E '^FROM[[:space:]]+' "$REPO_ROOT/models/Modelfile.e2b" | awk '{print $2}')"
-e4b_base="$(grep -E '^FROM[[:space:]]+' "$REPO_ROOT/models/Modelfile.e4b" | awk '{print $2}')"
+MODELFILE="$REPO_ROOT/models/Modelfile.bonsai8b"
 
-if [[ -z "$e2b_base" || -z "$e4b_base" ]]; then
-  echo "ERROR: could not parse FROM line from Modelfile(s)" >&2
+# Extract the FROM tag from the Modelfile so this script stays in sync
+# automatically when the Modelfile is updated.
+base="$(grep -E '^FROM[[:space:]]+' "$MODELFILE" | awk '{print $2}')"
+
+if [[ -z "$base" ]]; then
+  echo "ERROR: could not parse FROM line from $MODELFILE" >&2
   exit 1
 fi
 
-echo "1/4  Pulling E2B base model: $e2b_base"
-# `ollama create` will pull the base on demand, but pulling explicitly
-# first gives the user a real progress bar.
-ollama pull "$e2b_base"
+# If the Modelfile points at a local GGUF file we skip the `ollama pull`
+# step — `ollama create` will package the file directly.
+if [[ "$base" == .* || "$base" == /* ]]; then
+  echo "1/2  Base model is a local GGUF path: $base (skipping pull)"
+else
+  echo "1/2  Pulling base model: $base"
+  # `ollama create` will pull the base on demand, but pulling explicitly
+  # first gives the user a real progress bar.
+  ollama pull "$base"
+fi
 
-echo "2/4  Pulling E4B base model: $e4b_base"
-ollama pull "$e4b_base"
-
-echo "3/4  Creating E2B alias: $E2B_ALIAS"
-ollama create "$E2B_ALIAS" -f "$REPO_ROOT/models/Modelfile.e2b"
-
-echo "4/4  Creating E4B alias: $E4B_ALIAS"
-ollama create "$E4B_ALIAS" -f "$REPO_ROOT/models/Modelfile.e4b"
+echo "2/2  Creating alias: $MODEL_ALIAS"
+ollama create "$MODEL_ALIAS" -f "$MODELFILE"
 
 echo ""
 echo "Done! Verify with: ollama list"
-echo "You should see both '$E2B_ALIAS' and '$E4B_ALIAS'."
+echo "You should see '$MODEL_ALIAS'."
 echo ""
 echo "Start the app:"
 echo "  cd frontend && npm run electron:dev"

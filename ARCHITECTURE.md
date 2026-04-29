@@ -25,13 +25,13 @@ Electron App
 │   └── Device Capability Inspector, Local Model Control Panel
 │       ↓ (IPC: window.electronAI.*)
 ├── Main Process (Node.js / TypeScript)
-│   ├── Inference Router (E2B / E4B decision tree)
+│   ├── Inference Router (local / server decision)
 │   ├── Ollama Adapter / Mock Adapter
 │   ├── Model lifecycle (load / unload / status)
 │   └── Privacy / policy engine
 │       ↓ (HTTP to local daemon)
 └── Ollama / llama.cpp (local sidecar)
-    └── Gemma 4 E2B / E4B GGUF
+    └── Ternary-Bonsai-8B GGUF (hf.co/prism-ml/Ternary-Bonsai-8B-gguf)
 
 Go Data API (optional, localhost:8080)
 ├── Chat / thread / message data
@@ -69,7 +69,7 @@ Meilisearch land in later phases.
 | 3 | `ThreadPanel` | Thread detail view, linked objects (tasks, approvals, artifacts). |
 | 4 | `ActionLauncher` | B2C quick actions; B2B Create / Analyze / Plan / Approve menu. |
 | 5 | `PrivacyStrip` | Compute mode, source count, and outbound egress preview. |
-| 6 | `ModelStatusBadge` | Active model (E2B / E4B / server), loaded state, battery. |
+| 6 | `ModelStatusBadge` | Active model (local / server), loaded state, battery. |
 | 7 | `KAppCardRenderer` | Renders Task / Approval / Form / Artifact / Sheet / Base cards. |
 | 8 | `ArtifactWorkspace` | PRD / RFC / proposal editor with citations and versions. |
 | 9 | `AIEmployeePanel` | B2B AI employee profile, queue, and channel assignments. Hosts `QueueView` (Phase 4) beneath an inline budget editor (Phase 4 close — "Edit budget" button, optimistic `PATCH /api/ai-employees/{id}/budget` save with rollback on error) and gates completed recipe runs through `RecipeOutputGate` (human Accept / Edit / Discard before any KApp write). |
@@ -123,7 +123,7 @@ frontend/
 │       ├── mock.ts                   (MockAdapter; canned outputs per TaskType)
 │       ├── ollama.ts                 (HTTP client for the local daemon, NDJSON streaming)
 │       ├── llamacpp.ts               (LlamaCppAdapter stub; throws "not yet implemented")
-│       ├── router.ts                 (PROPOSAL.md §2 scheduler — E2B / E4B / fallback)
+│       ├── router.ts                 (PROPOSAL.md §2 scheduler — local / server)
 │       ├── tasks.ts                  (smart-reply / translate / extract-tasks helpers)
 │       ├── secondBrain.ts            (Phase 2: family checklist, shopping nudges, RSVP extraction)
 │       ├── skill-framework.ts        (declarative SkillDefinition + runSkill executor + INSUFFICIENT refusal contract)
@@ -133,12 +133,12 @@ frontend/
 │       │   └── guardrail-rewrite.ts  (Phase 2: PII / tone / unverified-claim review + rewrite)
 │       ├── recipes/                  (Phase 4: AI-Employee-scoped wrappers around existing task helpers)
 │       │   ├── registry.ts           (RecipeDefinition + RECIPE_REGISTRY + register / get / list)
-│       │   ├── summarize.ts          (wraps buildThreadSummary; E2B short / E4B long via preferredTierForThread)
+│       │   ├── summarize.ts          (wraps buildThreadSummary; preferredTier: local)
 │       │   ├── extract-tasks.ts      (wraps runKAppsExtractTasks; source provenance + empty-thread refusal)
-│       │   ├── draft-prd.ts          (wraps buildDraftArtifact with artifactType='PRD'; E4B)
-│       │   ├── draft-proposal.ts     (wraps buildDraftArtifact with artifactType='Proposal'; E4B)
-│       │   ├── create-qbr.ts         (wraps buildDraftArtifact with artifactType='QBR'; E4B)
-│       │   ├── prefill-approval.ts   (wraps runPrefillApproval; flattens vendor/amount/risk/justification; E4B)
+│       │   ├── draft-prd.ts          (wraps buildDraftArtifact with artifactType='PRD'; local)
+│       │   ├── draft-proposal.ts     (wraps buildDraftArtifact with artifactType='Proposal'; local)
+│       │   ├── create-qbr.ts         (wraps buildDraftArtifact with artifactType='QBR'; local)
+│       │   ├── prefill-approval.ts   (wraps runPrefillApproval; flattens vendor/amount/risk/justification; local)
 │       │   └── index.ts              (barrel — side-effect registers all 6 canonical recipes)
 │       └── bootstrap.ts              (pings Ollama; chooses real vs. mock adapter set; instantiates SearchService)
 └── src/
@@ -192,7 +192,7 @@ model:
   skill refuses.
 - A `responseTemplate` (`format`, `requiredFields`, `maxItems`)
   that the parser must satisfy.
-- A `preferredTier` (`e2b` | `e4b`) and a `taskType` so the
+- A `preferredTier` (`local` | `server`) and a `taskType` so the
   router can pick the right adapter.
 
 `runSkill(router, def, ctx)` is the executor. It:
@@ -216,9 +216,9 @@ model:
 
 Phase 2 ships two skills on top of the framework:
 `skills/trip-planner.ts` (memory + `MockSearchService` →
-day-by-day itinerary, E4B preferred) and `skills/guardrail-rewrite.ts`
+day-by-day itinerary, on-device) and `skills/guardrail-rewrite.ts`
 (deterministic PII regex + SLM tone / unverified-claim review →
-optional rewrite, E2B). The existing `tasks.ts` and `secondBrain.ts`
+optional rewrite, on-device). The existing `tasks.ts` and `secondBrain.ts`
 helpers honour the same `INSUFFICIENT` contract so the renderer can
 treat refusals uniformly.
 
@@ -279,13 +279,13 @@ object.
 Phase 4 ships six canonical recipes, all self-registered through
 `recipes/index.ts`:
 
-- `summarize` — wraps `buildThreadSummary`; `preferredTierForThread`
-  picks E2B for ≤ 8 messages and E4B otherwise.
+- `summarize` — wraps `buildThreadSummary`; advertises
+  `preferredTier: 'local'`.
 - `extract_tasks` — wraps `runKAppsExtractTasks`, preserves per-task
   source provenance through `sourceMessageId`, and returns a
   `refused` envelope for empty threads rather than throwing.
 - `draft_prd` — wraps `buildDraftArtifact({ artifactType: 'PRD' })`
-  with `preferredTier: 'e4b'`; returns `{ prompt, sources,
+  with `preferredTier: 'local'`; returns `{ prompt, sources,
   threadId, channelId }` so the renderer streams the body via
   `ai:stream`.
 - `draft_proposal` — same shape as `draft_prd` with
@@ -294,7 +294,7 @@ Phase 4 ships six canonical recipes, all self-registered through
   `artifactType: 'QBR'`; surfaces the wins / gaps / asks /
   next-quarter prompt.
 - `prefill_approval` — wraps `runPrefillApproval`, advertises
-  `preferredTier: 'e4b'`, and flattens the parsed
+  `preferredTier: 'local'`, and flattens the parsed
   `{ vendor, amount, risk, justification, sourceMessageIds }` fields
   into `RecipeResult.output` so the renderer can pin every field to
   the messages that justified it before a human confirms.
@@ -387,7 +387,7 @@ backend/
 > `frontend/electron/inference/router.ts`. The Electron main process
 > auto-detects an Ollama daemon on `OLLAMA_BASE_URL` (default
 > `http://localhost:11434`) on startup (`bootstrap.ts`); when it's
-> reachable the router wires Ollama as the E2B and E4B adapter,
+> reachable the router wires a single Ollama adapter as the on-device tier,
 > otherwise it falls back to the mock. The IPC `ai:route` channel
 > reflects the router's real decision (model, tier, reason); the
 > `ai:stream` channel emits real chunk events; `model:status`,
@@ -470,20 +470,20 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:run`               | `run(req)`                                | `InferenceRouter.run()`   |
 | `ai:stream`            | `stream(req, onChunk, onDone)`            | `InferenceRouter.stream()`; per-chunk `ai:stream:chunk:{id}` events |
 | `ai:route`             | `route(req)`                              | `InferenceRouter.decide()` (no inference) |
-| `ai:smart-reply`       | `smartReply(req)`                         | `runSmartReply` in `tasks.ts` (`taskType: smart_reply`, E2B) |
-| `ai:translate`         | `translate(req)`                          | `runTranslate` (`taskType: translate`, E2B) |
-| `ai:extract-tasks`     | `extractTasks(req)`                       | `runExtractTasks` (`taskType: extract_tasks`, E2B) |
-| `ai:summarize-thread`  | `summarizeThread(req)`                    | `buildThreadSummary` (E2B for short threads, E4B for long) |
-| `ai:unread-summary`    | `unreadSummary(req)`                      | `buildUnreadSummary` (`taskType: summarize`, E2B) |
+| `ai:smart-reply`       | `smartReply(req)`                         | `runSmartReply` in `tasks.ts` (`taskType: smart_reply`) |
+| `ai:translate`         | `translate(req)`                          | `runTranslate` (`taskType: translate`) |
+| `ai:extract-tasks`     | `extractTasks(req)`                       | `runExtractTasks` (`taskType: extract_tasks`) |
+| `ai:summarize-thread`  | `summarizeThread(req)`                    | `buildThreadSummary` (on-device Ternary-Bonsai-8B) |
+| `ai:unread-summary`    | `unreadSummary(req)`                      | `buildUnreadSummary` (`taskType: summarize`) |
 | `ai:kapps-extract`     | `extractKAppTasks(req)`                   | `runKAppsExtractTasks` (B2B thread → tasks with provenance) |
-| `ai:prefill-approval`  | `prefillApproval(req)`                    | `runPrefillApproval` (B2B thread → vendor / amount / risk / justification fields, prefers E4B) |
-| `ai:prefill-form`      | `prefillForm(req)`                        | `runPrefillForm` (B2B thread → arbitrary intake form fields per template, prefers E4B) |
-| `ai:draft-artifact`    | `draftArtifact(req)`                      | `buildDraftArtifact` (B2B thread → prompt + sources for streaming a PRD / RFC / Proposal / SOP / QBR section, prefers E4B) |
-| `ai:family-checklist`  | `familyChecklist(req)`                    | `runFamilyChecklist` in `secondBrain.ts` (B2C family chat → titled checklist with optional event focus, E2B) |
-| `ai:shopping-nudges`   | `shoppingNudges(req)`                     | `runShoppingNudges` (B2C family chat + local shopping list → grounded item / reason pairs that dedupe against the existing list, E2B) |
-| `ai:event-rsvp`        | `eventRSVP(req)`                          | `runEventRSVP` (B2C community chat → up to 4 events with title / when / location / RSVP-by, E2B) |
-| `ai:trip-plan`         | `tripPlan(req)`                           | `runTripPlanner` in `skills/trip-planner.ts` — pulls weather / events / attractions from `MockSearchService`, reads `location` / `member` / `community-detail` AI Memory facts, and returns a structured day-by-day itinerary with per-item source attribution (E4B preferred). |
-| `ai:guardrail-check`   | `guardrailCheck(req)`                     | `runGuardrailRewrite` in `skills/guardrail-rewrite.ts` — combines a deterministic PII regex pre-pass with an SLM tone / unverified-claim review and returns `{ safe, findings, rewrite?, rationale }` (E2B). |
+| `ai:prefill-approval`  | `prefillApproval(req)`                    | `runPrefillApproval` (B2B thread → vendor / amount / risk / justification fields) |
+| `ai:prefill-form`      | `prefillForm(req)`                        | `runPrefillForm` (B2B thread → arbitrary intake form fields per template) |
+| `ai:draft-artifact`    | `draftArtifact(req)`                      | `buildDraftArtifact` (B2B thread → prompt + sources for streaming a PRD / RFC / Proposal / SOP / QBR section) |
+| `ai:family-checklist`  | `familyChecklist(req)`                    | `runFamilyChecklist` in `secondBrain.ts` (B2C family chat → titled checklist with optional event focus) |
+| `ai:shopping-nudges`   | `shoppingNudges(req)`                     | `runShoppingNudges` (B2C family chat + local shopping list → grounded item / reason pairs that dedupe against the existing list) |
+| `ai:event-rsvp`        | `eventRSVP(req)`                          | `runEventRSVP` (B2C community chat → up to 4 events with title / when / location / RSVP-by) |
+| `ai:trip-plan`         | `tripPlan(req)`                           | `runTripPlanner` in `skills/trip-planner.ts` — pulls weather / events / attractions from `MockSearchService`, reads `location` / `member` / `community-detail` AI Memory facts, and returns a structured day-by-day itinerary with per-item source attribution (on-device). |
+| `ai:guardrail-check`   | `guardrailCheck(req)`                     | `runGuardrailRewrite` in `skills/guardrail-rewrite.ts` — combines a deterministic PII regex pre-pass with an SLM tone / unverified-claim review and returns `{ safe, findings, rewrite?, rationale }` (on-device). |
 | `ai:recipe:run`        | `recipeRun(req)` (Phase 4)                | `runRecipe` in `electron/ipc-handlers.ts` — generic AI-Employee recipe dispatcher. Takes `{ recipeId, aiEmployeeId, channelId, threadId?, messages, allowedRecipes? }`, looks the recipe up in `RECIPE_REGISTRY` (`electron/inference/recipes/`), refuses when the AI Employee is not authorised for the recipe, and returns a uniform `RecipeResult` (`status: 'ok' | 'refused'`, `output`, `model`, `tier`, `reason`). Canonical recipes registered today: `summarize`, `extract_tasks`. |
 | `model:status`         | `modelStatus()`                           | `OllamaAdapter.status()` (or stub when Ollama is offline) |
 | `model:load`           | `loadModel(name)`                         | `OllamaAdapter.load()` |
@@ -544,47 +544,40 @@ Electron Main Process (Node.js / TypeScript)
    └── MockAdapter       (frontend/electron/inference/mock.ts)
    ↓  HTTP (localhost:11434)
 Ollama / llama.cpp (local sidecar)
-   └── Gemma 4 E2B / E4B GGUF
+   └── Ternary-Bonsai-8B GGUF (hf.co/prism-ml/Ternary-Bonsai-8B-gguf)
 ```
 
 Phase 1 implements this diagram with `OllamaAdapter` (TypeScript)
 talking to a local Ollama daemon at `OLLAMA_BASE_URL` (default
 `http://localhost:11434`). The Electron main process boots the
 `InferenceRouter` in `bootstrap.ts`, which pings Ollama with a 500 ms
-timeout; if reachable it instantiates **two distinct `OllamaAdapter`
-instances** — one bound to `E2B_MODEL` (default `gemma-4-e2b`) and one
-bound to `E4B_MODEL` (default `gemma-4-e4b`). The default names are
-*aliases*: the repo ships `models/Modelfile.e2b` and `models/Modelfile.e4b`
-that wrap the upstream Gemma 4 base models published by Google to the
-Ollama library (`gemma4:e2b` / `gemma4:e4b`, verified against
-[ollama.com/library/gemma4/tags](https://ollama.com/library/gemma4/tags)
-on 2026-04-29) with the demo's preferred temperature / top_p / context
-length / system prompt. `scripts/setup-models.sh` automates the pull +
-alias creation. Bootstrap pings each model independently; if the larger
-E4B model has not been pulled it aliases the E4B slot to the E2B
-adapter and the router's `hasE4B()` returns `false`, so reasoning-heavy
-tasks gracefully fall back to E2B without ever hitting an unloaded
-model. When the daemon itself is unreachable both adapters fall back
-to `MockAdapter`. The
-`model:status` IPC channel reports both tiers (`e2bModel`, `e2bLoaded`,
-`e4bModel`, `e4bLoaded`, `hasE4B`) so the renderer's
-`DeviceCapabilityPanel` can display them side-by-side.
+timeout; if reachable it instantiates **a single `OllamaAdapter`** bound
+to `MODEL_NAME` (default `ternary-bonsai-8b`). The default name is an
+*alias*: the repo ships a single `models/Modelfile.bonsai8b` that wraps
+the upstream Ternary-Bonsai-8B GGUF model published by prism-ml to
+HuggingFace
+([`hf.co/prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf))
+with the demo's preferred temperature / top_p / context length / system
+prompt. `scripts/setup-models.sh` automates the pull + alias creation.
+When the daemon is unreachable the adapter falls back to `MockAdapter`.
+The `model:status` IPC channel reports `model` / `loaded` /
+`ramUsageMB` so the renderer's `DeviceCapabilityPanel` can display the
+on-device status.
 
-The router applies the PROPOSAL.md §2 scheduler rule: short / private /
-latency-sensitive tasks (`summarize`, `translate`, `extract_tasks`,
-`smart_reply`) route to E2B; reasoning-heavy tasks (`draft_artifact`,
-`prefill_approval`) prefer E4B with a documented fallback to E2B. The
-router records its decision (model, tier, reason) and exposes it via
-`window.electronAI.route()` so the privacy strip can show *why* a
-model was chosen.
+The router only distinguishes two destinations: `local` (the on-device
+Ternary-Bonsai-8B adapter) and `server` (the Phase 6 confidential
+server tier, gated on explicit policy). Every non-server request goes
+to the single local adapter. The router records its decision (model,
+tier, reason) and exposes it via `window.electronAI.route()` so the
+privacy strip can show *why* a model was chosen.
 
 This is the most reliable path and the one the demo defaults to. The
 model runs locally via a sidecar process; the renderer never touches
 the daemon directly — every AI call goes through the main process,
 which is the single integration point for swapping in `llama.cpp`,
 Unsloth Studio, or a confidential server runtime in later phases.
-Works on any laptop with enough RAM for E2B/E4B and does not depend
-on browser GPU support.
+Works on any laptop with enough RAM for an 8B GGUF model and does not
+depend on browser GPU support.
 
 ### 4.1b Confidential server tier (Phase 6)
 
@@ -627,8 +620,9 @@ sub-section behind that flag.
 
 ### 4.2 Browser-local path (future)
 
-WebGPU inference where supported. Gemma 4 is designed for browser deployment, so
-running E2B directly in the page is a capability target. It is not a main demo
+WebGPU inference where supported. Ternary-Bonsai-8B's GGUF format is
+already browser-shippable via llama.cpp's WebGPU backend, so running it
+directly in the page is a capability target. It is not a main demo
 dependency — the sidecar path stays primary because availability and performance
 are too uneven across browsers and devices today.
 
@@ -639,7 +633,10 @@ are too uneven across browsers and devices today.
 - **Phase 2** — React Native or native Android app, still talking to the Go
   backend; on-device inference via a bundled llama.cpp build.
 - **Phase 3** — Android AICore / ML Kit GenAI Prompt API for direct on-device
-  E2B / E4B with no sidecar, using the system-managed model.
+  inference with no sidecar, using the system-managed model. The same
+  two-tier routing contract carries over — Ternary-Bonsai-8B stays the
+  default model for both slots until a dedicated mobile-class model is
+  available.
 
 ---
 
@@ -666,7 +663,7 @@ to run it, what to redact, and which sources are allowed. It is invoked by
   },
   "source_sensitivity": "public | internal | confidential | restricted",
   "allowed_compute": ["on_device", "confidential_server", "shared_server"],
-  "preferred_model": "gemma-4-e2b | gemma-4-e4b | server-large"
+  "preferred_model": "ternary-bonsai-8b | server-large"
 }
 ```
 
@@ -675,7 +672,7 @@ to run it, what to redact, and which sources are allowed. It is invoked by
 ```json
 {
   "decision": "allow | deny | downgrade",
-  "model": "gemma-4-e2b | gemma-4-e4b | server-large",
+  "model": "ternary-bonsai-8b | server-large",
   "quant": "q4_k_m | q5_k_m | q8_0 | fp16",
   "redaction_required": true,
   "data_egress_bytes": 0,

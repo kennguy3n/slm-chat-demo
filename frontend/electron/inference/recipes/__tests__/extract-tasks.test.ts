@@ -8,14 +8,12 @@ describe('extract_tasks recipe', () => {
     expect(extractTasksRecipe.id).toBe('extract_tasks');
     expect(extractTasksRecipe.name).toMatch(/extract/i);
     expect(extractTasksRecipe.taskType).toBe('extract_tasks');
-    expect(extractTasksRecipe.preferredTier).toBe('e2b');
+    expect(extractTasksRecipe.preferredTier).toBe('local');
   });
 
   it('returns extracted tasks with source provenance for a normal thread', async () => {
     const adapter = new MockAdapter();
-    const router = new InferenceRouter(adapter, adapter, adapter, {
-      hasRealE4B: true,
-    });
+    const router = new InferenceRouter(adapter, adapter);
     const messages = [
       {
         id: 'm_1',
@@ -56,9 +54,7 @@ describe('extract_tasks recipe', () => {
 
   it('refuses gracefully when the thread has no messages', async () => {
     const adapter = new MockAdapter();
-    const router = new InferenceRouter(adapter, adapter, adapter, {
-      hasRealE4B: true,
-    });
+    const router = new InferenceRouter(adapter, adapter);
     const result = await extractTasksRecipe.execute(router, {
       aiEmployeeId: 'ai_kara_ops',
       channelId: 'ch_general',

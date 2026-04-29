@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InferenceRouter, taskPreference } from './router.js';
+import { InferenceRouter } from './router.js';
 import { MockAdapter } from './mock.js';
 import type {
   Adapter,
@@ -32,142 +32,94 @@ class StubAdapter implements Adapter {
   }
 }
 
-describe('taskPreference', () => {
-  it('routes reasoning-heavy tasks (draft_artifact, prefill_approval, prefill_form) to e4b', () => {
-    expect(taskPreference('draft_artifact')).toBe('e4b');
-    expect(taskPreference('prefill_approval')).toBe('e4b');
-    expect(taskPreference('prefill_form')).toBe('e4b');
-  });
-
-  it('routes the rest to e2b', () => {
-    expect(taskPreference('summarize')).toBe('e2b');
-    expect(taskPreference('translate')).toBe('e2b');
-    expect(taskPreference('extract_tasks')).toBe('e2b');
-    expect(taskPreference('smart_reply')).toBe('e2b');
-  });
-});
-
 describe('InferenceRouter', () => {
-  it('dispatches short tasks to E2B', async () => {
-    const e2b = new StubAdapter('e2b-stub');
-    const e4b = new StubAdapter('e4b-stub');
-    const router = new InferenceRouter(e2b, e4b, new MockAdapter());
+  it('dispatches every request to the single local adapter', async () => {
+    const local = new StubAdapter('local-stub');
+    const router = new InferenceRouter(local, new MockAdapter());
 
     const resp = await router.run({ taskType: 'smart_reply', prompt: 'hi' });
-    expect(e2b.lastReq?.prompt).toBe('hi');
-    expect(e4b.lastReq).toBeNull();
-    expect(resp.output).toBe('e2b-stub-out');
+    expect(local.lastReq?.prompt).toBe('hi');
+    expect(resp.output).toBe('local-stub-out');
 
     const dec = router.lastDecision();
-    expect(dec.tier).toBe('e2b');
+    expect(dec.tier).toBe('local');
     expect(dec.allow).toBe(true);
-    expect(dec.reason).toContain('E2B');
+    expect(dec.reason.toLowerCase()).toContain('on-device');
   });
 
-  it('dispatches reasoning-heavy tasks to E4B', async () => {
-    const e2b = new StubAdapter('e2b-stub');
-    const e4b = new StubAdapter('e4b-stub');
-    const router = new InferenceRouter(e2b, e4b, null);
+  it('dispatches reasoning-heavy tasks to the same local adapter', async () => {
+    const local = new StubAdapter('local-stub');
+    const router = new InferenceRouter(local, null);
 
     await router.run({ taskType: 'draft_artifact', prompt: 'spec' });
-    expect(e4b.lastReq?.prompt).toBe('spec');
+    expect(local.lastReq?.prompt).toBe('spec');
     const dec = router.lastDecision();
-    expect(dec.tier).toBe('e4b');
-    expect(dec.reason).toContain('E4B');
+    expect(dec.tier).toBe('local');
   });
 
-  it('falls back from E4B to E2B when no E4B adapter exists', async () => {
-    const e2b = new StubAdapter('e2b-stub');
-    const router = new InferenceRouter(e2b, null, null);
-
-    await router.run({ taskType: 'draft_artifact', prompt: 'spec' });
-    expect(e2b.lastReq).not.toBeNull();
-    const dec = router.lastDecision();
-    expect(dec.tier).toBe('e2b');
-    expect(dec.reason).toContain('fallback');
-  });
-
-  it('falls through to the mock adapter when no real adapter is wired', async () => {
-    const router = new InferenceRouter(null, null, new MockAdapter());
+  it('falls through to the mock adapter when no local adapter is wired', async () => {
+    const router = new InferenceRouter(null, new MockAdapter());
 
     const resp = await router.run({ taskType: 'summarize', prompt: 'x' });
     expect(resp.onDevice).toBe(true);
     expect(router.lastDecision().reason.toLowerCase()).toContain('fallback');
   });
 
-  it('respects an explicit model name override (E4B forced)', async () => {
-    const e2b = new StubAdapter('e2b-stub');
-    const e4b = new StubAdapter('e4b-stub');
-    const router = new InferenceRouter(e2b, e4b, null);
+  it('respects an explicit model name override', async () => {
+    const local = new StubAdapter('local-stub');
+    const router = new InferenceRouter(local, null);
 
-    await router.run({ taskType: 'smart_reply', prompt: 'x', model: 'gemma-4-e4b' });
-    expect(e4b.lastReq?.model).toBe('gemma-4-e4b');
-    expect(e2b.lastReq).toBeNull();
+    await router.run({
+      taskType: 'smart_reply',
+      prompt: 'x',
+      model: 'custom-model',
+    });
+    expect(local.lastReq?.model).toBe('custom-model');
   });
 
-  it('streams via the picked adapter', async () => {
-    const e2b = new StubAdapter('e2b-stub');
-    const router = new InferenceRouter(e2b, null, null);
+  it('streams via the local adapter', async () => {
+    const local = new StubAdapter('local-stub');
+    const router = new InferenceRouter(local, null);
 
     const chunks: StreamChunk[] = [];
     for await (const c of router.stream({ taskType: 'translate', prompt: 'hola' })) {
       chunks.push(c);
     }
     expect(chunks.length).toBe(2);
-    expect(chunks[0]?.delta).toBe('e2b-stub-chunk');
+    expect(chunks[0]?.delta).toBe('local-stub-chunk');
     expect(chunks[1]?.done).toBe(true);
   });
 
   it('rejects when no adapter is available at all', async () => {
-    const router = new InferenceRouter(null, null, null);
+    const router = new InferenceRouter(null, null);
     await expect(router.run({ taskType: 'summarize', prompt: 'x' })).rejects.toThrow(
       /no inference adapter/,
     );
   });
 
-  // Phase 3 (E4B routing completion) — tests for the hasE4B() flag and
-  // for the aliased-E4B fallback path.
-
-  it('hasE4B is true when a real E4B adapter is wired', () => {
-    const e2b = new StubAdapter('e2b-stub');
-    const e4b = new StubAdapter('e4b-stub');
-    const router = new InferenceRouter(e2b, e4b, null, { hasRealE4B: true });
-    expect(router.hasE4B()).toBe(true);
+  it('respects defaultModel override in decide()', () => {
+    const local = new StubAdapter('local-stub');
+    const router = new InferenceRouter(local, null, {
+      defaultModel: 'custom-local',
+    });
+    const dec = router.decide({ taskType: 'smart_reply', prompt: 'hi' });
+    expect(dec.tier).toBe('local');
+    expect(dec.model).toBe('custom-local');
   });
 
-  it('hasE4B is false when the e4b slot is aliased to the e2b adapter', () => {
-    const e2b = new StubAdapter('e2b-stub');
-    const router = new InferenceRouter(e2b, e2b, null, { hasRealE4B: false });
-    expect(router.hasE4B()).toBe(false);
-  });
-
-  it('reports E2B fallback in decide() when E4B is aliased to E2B', async () => {
-    const e2b = new StubAdapter('e2b-stub');
-    const router = new InferenceRouter(e2b, e2b, null, { hasRealE4B: false });
-    const dec = router.decide({ taskType: 'draft_artifact', prompt: 'spec' });
-    expect(dec.allow).toBe(true);
-    expect(dec.tier).toBe('e2b');
-    expect(dec.model).toBe('gemma-4-e2b');
-    expect(dec.reason).toMatch(/fallback to E2B/i);
-  });
-
-  it('routes draft_artifact to the real E4B adapter when one is wired', async () => {
-    const e2b = new StubAdapter('e2b-stub');
-    const e4b = new StubAdapter('e4b-stub');
-    const router = new InferenceRouter(e2b, e4b, null, { hasRealE4B: true });
-    const resp = await router.run({ taskType: 'draft_artifact', prompt: 'spec' });
-    expect(e4b.lastReq?.prompt).toBe('spec');
-    expect(e2b.lastReq).toBeNull();
-    expect(resp.model).toBe('gemma-4-e4b');
-    const dec = router.lastDecision();
-    expect(dec.tier).toBe('e4b');
-    expect(dec.reason).toContain('E4B');
+  it('passes the configured default through to the adapter on run()', async () => {
+    const local = new StubAdapter('local-stub');
+    const router = new InferenceRouter(local, null, {
+      defaultModel: 'ternary-bonsai-8b-alt',
+    });
+    await router.run({ taskType: 'draft_artifact', prompt: 'spec' });
+    expect(local.lastReq?.model).toBe('ternary-bonsai-8b-alt');
   });
 
   describe('confidential server tier', () => {
     it('refuses server-bound requests when no server adapter is wired', () => {
-      const e2b = new StubAdapter('e2b-stub');
-      const router = new InferenceRouter(e2b, e2b, null, { hasRealE4B: false });
+      const local = new StubAdapter('local-stub');
+      const router = new InferenceRouter(local, null);
       expect(router.hasServer()).toBe(false);
       const dec = router.decide({ taskType: 'summarize', tier: 'server' });
       expect(dec.allow).toBe(false);
@@ -175,9 +127,9 @@ describe('InferenceRouter', () => {
     });
 
     it('refuses server-bound requests when policy denies even if adapter is wired', () => {
-      const e2b = new StubAdapter('e2b-stub');
+      const local = new StubAdapter('local-stub');
       const server = new StubAdapter('server-stub');
-      const router = new InferenceRouter(e2b, e2b, null, { hasRealE4B: false });
+      const router = new InferenceRouter(local, null);
       router.attachServer(server, { policyAllows: false });
       expect(router.hasServer()).toBe(false);
       const dec = router.decide({ taskType: 'summarize', tier: 'server' });
@@ -186,10 +138,9 @@ describe('InferenceRouter', () => {
     });
 
     it('routes server-bound requests when adapter wired AND policy allows', async () => {
-      const e2b = new StubAdapter('e2b-stub');
+      const local = new StubAdapter('local-stub');
       const server = new StubAdapter('server-stub');
-      const router = new InferenceRouter(e2b, e2b, null, {
-        hasRealE4B: false,
+      const router = new InferenceRouter(local, null, {
         policyAllowsServer: true,
         defaultServerModel: 'confidential-large',
       });
@@ -217,8 +168,7 @@ describe('InferenceRouter', () => {
           onDevice: false,
         };
       };
-      const router = new InferenceRouter(null, null, null, {
-        hasRealE4B: false,
+      const router = new InferenceRouter(null, null, {
         policyAllowsServer: true,
       });
       router.attachServer(server, { policyAllows: true });
@@ -242,8 +192,7 @@ describe('InferenceRouter', () => {
       const { EgressTracker } = await import('./egress-tracker.js');
       const tracker = new EgressTracker();
       const server = new StubAdapter('server-stub');
-      const router = new InferenceRouter(null, null, null, {
-        hasRealE4B: false,
+      const router = new InferenceRouter(null, null, {
         policyAllowsServer: true,
         egressTracker: tracker,
       });
@@ -262,16 +211,15 @@ describe('InferenceRouter', () => {
     });
 
     it('falls through to local tier when request does not request server', () => {
-      const e2b = new StubAdapter('e2b-stub');
+      const local = new StubAdapter('local-stub');
       const server = new StubAdapter('server-stub');
-      const router = new InferenceRouter(e2b, e2b, null, {
-        hasRealE4B: false,
+      const router = new InferenceRouter(local, null, {
         policyAllowsServer: true,
       });
       router.attachServer(server, { policyAllows: true });
       const dec = router.decide({ taskType: 'summarize', prompt: 'hello' });
       expect(dec.allow).toBe(true);
-      expect(dec.tier).toBe('e2b');
+      expect(dec.tier).toBe('local');
     });
   });
 });

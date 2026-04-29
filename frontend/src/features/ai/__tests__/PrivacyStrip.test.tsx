@@ -7,7 +7,7 @@ import type { PrivacyStripData } from '../../../types/ai';
 
 const data: PrivacyStripData = {
   computeLocation: 'on_device',
-  modelName: 'gemma-4-e2b',
+  modelName: 'ternary-bonsai-8b',
   sources: [
     { kind: 'thread', id: 'msg_eng_root', label: 'Engineering thread' },
     { kind: 'message', id: 'msg_eng_2', label: 'Reply from Bob' },
@@ -25,7 +25,7 @@ describe('PrivacyStrip', () => {
     // 1. compute location
     expect(screen.getByTestId('privacy-compute')).toHaveTextContent('On-device');
     // 2. model name
-    expect(screen.getByTestId('privacy-model')).toHaveTextContent('gemma-4-e2b');
+    expect(screen.getByTestId('privacy-model')).toHaveTextContent('ternary-bonsai-8b');
     // 3. sources used
     const sources = screen.getByTestId('privacy-sources');
     expect(sources).toHaveTextContent('Engineering thread');

@@ -8,14 +8,12 @@ describe('draft_proposal recipe', () => {
     expect(draftProposalRecipe.id).toBe('draft_proposal');
     expect(draftProposalRecipe.name).toMatch(/proposal/i);
     expect(draftProposalRecipe.taskType).toBe('draft_artifact');
-    expect(draftProposalRecipe.preferredTier).toBe('e4b');
+    expect(draftProposalRecipe.preferredTier).toBe('local');
   });
 
   it('returns an ok result with prompt + sources for a normal thread', async () => {
     const adapter = new MockAdapter();
-    const router = new InferenceRouter(adapter, adapter, adapter, {
-      hasRealE4B: true,
-    });
+    const router = new InferenceRouter(adapter, adapter);
     const messages = [
       {
         id: 'm_1',
@@ -52,9 +50,7 @@ describe('draft_proposal recipe', () => {
 
   it('refuses gracefully when the thread has no messages', async () => {
     const adapter = new MockAdapter();
-    const router = new InferenceRouter(adapter, adapter, adapter, {
-      hasRealE4B: true,
-    });
+    const router = new InferenceRouter(adapter, adapter);
     const result = await draftProposalRecipe.execute(router, {
       aiEmployeeId: 'ai_mika_drafts',
       channelId: 'ch_sales',

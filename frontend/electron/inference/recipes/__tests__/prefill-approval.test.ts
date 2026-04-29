@@ -8,14 +8,12 @@ describe('prefill_approval recipe', () => {
     expect(prefillApprovalRecipe.id).toBe('prefill_approval');
     expect(prefillApprovalRecipe.name).toMatch(/approval/i);
     expect(prefillApprovalRecipe.taskType).toBe('prefill_approval');
-    expect(prefillApprovalRecipe.preferredTier).toBe('e4b');
+    expect(prefillApprovalRecipe.preferredTier).toBe('local');
   });
 
   it('returns an ok result with prefilled fields for a normal thread', async () => {
     const adapter = new MockAdapter();
-    const router = new InferenceRouter(adapter, adapter, adapter, {
-      hasRealE4B: true,
-    });
+    const router = new InferenceRouter(adapter, adapter);
     const messages = [
       {
         id: 'm_1',
@@ -60,9 +58,7 @@ describe('prefill_approval recipe', () => {
 
   it('refuses gracefully when the thread has no messages', async () => {
     const adapter = new MockAdapter();
-    const router = new InferenceRouter(adapter, adapter, adapter, {
-      hasRealE4B: true,
-    });
+    const router = new InferenceRouter(adapter, adapter);
     const result = await prefillApprovalRecipe.execute(router, {
       aiEmployeeId: 'ai_kara_ops',
       channelId: 'ch_ops',

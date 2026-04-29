@@ -11,7 +11,7 @@ import type {
 
 class CannedAdapter implements Adapter {
   public lastReq: InferenceRequest | null = null;
-  constructor(public output: string, public modelLabel = 'gemma-4-e4b') {}
+  constructor(public output: string, public modelLabel = 'ternary-bonsai-8b') {}
   name() {
     return 'canned';
   }
@@ -67,7 +67,7 @@ describe('tripPlannerSkill registry contract', () => {
 describe('runTripPlanner', () => {
   it('returns a structured itinerary with on-device privacy metadata', async () => {
     const adapter = new CannedAdapter(SAMPLE_OUTPUT);
-    const router = new InferenceRouter(adapter, adapter, null);
+    const router = new InferenceRouter(adapter, null);
     const search = new MockSearchService();
     const exec = await runTripPlanner(router, search, {
       input: {
@@ -90,7 +90,7 @@ describe('runTripPlanner', () => {
     expect(it.summary).toContain('Three-day');
     expect(exec.result.privacy.computeLocation).toBe('on_device');
     expect(exec.result.privacy.dataEgressBytes).toBe(0);
-    expect(exec.result.privacy.tier === 'e2b' || exec.result.privacy.tier === 'e4b').toBe(true);
+    expect(exec.result.privacy.tier).toBe('local');
     // Prompt carries the AI Memory facts and search results.
     expect(adapter.lastReq?.prompt).toContain('Austin, TX');
     expect(adapter.lastReq?.prompt).toContain('Senso-ji');
@@ -98,7 +98,7 @@ describe('runTripPlanner', () => {
 
   it('refuses when the destination is missing', async () => {
     const adapter = new CannedAdapter('should not run');
-    const router = new InferenceRouter(adapter, adapter, null);
+    const router = new InferenceRouter(adapter, null);
     const search = new MockSearchService();
     const exec = await runTripPlanner(router, search, {
       input: { destination: '', duration: 3, memoryFacts: [] },
@@ -111,7 +111,7 @@ describe('runTripPlanner', () => {
 
   it('refuses when the duration is missing', async () => {
     const adapter = new CannedAdapter('should not run');
-    const router = new InferenceRouter(adapter, adapter, null);
+    const router = new InferenceRouter(adapter, null);
     const search = new MockSearchService();
     const exec = await runTripPlanner(router, search, {
       input: { destination: 'Tokyo', duration: 0, memoryFacts: [] },
@@ -123,7 +123,7 @@ describe('runTripPlanner', () => {
 
   it('refuses when the search service returns no data', async () => {
     const adapter = new CannedAdapter(SAMPLE_OUTPUT);
-    const router = new InferenceRouter(adapter, adapter, null);
+    const router = new InferenceRouter(adapter, null);
     const search = new EmptySearchService();
     const exec = await runTripPlanner(router, search, {
       input: { destination: 'Atlantis', duration: 2, memoryFacts: [] },
@@ -136,7 +136,7 @@ describe('runTripPlanner', () => {
 
   it('honours an INSUFFICIENT response from the model', async () => {
     const adapter = new CannedAdapter('INSUFFICIENT: chat context is too sparse');
-    const router = new InferenceRouter(adapter, adapter, null);
+    const router = new InferenceRouter(adapter, null);
     const search = new MockSearchService();
     const exec = await runTripPlanner(router, search, {
       input: { destination: 'Tokyo', duration: 3, memoryFacts: [] },
@@ -174,7 +174,7 @@ describe('runTripPlanner', () => {
     const adapter = new CannedAdapter(
       'Day 1: Visit Test Park | sunny day | [Attraction: Test Park]\nSummary: One day demo trip.',
     );
-    const router = new InferenceRouter(adapter, adapter, null);
+    const router = new InferenceRouter(adapter, null);
     const exec = await runTripPlanner(router, tracking, {
       input: { destination: 'Demo City', duration: 1, memoryFacts: [] },
     });

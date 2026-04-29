@@ -19,7 +19,7 @@ const sample: TranslateResponse = {
   original: 'Field trip form due Friday',
   translated: 'Formulario de excursión vence el viernes',
   targetLanguage: 'es',
-  model: 'gemma-4-e2b',
+  model: 'ternary-bonsai-8b',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
 };

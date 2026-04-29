@@ -1,0 +1,27 @@
+# Ollama Modelfile for Ternary-Bonsai-8B — the single on-device model
+# used by the KChat SLM demo. Creates a local alias
+# `ternary-bonsai-8b` matching the app's default `MODEL_NAME` (the
+# bootstrap wires exactly one on-device adapter; there is no separate
+# tier split).
+#
+# Source: https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf
+#
+# Ollama supports the `hf.co/<user>/<repo>` shorthand for HuggingFace
+# GGUF repositories. If `ollama pull hf.co/prism-ml/Ternary-Bonsai-8B-gguf`
+# fails on older Ollama builds, `scripts/setup-models.sh` falls back to
+# downloading the GGUF file directly and referencing it via a local
+# `FROM ./<file>.gguf` path.
+#
+# Usage:
+#   ./scripts/setup-models.sh
+# or, manually:
+#   ollama pull hf.co/prism-ml/Ternary-Bonsai-8B-gguf
+#   ollama create ternary-bonsai-8b -f models/Modelfile.bonsai8b
+
+FROM hf.co/prism-ml/Ternary-Bonsai-8B-gguf
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER num_ctx 8192
+
+SYSTEM """You are a helpful AI assistant inside KChat. You run on-device for privacy. Keep responses concise and actionable."""

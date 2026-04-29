@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bootstrapInference } from './bootstrap.js';
 
 // makeFetch returns a fake fetch that handles the two endpoints the
-// bootstrap probes: GET /api/tags (used by ping + listModels) and
-// POST /api/generate (the run endpoint, not exercised here). Tests
-// inject different ping outcomes / tag lists to drive bootstrap
-// branches.
+// bootstrap probes: GET /api/tags (the ping) and POST /api/generate
+// (the run endpoint, not exercised here). Tests inject different ping
+// outcomes to drive the two bootstrap branches (ollama reachable vs.
+// fallback to mock).
 function makeFetch(opts: {
   pingOk: boolean;
   tagModels?: string[];
@@ -15,7 +15,6 @@ function makeFetch(opts: {
     const u = typeof url === 'string' ? url : url instanceof URL ? url.toString() : (url as Request).url;
     if (u.endsWith('/api/tags')) {
       if (!pingOk) {
-        // ping failure path
         return new Response('boom', { status: 500 });
       }
       const body = JSON.stringify({
@@ -30,73 +29,50 @@ function makeFetch(opts: {
   }) as typeof fetch;
 }
 
+// The demo ships a single on-device model (Ternary-Bonsai-8B). The
+// bootstrap instantiates one OllamaAdapter pointing at it when the
+// daemon is reachable, otherwise it falls back to MockAdapter.
 describe('bootstrapInference', () => {
-  it('falls back to mock adapters when ollama is unreachable', async () => {
+  const ORIGINAL_MODEL_NAME = process.env.MODEL_NAME;
+  beforeEach(() => {
+    delete process.env.MODEL_NAME;
+  });
+  afterEach(() => {
+    if (ORIGINAL_MODEL_NAME === undefined) delete process.env.MODEL_NAME;
+    else process.env.MODEL_NAME = ORIGINAL_MODEL_NAME;
+  });
+
+  it('falls back to the mock adapter when ollama is unreachable', async () => {
     const stack = await bootstrapInference({ fetchImpl: makeFetch({ pingOk: false }) });
     expect(stack.source).toBe('mock');
-    expect(stack.hasE4B).toBe(false);
-    expect(stack.router.hasE4B()).toBe(false);
     expect(stack.status).toBeUndefined();
-    expect(stack.e4bStatus).toBeUndefined();
+    expect(stack.loader).toBeUndefined();
   });
 
-  it('wires a single ollama adapter for both tiers when only e2b is pulled', async () => {
+  it('wires an ollama adapter when the daemon is reachable', async () => {
     const stack = await bootstrapInference({
-      fetchImpl: makeFetch({ pingOk: true, tagModels: ['gemma-4-e2b'] }),
+      fetchImpl: makeFetch({ pingOk: true, tagModels: ['ternary-bonsai-8b'] }),
     });
     expect(stack.source).toBe('ollama');
-    expect(stack.hasE4B).toBe(false);
-    expect(stack.router.hasE4B()).toBe(false);
     expect(stack.status).toBeDefined();
-    expect(stack.e4bStatus).toBeUndefined();
-    expect(stack.e4bLoader).toBeUndefined();
-
-    // Decisions for E4B-preferred tasks must report the fallback so
-    // the privacy strip can show the user that they ran on E2B.
-    const dec = stack.router.decide({ taskType: 'draft_artifact', prompt: 'p' });
-    expect(dec.tier).toBe('e2b');
-    expect(dec.reason).toMatch(/fallback to E2B/i);
-  });
-
-  it('wires two ollama adapters when both e2b and e4b are pulled', async () => {
-    const stack = await bootstrapInference({
-      fetchImpl: makeFetch({
-        pingOk: true,
-        tagModels: ['gemma-4-e2b', 'gemma-4-e4b:latest'],
-      }),
-    });
-    expect(stack.source).toBe('ollama');
-    expect(stack.hasE4B).toBe(true);
-    expect(stack.router.hasE4B()).toBe(true);
-    expect(stack.status).toBeDefined();
-    expect(stack.e4bStatus).toBeDefined();
-    expect(stack.e4bLoader).toBeDefined();
-    expect(stack.status).not.toBe(stack.e4bStatus);
+    expect(stack.loader).toBeDefined();
+    expect(stack.defaultModel).toBe('ternary-bonsai-8b');
 
     const dec = stack.router.decide({ taskType: 'draft_artifact', prompt: 'p' });
-    expect(dec.tier).toBe('e4b');
-    expect(dec.model).toBe('gemma-4-e4b');
-    expect(dec.reason).toContain('E4B');
+    expect(dec.tier).toBe('local');
+    expect(dec.model).toBe('ternary-bonsai-8b');
+    expect(dec.reason.toLowerCase()).toContain('on-device');
   });
 
-  it('respects the listModels override (used by isolated unit tests)', async () => {
+  it('honours a MODEL_NAME override', async () => {
+    process.env.MODEL_NAME = 'custom-alias';
     const stack = await bootstrapInference({
-      fetchImpl: makeFetch({ pingOk: true, tagModels: [] }),
-      listModels: async () => ['gemma-4-e2b', 'gemma-4-e4b'],
+      fetchImpl: makeFetch({ pingOk: true, tagModels: ['custom-alias'] }),
     });
-    expect(stack.hasE4B).toBe(true);
-    expect(stack.router.hasE4B()).toBe(true);
-  });
+    expect(stack.defaultModel).toBe('custom-alias');
 
-  it('treats listModels failure as "no E4B"', async () => {
-    const stack = await bootstrapInference({
-      fetchImpl: makeFetch({ pingOk: true, tagModels: [] }),
-      listModels: async () => {
-        throw new Error('boom');
-      },
-    });
-    expect(stack.hasE4B).toBe(false);
-    expect(stack.source).toBe('ollama');
+    const dec = stack.router.decide({ taskType: 'summarize', prompt: 'p' });
+    expect(dec.model).toBe('custom-alias');
   });
 
   describe('confidential server probe', () => {
