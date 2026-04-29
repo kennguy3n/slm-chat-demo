@@ -18,6 +18,7 @@ type KApps struct {
 	store *store.Memory
 	now   func() time.Time
 	idGen func(prefix string) string
+	audit *AuditService
 }
 
 func NewKApps(s *store.Memory) *KApps {
@@ -26,6 +27,14 @@ func NewKApps(s *store.Memory) *KApps {
 		now:   time.Now,
 		idGen: defaultIDGen,
 	}
+}
+
+// WithAudit attaches an AuditService so KApp mutations record audit
+// entries. Callers that don't need audit recording can leave it unset —
+// the service handles a nil receiver.
+func (k *KApps) WithAudit(a *AuditService) *KApps {
+	k.audit = a
+	return k
 }
 
 func defaultIDGen(prefix string) string {
@@ -115,7 +124,14 @@ func (k *KApps) CreateTask(in CreateTaskInput) (models.Task, error) {
 			{At: now, Actor: actor, Action: "created"},
 		},
 	}
-	return k.store.CreateTask(t), nil
+	saved := k.store.CreateTask(t)
+	k.audit.Record(models.AuditEventTaskCreated, models.AuditObjectTask, saved.ID, actor, map[string]any{
+		"title":       saved.Title,
+		"channelId":   saved.ChannelID,
+		"status":      string(saved.Status),
+		"aiGenerated": saved.AIGenerated,
+	})
+	return saved, nil
 }
 
 // UpdateTaskInput captures the patchable subset of a task. nil pointers leave
@@ -176,6 +192,18 @@ func (k *KApps) UpdateTask(id string, in UpdateTaskInput) (models.Task, error) {
 	if !ok {
 		return models.Task{}, ErrNotFound
 	}
+	eventType := models.AuditEventTaskUpdated
+	details := map[string]any{}
+	if in.Status != nil {
+		details["status"] = string(*in.Status)
+		if *in.Status == models.TaskStatusDone {
+			eventType = models.AuditEventTaskClosed
+		}
+	}
+	if in.Note != "" {
+		details["note"] = in.Note
+	}
+	k.audit.Record(eventType, models.AuditObjectTask, updated.ID, actor, details)
 	return updated, nil
 }
 
@@ -185,6 +213,9 @@ func (k *KApps) DeleteTask(id string) error {
 	if !k.store.DeleteTask(id) {
 		return ErrNotFound
 	}
+	k.audit.Record(models.AuditEventTaskClosed, models.AuditObjectTask, id, "", map[string]any{
+		"reason": "deleted",
+	})
 	return nil
 }
 
@@ -232,6 +263,11 @@ func (k *KApps) SubmitApprovalDecision(id string, in ApprovalDecisionInput) (mod
 	if !ok {
 		return models.Approval{}, ErrNotFound
 	}
+	k.audit.Record(models.AuditEventApprovalDecisioned, models.AuditObjectApproval, updated.ID, actor, map[string]any{
+		"decision": string(in.Decision),
+		"status":   string(updated.Status),
+		"note":     in.Note,
+	})
 	return updated, nil
 }
 
@@ -288,7 +324,19 @@ func (k *KApps) CreateApproval(in CreateApprovalInput) (models.Approval, error) 
 		SourceThreadID: in.SourceThreadID,
 		AIGenerated:    in.AIGenerated,
 	}
-	return k.store.CreateApproval(a), nil
+	saved := k.store.CreateApproval(a)
+	actor := in.Actor
+	if actor == "" {
+		actor = requester
+	}
+	k.audit.Record(models.AuditEventApprovalSubmitted, models.AuditObjectApproval, saved.ID, actor, map[string]any{
+		"templateId":  saved.TemplateID,
+		"title":       saved.Title,
+		"requester":   saved.Requester,
+		"channelId":   saved.ChannelID,
+		"aiGenerated": saved.AIGenerated,
+	})
+	return saved, nil
 }
 
 // ---------- Artifacts ----------
@@ -355,7 +403,14 @@ func (k *KApps) CreateArtifact(in CreateArtifactInput) (models.Artifact, error) 
 		Status:      models.ArtifactStatusDraft,
 		AIGenerated: in.AIGenerated,
 	}
-	return k.store.CreateArtifact(a), nil
+	saved := k.store.CreateArtifact(a)
+	k.audit.Record(models.AuditEventArtifactCreated, models.AuditObjectArtifact, saved.ID, author, map[string]any{
+		"type":        string(saved.Type),
+		"title":       saved.Title,
+		"channelId":   saved.ChannelID,
+		"aiGenerated": saved.AIGenerated,
+	})
+	return saved, nil
 }
 
 // GetArtifact returns the full artifact (with version bodies and source pins)
@@ -411,6 +466,15 @@ func (k *KApps) UpdateArtifact(id string, in UpdateArtifactInput) (models.Artifa
 	if transitionErr != nil {
 		return models.Artifact{}, transitionErr
 	}
+	actor := in.Actor
+	if actor == "" {
+		actor = "user"
+	}
+	if in.Status != nil {
+		k.audit.Record(models.AuditEventArtifactStatusChanged, models.AuditObjectArtifact, updated.ID, actor, map[string]any{
+			"status": string(updated.Status),
+		})
+	}
 	return updated, nil
 }
 
@@ -456,6 +520,10 @@ func (k *KApps) CreateArtifactVersion(id string, in CreateArtifactVersionInput) 
 	if !ok {
 		return models.ArtifactVersion{}, ErrNotFound
 	}
+	k.audit.Record(models.AuditEventArtifactVersionAdded, models.AuditObjectArtifact, id, author, map[string]any{
+		"version": added.Version,
+		"summary": added.Summary,
+	})
 	return added, nil
 }
 
@@ -522,7 +590,15 @@ func (k *KApps) CreateForm(in CreateFormInput) (models.Form, error) {
 		Status:         status,
 		AIGenerated:    in.AIGenerated,
 	}
-	return k.store.CreateForm(f), nil
+	saved := k.store.CreateForm(f)
+	k.audit.Record(models.AuditEventFormSubmitted, models.AuditObjectForm, saved.ID, "", map[string]any{
+		"templateId":  saved.TemplateID,
+		"title":       saved.Title,
+		"channelId":   saved.ChannelID,
+		"status":      string(saved.Status),
+		"aiGenerated": saved.AIGenerated,
+	})
+	return saved, nil
 }
 
 // ListForms returns all forms scoped to a channel.

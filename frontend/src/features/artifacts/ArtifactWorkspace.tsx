@@ -9,6 +9,7 @@ import type { Artifact, ArtifactSourcePin, ArtifactStatus, ArtifactVersion } fro
 import { SourcePin } from './SourcePin';
 import { ArtifactDiffView } from './ArtifactDiffView';
 import { splitIntoSections as splitParsedSections } from './sections';
+import { OutputReview, type OutputReviewSource } from '../kapps/OutputReview';
 
 interface Props {
   // The artifact to display. The workspace fetches the full artifact
@@ -84,6 +85,7 @@ export function ArtifactWorkspace({
   const [diffWith, setDiffWith] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<ArtifactStatus | null>(null);
 
   // Fetch full artifact (with bodies) on mount when it looks list-shaped.
   useEffect(() => {
@@ -160,12 +162,28 @@ export function ArtifactWorkspace({
     try {
       const next = await patchArtifact(artifact.id, { status });
       setArtifact((prev) => ({ ...prev, status: next.status }));
+      setPendingStatus(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }
+
+  function requestStatus(status: ArtifactStatus) {
+    setPendingStatus(status);
+  }
+
+  // Source pins on the current version feed the OutputReview gate so
+  // the user sees every excerpt that informed the artifact before
+  // confirming the status transition.
+  const reviewSources: OutputReviewSource[] = (currentVersion?.sourcePins ?? []).map(
+    (p, i) => ({
+      id: p.sourceMessageId ?? `pin_${i}`,
+      label: p.sender ? `${p.sender}` : 'Source pin',
+      excerpt: p.excerpt,
+    }),
+  );
 
   // Compute the diff against an earlier version when requested.
   const diffSource = useMemo<ArtifactVersion | null>(() => {
@@ -210,7 +228,7 @@ export function ArtifactWorkspace({
             <button
               type="button"
               disabled={busy}
-              onClick={() => handleStatus('in_review')}
+              onClick={() => requestStatus('in_review')}
               data-testid="artifact-workspace-submit-review"
             >
               Submit for review
@@ -220,7 +238,7 @@ export function ArtifactWorkspace({
             <button
               type="button"
               disabled={busy}
-              onClick={() => handleStatus('published')}
+              onClick={() => requestStatus('published')}
               data-testid="artifact-workspace-publish"
             >
               Publish
@@ -362,6 +380,27 @@ export function ArtifactWorkspace({
           )}
         </aside>
       </div>
+
+      {pendingStatus && (
+        <OutputReview
+          objectKind="artifact-status"
+          targetStatus={pendingStatus}
+          heading={
+            pendingStatus === 'published'
+              ? 'Confirm publish'
+              : 'Confirm submit for review'
+          }
+          description={
+            pendingStatus === 'published'
+              ? 'Publishing locks v' + selectedVersion + ' as the canonical version. Review the body and sources before confirming.'
+              : 'Moving to in_review marks the current draft as ready for reviewers. Confirm the body and sources are correct.'
+          }
+          content={currentVersion?.body ?? ''}
+          sources={reviewSources}
+          onAccept={() => handleStatus(pendingStatus)}
+          onDiscard={() => setPendingStatus(null)}
+        />
+      )}
     </section>
   );
 }

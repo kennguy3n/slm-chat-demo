@@ -24,6 +24,7 @@ import { DigestCard } from '../ai/DigestCard';
 import { SmartReplyBar } from '../ai/SmartReplyBar';
 import { TaskCreatedPill } from '../ai/TaskCreatedPill';
 import { TaskExtractionCard, type TaskItem } from '../ai/TaskExtractionCard';
+import { dispatchLauncherAction } from './launcherDispatch';
 
 interface Props {
   channel: Channel | null;
@@ -218,27 +219,12 @@ export function ChatSurface({ channel, users, currentUserId }: Props) {
       void fetchAIRoute({ taskType: 'summarize' }).then(setRoute).catch(() => undefined);
       return true;
     }
-    // Phase 3 — B2B Create / Approve paths dispatch a DOM event the
-    // ThreadPanel listens for. The ChatSurface itself doesn't own the
-    // selected thread, so we forward the action to whichever panel is
-    // currently mounted (typically the right-rail ThreadPanel).
-    if (path[0] === 'create' && (path[1] === 'prd' || path[1] === 'rfc' || path[1] === 'proposal')) {
-      // Map launcher slug to the canonical ArtifactKind ('PRD' / 'RFC' /
-      // 'Proposal'). 'proposal' is mixed-case in models/artifact.go and
-      // types/ai.ts, so toUpperCase() would mismatch the validator.
-      const artifactType =
-        path[1] === 'proposal' ? 'Proposal' : (path[1].toUpperCase() as 'PRD' | 'RFC');
-      const evt = new CustomEvent('kapps:launcher', {
-        detail: { kind: 'draft_artifact', artifactType },
-      });
-      window.dispatchEvent(evt);
-      return true;
-    }
-    if (path[0] === 'approve' && (path[1] === 'vendor' || path[1] === 'budget' || path[1] === 'access')) {
-      const evt = new CustomEvent('kapps:launcher', {
-        detail: { kind: 'prefill_approval', templateId: path[1] },
-      });
-      window.dispatchEvent(evt);
+    // Phase 3 — All B2B Create / Analyze / Plan / Approve paths flow
+    // through dispatchLauncherAction, which maps the path to a
+    // CustomEvent that the right-rail ThreadPanel handles. ChatSurface
+    // doesn't own the selected thread, so the dispatch is the only
+    // bridge between the launcher and the KApps pipeline.
+    if (dispatchLauncherAction(path) !== null) {
       return true;
     }
     if (path[0] === 'extract_tasks') {

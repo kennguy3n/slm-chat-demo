@@ -16,11 +16,13 @@ import (
 func newTestServer() http.Handler {
 	mem := store.NewMemory()
 	store.Seed(mem)
+	audit := services.NewAudit(mem)
 	return api.NewRouter(api.Deps{
 		Identity:   services.NewIdentity(mem, "user_alice"),
 		Workspaces: services.NewWorkspace(mem),
 		Chat:       services.NewChat(mem),
-		KApps:      services.NewKApps(mem),
+		KApps:      services.NewKApps(mem).WithAudit(audit),
+		Audit:      audit,
 	})
 }
 
