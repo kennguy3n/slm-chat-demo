@@ -209,7 +209,11 @@ func parseOptionalTime(in *string) (*time.Time, error) {
 	if in == nil || *in == "" {
 		return nil, nil
 	}
-	t, err := time.Parse(time.RFC3339, *in)
+	// time.RFC3339Nano accepts both fractional and non-fractional seconds
+	// when parsing (the ".999..." suffix in the layout marks the fraction
+	// as optional). JavaScript's Date.toISOString() always emits ".000Z",
+	// which time.RFC3339 would reject.
+	t, err := time.Parse(time.RFC3339Nano, *in)
 	if err != nil {
 		return nil, err
 	}

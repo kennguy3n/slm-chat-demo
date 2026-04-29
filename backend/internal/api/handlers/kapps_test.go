@@ -252,6 +252,49 @@ func TestCreateAndUpdateTaskLifecycle(t *testing.T) {
 	}
 }
 
+func TestCreateTaskAcceptsBrowserISOStringDueDate(t *testing.T) {
+	// Regression: JavaScript's Date.toISOString() always emits ".000Z"
+	// (milliseconds), which time.RFC3339 rejects. parseOptionalTime must
+	// use time.RFC3339Nano so the frontend's CreateTaskForm + TaskCard
+	// edits round-trip cleanly.
+	h := newTestServer()
+	body := strings.NewReader(`{"channelId":"ch_general","title":"Sync with PM","dueDate":"2026-05-01T00:00:00.000Z"}`)
+	rec := doRequest(t, h, http.MethodPost, "/api/kapps/tasks", "user_alice", body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Task models.Task `json:"task"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if created.Task.DueDate == nil {
+		t.Fatalf("expected dueDate to be set on created task")
+	}
+	if got := created.Task.DueDate.UTC().Format("2006-01-02"); got != "2026-05-01" {
+		t.Errorf("expected dueDate 2026-05-01, got %s", got)
+	}
+}
+
+func TestUpdateTaskAcceptsBrowserISOStringDueDate(t *testing.T) {
+	h := newTestServer()
+	createBody := strings.NewReader(`{"channelId":"ch_general","title":"Reschedule"}`)
+	rec := doRequest(t, h, http.MethodPost, "/api/kapps/tasks", "user_alice", createBody)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d", rec.Code)
+	}
+	var created struct {
+		Task models.Task `json:"task"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	patchBody := strings.NewReader(`{"dueDate":"2026-06-15T17:30:00.000Z"}`)
+	rec = doRequest(t, h, http.MethodPatch, "/api/kapps/tasks/"+created.Task.ID, "user_alice", patchBody)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCreateTaskRejectsEmptyTitle(t *testing.T) {
 	h := newTestServer()
 	body := strings.NewReader(`{"channelId":"ch_general","title":""}`)
