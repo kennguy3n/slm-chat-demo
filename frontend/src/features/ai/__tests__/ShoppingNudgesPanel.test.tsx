@@ -15,8 +15,8 @@ const fakeResp: ShoppingNudgesResponse = {
   ],
   sourceMessageIds: ['m1', 'm2'],
   model: 'ternary-bonsai-8b',
-  tier: 'e2b',
-  reason: 'Routed shopping nudges to E2B.',
+  tier: 'local',
+  reason: 'Routed shopping nudges to on-device Ternary-Bonsai-8B.',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
 };
@@ -122,7 +122,7 @@ describe('ShoppingNudgesPanel', () => {
     renderWithProviders(<ShoppingNudgesPanel channelId="ch_family" />);
     await userEvent.click(screen.getByTestId('shopping-nudges-run'));
     await waitFor(() =>
-      expect(screen.getByText('Routed shopping nudges to E2B.')).toBeInTheDocument(),
+      expect(screen.getByText('Routed shopping nudges to on-device Ternary-Bonsai-8B.')).toBeInTheDocument(),
     );
   });
 });

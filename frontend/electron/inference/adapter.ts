@@ -33,9 +33,10 @@ export interface InferenceRequest {
   maxTokens?: number;
   // Phase 6 — explicit tier selection so the dispatcher can ask for
   // server compute (e.g. user-toggled "Confidential Server" mode).
-  // The router gates this on workspace policy + adapter availability;
-  // requests for a tier the router cannot satisfy refuse with a clear
-  // reason rather than silently downgrading.
+  // Omit or pass 'local' for on-device compute; pass 'server' to
+  // request the confidential-server tier. The router gates 'server'
+  // on workspace policy + adapter availability and refuses with a
+  // clear reason when it cannot satisfy the request.
   tier?: Tier;
 }
 
@@ -68,7 +69,11 @@ export interface ModelStatus {
   serverUrl?: string;
 }
 
-export type Tier = 'e2b' | 'e4b' | 'server';
+// Tier distinguishes on-device inference from the (optional, policy-
+// gated) confidential-server tier. The demo ships a single on-device
+// model (Ternary-Bonsai-8B) so there is no local-tier subdivision —
+// anything not explicitly server-bound runs locally.
+export type Tier = 'local' | 'server';
 
 export interface RouteDecision {
   decision: 'allow' | 'deny';
@@ -281,8 +286,7 @@ export interface PrefillFormResponse {
 // DraftArtifact — B2B Phase 1 surface. Same prompt-then-stream
 // pattern as ThreadSummaryRequest: the helper builds a prompt + source
 // list deterministically and the renderer streams the actual body via
-// `ai:stream` with that prompt so the model runs exactly once. The
-// router prefers E4B for `draft_artifact`.
+// `ai:stream` with that prompt so the on-device model runs exactly once.
 
 export type ArtifactKind = 'PRD' | 'RFC' | 'Proposal' | 'SOP' | 'QBR';
 export type ArtifactSection = 'goal' | 'requirements' | 'risks' | 'all';
@@ -331,7 +335,7 @@ export interface UnreadSummaryResponse {
 // ---------- Phase 2 B2C second-brain surfaces ----------
 //
 // The next batch of B2C surfaces all share the same shape: read recent
-// chat messages from a single chat, run a single E2B-class inference,
+// chat messages from a single chat, run a single on-device inference,
 // return a structured set of items the renderer can render as cards.
 // None of the requests carry persistent state — the renderer stores
 // any user-confirmed memory locally (IndexedDB) and re-supplies the

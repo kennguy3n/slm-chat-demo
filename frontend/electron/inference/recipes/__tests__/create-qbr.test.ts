@@ -8,14 +8,12 @@ describe('create_qbr recipe', () => {
     expect(createQBRRecipe.id).toBe('create_qbr');
     expect(createQBRRecipe.name).toMatch(/qbr/i);
     expect(createQBRRecipe.taskType).toBe('draft_artifact');
-    expect(createQBRRecipe.preferredTier).toBe('e4b');
+    expect(createQBRRecipe.preferredTier).toBe('local');
   });
 
   it('returns an ok result with prompt + sources for a normal thread', async () => {
     const adapter = new MockAdapter();
-    const router = new InferenceRouter(adapter, adapter, adapter, {
-      hasRealE4B: true,
-    });
+    const router = new InferenceRouter(adapter, adapter);
     const messages = [
       {
         id: 'm_1',
@@ -47,15 +45,13 @@ describe('create_qbr recipe', () => {
     expect(output.sources).toHaveLength(2);
     expect(output.threadId).toBe('thr_qbr');
     expect(output.channelId).toBe('ch_exec');
-    expect(result.tier).toBe('e4b');
+    expect(result.tier).toBe('local');
     expect(result.model).toBeTruthy();
   });
 
   it('refuses gracefully when the thread has no messages', async () => {
     const adapter = new MockAdapter();
-    const router = new InferenceRouter(adapter, adapter, adapter, {
-      hasRealE4B: true,
-    });
+    const router = new InferenceRouter(adapter, adapter);
     const result = await createQBRRecipe.execute(router, {
       aiEmployeeId: 'ai_nina_research',
       channelId: 'ch_exec',

@@ -75,11 +75,8 @@ describe('models/ Modelfiles', () => {
     expect(body).toContain('models/Modelfile.bonsai8b');
     // Bootstrap default — the alias the script must create.
     expect(body).toContain('ternary-bonsai-8b');
-    // Honours `MODEL_NAME` (and the legacy E2B_MODEL / E4B_MODEL
-    // overrides for backward compatibility).
+    // Honours `MODEL_NAME` for operator overrides.
     expect(body).toMatch(/MODEL_NAME/);
-    expect(body).toMatch(/E2B_MODEL/);
-    expect(body).toMatch(/E4B_MODEL/);
     // Legacy names should have been purged.
     expect(body.toLowerCase()).not.toContain('gemma');
 

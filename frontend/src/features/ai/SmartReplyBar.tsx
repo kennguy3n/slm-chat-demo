@@ -19,8 +19,8 @@ interface Props {
 // SmartReplyBar fetches /api/ai/smart-reply for the latest incoming
 // message in the channel and renders 2–3 suggestion chips above the
 // composer. Tapping a chip inserts the text into the composer input.
-// Below the chips it shows a PrivacyStrip with on-device / E2B / 0
-// bytes egress per PROPOSAL.md §4.3.
+// Below the chips it shows a PrivacyStrip with on-device /
+// Ternary-Bonsai-8B / 0 bytes egress per PROPOSAL.md §4.3.
 //
 // The component owns its own fetch state (instead of going through
 // react-query) because the suggestions must refresh whenever the source

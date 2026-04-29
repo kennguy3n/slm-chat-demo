@@ -35,10 +35,9 @@ class CannedAdapter implements Adapter {
 }
 
 function makeRouter(output: string): InferenceRouter {
-  const e2b = new CannedAdapter(output, 'ternary-bonsai-8b');
-  const e4b = new CannedAdapter(output, 'ternary-bonsai-8b');
+  const local = new CannedAdapter(output, 'ternary-bonsai-8b');
   const mock = new CannedAdapter(output, 'ternary-bonsai-8b');
-  return new InferenceRouter(e2b, e4b, mock);
+  return new InferenceRouter(local, mock);
 }
 
 describe('regexFindings', () => {

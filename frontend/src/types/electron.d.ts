@@ -105,7 +105,7 @@ export interface TripPlannerSkillSource {
 export interface TripPlannerPrivacy {
   computeLocation: 'on_device' | 'confidential_server';
   modelName: string;
-  tier: 'e2b' | 'e4b';
+  tier: 'local' | 'server';
   reason: string;
   dataEgressBytes: number;
   sources: TripPlannerSkillSource[];
@@ -279,7 +279,7 @@ interface ElectronAIBridge {
     status: 'ok' | 'refused';
     output: unknown;
     model: string;
-    tier: 'e2b' | 'e4b';
+    tier: 'local' | 'server';
     reason: string;
   }>;
   modelStatus(): Promise<ModelStatus>;

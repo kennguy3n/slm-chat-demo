@@ -8,11 +8,11 @@ and talks directly to the local Ollama daemon (or `MockAdapter` when
 Ollama isn't running). A small Go **data API** provides chats, threads,
 workspaces and seeded KApp cards. No AI traffic ever leaves the device.
 
-The same 8B model currently serves both the **E2B** (short, latency-
-sensitive) and **E4B** (reasoning-heavy) tier slots inside the router;
-the two-tier routing logic is preserved so operators can pull a
-different high-tier alias later and point the `E4B_MODEL` env var at it
-without touching any code.
+The router distinguishes exactly two destinations: a single on-device
+`local` adapter (the Ternary-Bonsai-8B model) and a policy-gated
+`server` adapter for confidential-server tasks. Operators can override
+the on-device alias via the `MODEL_NAME` env var without touching any
+code.
 
 The demo runs the **same product surface in two contexts**:
 
@@ -37,7 +37,7 @@ For the full product thesis, architecture, phasing, and progress, see:
 | ----------- | ------------------------------------------------------------------------------ |
 | Shell       | Electron 31 (main + preload + renderer), TypeScript                            |
 | Renderer    | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL      |
-| Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` (default model: `ternary-bonsai-8b`) and an `InferenceRouter` that picks E2B / E4B per task. |
+| Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` (default model: `ternary-bonsai-8b`) and an `InferenceRouter` that picks `local` vs. `server` per task. |
 | IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `familyChecklist`, `shoppingNudges`, `eventRSVP`, `tripPlan`, `guardrailCheck`, `recipeRun` (Phase 4 generic AI-Employee recipe runner), `modelStatus`, `loadModel`, `unloadModel`, `route`. |
 | Local memory | `features/memory/memoryStore.ts` — IndexedDB (`kchat-slm-memory` / `facts`) with an in-memory fallback. The AI never auto-writes; users add / edit / remove facts from the AI Memory page. 0 B egress. |
 | Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
@@ -76,12 +76,13 @@ runs.
 
 The Electron main process auto-detects an Ollama daemon on
 `http://localhost:11434` (or `OLLAMA_BASE_URL`). When it's reachable,
-the inference router wires Ollama as the E2B and E4B adapter; otherwise
-it falls back to the bundled `MockAdapter` so the demo always works
-without a model present.
+the inference router wires a single Ollama adapter bound to
+`MODEL_NAME` (default `ternary-bonsai-8b`); otherwise it falls back
+to the bundled `MockAdapter` so the demo always works without a model
+present.
 
 The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults
-both `E2B_MODEL` and `E4B_MODEL` to `ternary-bonsai-8b`. That name is
+`MODEL_NAME` to `ternary-bonsai-8b`. That name is
 an *alias*, not the upstream Ollama tag — the `models/` directory
 ships a single [`Modelfile.bonsai8b`](./models/Modelfile.bonsai8b)
 that creates the alias on top of the
@@ -110,21 +111,18 @@ ollama pull hf.co/prism-ml/Ternary-Bonsai-8B-gguf
 ollama create ternary-bonsai-8b -f models/Modelfile.bonsai8b
 ```
 
-Both tier slots resolve to the same alias by default, so a single pull
-is enough to light up E2B **and** E4B routing. If you later pull a
-different high-tier model and want the router's E4B slot to use it
-without renaming anything, override at runtime:
+A single pull is enough to light up on-device routing. If you later
+pull a different model and want the router to use it without renaming
+anything, override at runtime:
 
 ```bash
-export E2B_MODEL=ternary-bonsai-8b
-export E4B_MODEL=some-other-alias
+export MODEL_NAME=some-other-alias
 cd frontend && npm run electron:dev
 ```
 
-When `E4B_MODEL` resolves to a model the daemon hasn't pulled, the
-bootstrap aliases the E4B slot to the E2B adapter and the router reports
-the fallback through `decide()` so the **Local model** panel and
-privacy strip show that reasoning-heavy tasks ran on E2B.
+When `MODEL_NAME` resolves to a model the daemon hasn't pulled, the
+bootstrap falls back to the `MockAdapter` so the demo still works —
+the **Local model** panel and privacy strip surface the fallback.
 
 See [`models/README.md`](./models/README.md) for the full list of
 Modelfile knobs (context length, temperature, system prompt) and for
@@ -198,7 +196,7 @@ slm-chat-demo/
 │   │       ├── mock.ts          (canned MockAdapter; same outputs as the Go port)
 │   │       ├── ollama.ts        (HTTP client for the local daemon, NDJSON streaming)
 │   │       ├── llamacpp.ts      (LlamaCppAdapter stub; throws "not yet implemented")
-│   │       ├── router.ts        (PROPOSAL.md §2 scheduler — E2B / E4B / fallback)
+│   │       ├── router.ts        (PROPOSAL.md §2 scheduler — local / server)
 │   │       ├── tasks.ts         (smart-reply / translate / extract-tasks / summary helpers)
 │   │       ├── secondBrain.ts   (Phase 2: family checklist, shopping nudges, RSVP extraction)
 │   │       ├── skill-framework.ts  (declarative SkillDefinition contract + runSkill executor)
@@ -208,7 +206,7 @@ slm-chat-demo/
 │   │       │   └── guardrail-rewrite.ts  (PII / tone / unverified-claim detection + rewrite)
 │   │       ├── recipes/
 │   │       │   ├── registry.ts           (RecipeDefinition + RECIPE_REGISTRY + register/get/list)
-│   │       │   ├── summarize.ts          (wraps buildThreadSummary; E2B/E4B by length)
+│   │       │   ├── summarize.ts          (wraps buildThreadSummary; preferredTier: local)
 │   │       │   ├── extract-tasks.ts      (wraps runKAppsExtractTasks; source provenance)
 │   │       │   ├── draft-prd.ts          (wraps buildDraftArtifact, artifactType='PRD')
 │   │       │   ├── draft-proposal.ts     (wraps buildDraftArtifact, artifactType='Proposal')
@@ -289,7 +287,7 @@ go test ./...
   returning canned responses for `summarize`, `translate`,
   `extract_tasks`, `smart_reply`, `prefill_approval`, `draft_artifact`
   — wired into `window.electronAI.run` and `window.electronAI.route`
-  (the latter returns the Phase-0 policy: allow / E2B / on-device / 0
+  (the latter returns the Phase-0 policy: allow / on-device / 0
   egress)
 - Go data API on `:8080` with chi router, chi/cors, JSON content-type, and
   a mock-auth middleware that injects a user from the `X-User-ID` header
@@ -307,7 +305,7 @@ go test ./...
   the Phase 3 audit log (`AuditLogPanel`), human review gates
   (`OutputReview`), and Action Launcher integration
   (`launcherDispatch`), the `ai:prefill-form` task helper
-  (`runPrefillForm` / `parseFormFields`), the E4B routing tier
+  (`runPrefillForm` / `parseFormFields`), the on-device routing tier
   (`bootstrap.test.ts`, `router.test.ts`), and the full Phase 0 →
   Phase 2 baseline plus full Go test coverage of the data
   endpoints, including the Phase 3 task lifecycle, approval submit
@@ -316,13 +314,13 @@ go test ./...
 
 ## Phase 1 — complete
 
-- **E4B routing tier** — `bootstrap.ts` now creates two distinct
-  `OllamaAdapter` instances (`E2B_MODEL` / `E4B_MODEL`, both defaulting
+- **Single on-device routing tier** — `bootstrap.ts` creates one
+  `OllamaAdapter` instance (`MODEL_NAME`, defaulting
   to `ternary-bonsai-8b`), pings each model independently, and
-  aliases the E4B slot to the E2B adapter when the larger model is not
-  pulled. The `InferenceRouter` exposes `hasE4B()`; `decide()` reports
-  the real tier so the privacy strip and `model:status` (`e4bModel`,
-  `e4bLoaded`, `hasE4B`) reflect what actually ran. The
+  falls back to the mock adapter when the model is not
+  pulled. The `InferenceRouter` `decide()` reports
+  the real model so the privacy strip and `model:status` (`model`,
+  `loaded`) reflect what actually ran. The
   `DeviceCapabilityPanel` shows both tiers side-by-side.
 
 ## Phase 6 — in progress
@@ -332,7 +330,7 @@ go test ./...
   `ConfidentialServerAdapter` tier that POSTs to a configurable
   `CONFIDENTIAL_SERVER_URL` (default `http://localhost:8090`) using the
   same NDJSON streaming pattern as the Ollama adapter, but always with
-  `onDevice: false`. The router is now three-tier (`'e2b' | 'e4b' | 'server'`)
+  `onDevice: false`. The router is two-tier (`'local' | 'server'`)
   with `attachServer()` / `hasServer()` and a policy-gated `decide()`
   that requires both adapter availability AND
   `CONFIDENTIAL_SERVER_POLICY=allow`. Bootstrap probes
@@ -557,7 +555,7 @@ go test ./...
   compose existing task helpers.
 - **Recipes: summarize + extract_tasks** — `recipes/summarize.ts`
   wraps `buildThreadSummary` and exposes a short-thread heuristic
-  (`preferredTierForThread`: E2B ≤ 8 messages, E4B otherwise).
+  (advertises `preferredTier: 'local'`).
   `recipes/extract-tasks.ts` wraps `runKAppsExtractTasks`, preserves
   per-task source provenance through the `sourceMessageId` field, and
   returns a `refused` envelope (not an exception) for empty threads.
@@ -574,7 +572,7 @@ go test ./...
 - **Recipes: draft_prd / draft_proposal / create_qbr / prefill_approval** —
   four new recipes in `electron/inference/recipes/` compose existing
   `buildDraftArtifact` (PRD / Proposal / QBR) and `runPrefillApproval`
-  task helpers. All advertise `preferredTier: 'e4b'`, return a uniform
+  task helpers. All advertise `preferredTier: 'local'`, return a uniform
   `RecipeResult` envelope (drafting recipes surface `{ prompt, sources,
   threadId, channelId }` so the renderer streams the body through
   `ai:stream`; the approval recipe flattens `{ vendor, amount, risk,
@@ -663,7 +661,7 @@ go test ./...
   seeded `vendor_onboarding_v1` / `expense_report_v1` /
   `access_request_v1` templates; new `FormCard` renderer (highlights
   AI-prefilled fields) and a new `ai:prefill-form` IPC channel +
-  `runPrefillForm` task helper that prefers E4B.
+  `runPrefillForm` task helper (on-device).
 - **Source pins** — `ArtifactSourcePin` flows from the streamed
   `ArtifactDraftCard` `sources[]` into the artifact's first
   version's `sourcePins`, then renders inline next to the
@@ -680,8 +678,8 @@ go test ./...
 - **Inference router** (`frontend/electron/inference/router.ts`)
   implementing PROPOSAL.md §2's scheduler rule: short / private /
   latency-sensitive tasks (`summarize`, `translate`, `extract_tasks`,
-  `smart_reply`) route to E2B; reasoning-heavy tasks (`draft_artifact`,
-  `prefill_approval`) prefer E4B with a fallback to E2B when no E4B
+  `smart_reply`) route to the on-device tier; reasoning-heavy tasks (`draft_artifact`,
+  `prefill_approval`) also route on-device (a single 8B model handles both when no server
   adapter is available. The router exposes its decision (model, tier,
   reason) over IPC so the privacy strip can show *why* a model was
   chosen.
@@ -705,13 +703,13 @@ go test ./...
   pattern: the renderer pulls message context from the Go data API
   and forwards it to `window.electronAI.smartReply`,
   `window.electronAI.translate`, `window.electronAI.extractTasks`.
-  E2B routing, on-device / 0-byte egress privacy strip on every output.
+  on-device routing, on-device / 0-byte egress privacy strip on every output.
 - **B2B thread summarization + task extraction** — the renderer pulls
   thread messages from `GET /api/threads/{threadId}/messages` and
   forwards them to `window.electronAI.summarizeThread` /
   `window.electronAI.extractKAppTasks`.
 - **B2B Approval prefill** — `window.electronAI.prefillApproval` runs a
-  single E4B inference over the thread, parses the result into
+  single on-device inference over the thread, parses the result into
   `{ vendor, amount, risk, justification }`, attaches the source
   message ids it found supporting evidence in, and the renderer
   shows them in `ApprovalPrefillCard` with editable fields, a
@@ -741,7 +739,7 @@ go test ./...
   chat and asks the on-device router for a concrete prep list (with an
   optional event focus like "Soccer practice tomorrow"). Each item
   back-links to the chat message that produced it; the privacy strip
-  shows E2B routing and 0 B egress.
+  shows on-device routing and 0 B egress.
 - **Shopping list with nudges** — `ShoppingNudgesPanel` owns a small
   local shopping list. The "Suggest from chat" button asks the model
   for additions grounded in the conversation ("Add sunscreen because

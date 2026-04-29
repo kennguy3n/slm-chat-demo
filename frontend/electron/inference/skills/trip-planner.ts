@@ -162,7 +162,7 @@ export const tripPlannerSkill: SkillDefinition<TripPlannerInput, TripItinerary> 
     requiredFields: ['destination', 'durationDays', 'days', 'summary'],
     maxItems: 14,
   },
-  preferredTier: 'e4b',
+  preferredTier: 'local',
   taskType: 'draft_artifact',
   parser(rawOutput, input): SkillParseResult<TripItinerary> {
     return parseItinerary(rawOutput, input);
@@ -253,7 +253,7 @@ export async function runTripPlanner(
   // 5. Inference.
   let rawOutput = '';
   let model = '';
-  let tier: 'e2b' | 'e4b' = tripPlannerSkill.preferredTier;
+  let tier: 'local' = tripPlannerSkill.preferredTier;
   let routeReason = '';
   try {
     const resp = await router.run({

@@ -82,7 +82,7 @@ describe('runFamilyChecklist', () => {
     const adapter = new CannedAdapter(
       '- Bring water bottles | tonight\n- Pack shin guards',
     );
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     const resp = await runFamilyChecklist(router, {
       channelId: 'fam',
       messages: FAMILY_MESSAGES,
@@ -92,7 +92,7 @@ describe('runFamilyChecklist', () => {
     expect(resp.items[0].title).toBe('Bring water bottles');
     expect(resp.computeLocation).toBe('on_device');
     expect(resp.dataEgressBytes).toBe(0);
-    expect(resp.tier).toBe('e2b');
+    expect(resp.tier).toBe('local');
     expect(resp.title).toContain('Soccer practice tomorrow');
     // The prompt actually carried the event hint and chat content.
     expect(adapter.lastReq?.prompt ?? '').toContain('Soccer practice tomorrow');
@@ -101,7 +101,7 @@ describe('runFamilyChecklist', () => {
 
   it('falls back to a single placeholder when the model returns nothing useful', async () => {
     const adapter = new CannedAdapter('   \n   ');
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     const resp = await runFamilyChecklist(router, {
       channelId: 'fam',
       messages: FAMILY_MESSAGES,
@@ -112,7 +112,7 @@ describe('runFamilyChecklist', () => {
 
   it('throws when no messages are supplied', async () => {
     const adapter = new CannedAdapter('');
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     await expect(
       runFamilyChecklist(router, { channelId: 'fam', messages: [] }),
     ).rejects.toThrow();
@@ -157,7 +157,7 @@ describe('runShoppingNudges', () => {
     const adapter = new CannedAdapter(
       '- Sunscreen | field trip Friday\n- Milk | we are out',
     );
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     const resp = await runShoppingNudges(router, {
       channelId: 'fam',
       messages: SHOPPING_MESSAGES,
@@ -170,7 +170,7 @@ describe('runShoppingNudges', () => {
 
   it('passes the existing list into the prompt so the model can dedupe too', async () => {
     const adapter = new CannedAdapter('');
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     await runShoppingNudges(router, {
       channelId: 'fam',
       messages: SHOPPING_MESSAGES,
@@ -181,7 +181,7 @@ describe('runShoppingNudges', () => {
 
   it('throws when given an empty messages array (no chat to ground in)', async () => {
     const adapter = new CannedAdapter('- Sunscreen | hallucinated');
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     await expect(
       runShoppingNudges(router, {
         channelId: 'fam',
@@ -245,7 +245,7 @@ describe('runEventRSVP', () => {
     const adapter = new CannedAdapter(
       '- PTA potluck | Saturday 3pm | School gym | Friday\n- Soccer meeting | Tuesday 7pm',
     );
-    const router = new InferenceRouter(adapter, null, null);
+    const router = new InferenceRouter(adapter, null);
     const resp = await runEventRSVP(router, {
       channelId: 'comm',
       messages: RSVP_MESSAGES,

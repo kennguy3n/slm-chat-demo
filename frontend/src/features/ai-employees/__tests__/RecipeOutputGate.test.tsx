@@ -10,7 +10,7 @@ function okResult(output: unknown): RecipeResultEnvelope {
     status: 'ok',
     output,
     model: 'ternary-bonsai-8b',
-    tier: 'e2b',
+    tier: 'local',
     reason: 'Drafted on-device for review.',
   };
 }
@@ -148,7 +148,7 @@ describe('RecipeOutputGate', () => {
           status: 'refused',
           output: null,
           model: '',
-          tier: 'e4b',
+          tier: 'local',
           reason: 'draft_prd: thread is empty; refusing to draft a PRD.',
         }}
         onAccept={vi.fn()}

@@ -9,7 +9,7 @@ import { InferenceRouter } from './router.js';
 import { MockAdapter } from './mock.js';
 
 function makeRouter() {
-  return new InferenceRouter(null, null, new MockAdapter());
+  return new InferenceRouter(null, new MockAdapter());
 }
 
 describe('parsePrefilledApprovalFields', () => {
@@ -55,7 +55,7 @@ describe('parsePrefilledApprovalFields', () => {
 });
 
 describe('runPrefillApproval', () => {
-  it('returns prefilled fields, sources, on-device metadata, and an E4B-tier reason', async () => {
+  it('returns prefilled fields, sources, on-device metadata, and a local-tier reason', async () => {
     const router = makeRouter();
     const resp = await runPrefillApproval(router, {
       threadId: 't1',
@@ -73,7 +73,7 @@ describe('runPrefillApproval', () => {
     expect(resp.fields.risk).toBe('medium');
     expect(resp.title).toContain('Acme Logs');
     expect(resp.sourceMessageIds.length).toBeGreaterThan(0);
-    expect(resp.tier === 'e4b' || resp.tier === 'e2b').toBe(true);
+    expect(resp.tier === 'local' || resp.tier === 'local').toBe(true);
     expect(typeof resp.reason).toBe('string');
   });
 
@@ -122,7 +122,7 @@ describe('buildDraftArtifact', () => {
     expect(out.messageCount).toBe(2);
   });
 
-  it('routes long PRD threads to E4B', () => {
+  it('routes PRD threads to the local tier', () => {
     const router = makeRouter();
     const messages = Array.from({ length: 9 }, (_, i) => ({
       id: `m${i}`,
@@ -135,12 +135,12 @@ describe('buildDraftArtifact', () => {
       artifactType: 'PRD',
       messages,
     });
-    expect(out.tier).toBe('e4b');
+    expect(out.tier).toBe('local');
   });
 
   it('honours the router decision when an adapter is wired in', () => {
     // Even a short SOP thread defers to the router, which routes
-    // draft_artifact to E4B as the default preference. The
+    // draft_artifact to the on-device tier. The
     // length-based fallback only matters when the router declines.
     const router = makeRouter();
     const out = buildDraftArtifact(router, {
@@ -150,7 +150,7 @@ describe('buildDraftArtifact', () => {
         { id: 'm1', channelId: 'c1', senderId: 'u1', content: 'How to rotate keys.' },
       ],
     });
-    expect(out.tier === 'e4b' || out.tier === 'e2b').toBe(true);
+    expect(out.tier === 'local' || out.tier === 'local').toBe(true);
     expect(out.reason.length).toBeGreaterThan(0);
   });
 

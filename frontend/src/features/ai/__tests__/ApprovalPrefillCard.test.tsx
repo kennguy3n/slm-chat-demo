@@ -18,8 +18,8 @@ const sample: PrefillApprovalResponse = {
   },
   sourceMessageIds: ['msg_vendor_1', 'msg_vendor_2'],
   model: 'ternary-bonsai-8b',
-  tier: 'e4b',
-  reason: 'Routed prefill_approval to E4B for stronger reasoning.',
+  tier: 'local',
+  reason: 'Routed prefill_approval to on-device Ternary-Bonsai-8B for stronger reasoning.',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
 };
@@ -30,7 +30,7 @@ describe('ApprovalPrefillCard', () => {
     expect(screen.getByTestId('approval-prefill-title')).toHaveTextContent(
       'Vendor approval — Acme Logs',
     );
-    expect(screen.getByTestId('approval-prefill-tier')).toHaveTextContent('E4B');
+    expect(screen.getByTestId('approval-prefill-tier')).toHaveTextContent('LOCAL');
   });
 
   it('renders the prefilled fields in editable inputs', () => {

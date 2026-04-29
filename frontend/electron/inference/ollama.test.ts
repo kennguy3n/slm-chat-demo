@@ -138,7 +138,7 @@ describe('OllamaAdapter.status', () => {
     expect(s.ramUsageMB).toBe(0);
   });
 
-  it('matches even when the adapter is configured with a tagged model name (E4B_MODEL=ternary-bonsai-8b:q4_k_m)', async () => {
+  it('matches even when the adapter is configured with a tagged model name (e.g. MODEL_NAME=ternary-bonsai-8b:q4_k_m)', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
     );

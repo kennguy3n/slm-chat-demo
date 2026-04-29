@@ -18,7 +18,7 @@ describe('activityLog', () => {
     const entry = logActivity({
       skillId: 'family-checklist',
       model: 'ternary-bonsai-8b',
-      tier: 'e2b',
+      tier: 'local',
       itemsProduced: 3,
       egressBytes: 0,
       latencyMs: 25,
@@ -32,7 +32,7 @@ describe('activityLog', () => {
     logActivity({
       skillId: 'family-checklist',
       model: 'ternary-bonsai-8b',
-      tier: 'e2b',
+      tier: 'local',
       itemsProduced: 3,
       egressBytes: 0,
       latencyMs: 25,
@@ -40,7 +40,7 @@ describe('activityLog', () => {
     logActivity({
       skillId: 'trip-planner',
       model: 'ternary-bonsai-8b-alt',
-      tier: 'e4b',
+      tier: 'local',
       itemsProduced: 4,
       egressBytes: 0,
       latencyMs: 80,
@@ -59,7 +59,7 @@ describe('activityLog', () => {
     logActivity({
       skillId: 'family-checklist',
       model: 'ternary-bonsai-8b',
-      tier: 'e2b',
+      tier: 'local',
       itemsProduced: 1,
       egressBytes: 0,
       latencyMs: 10,
@@ -68,7 +68,7 @@ describe('activityLog', () => {
     logActivity({
       skillId: 'family-checklist',
       model: 'ternary-bonsai-8b',
-      tier: 'e2b',
+      tier: 'local',
       itemsProduced: 2,
       egressBytes: 0,
       latencyMs: 12,
@@ -85,7 +85,7 @@ describe('activityLog', () => {
     logActivity({
       skillId: 'guardrail-rewrite',
       model: 'ternary-bonsai-8b',
-      tier: 'e2b',
+      tier: 'local',
       itemsProduced: 1,
       egressBytes: 0,
       latencyMs: 5,
@@ -95,7 +95,7 @@ describe('activityLog', () => {
     logActivity({
       skillId: 'guardrail-rewrite',
       model: 'ternary-bonsai-8b',
-      tier: 'e2b',
+      tier: 'local',
       itemsProduced: 1,
       egressBytes: 0,
       latencyMs: 5,

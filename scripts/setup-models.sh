@@ -4,17 +4,15 @@
 # Pulls the Ternary-Bonsai-8B GGUF base model from HuggingFace (via
 # Ollama's `hf.co/<user>/<repo>` shorthand) and creates a local alias
 # that matches the app's default (`ternary-bonsai-8b`). Honours
-# `MODEL_NAME` (or the legacy `E2B_MODEL` / `E4B_MODEL` overrides) so
-# the alias can be renamed if you want the bootstrap to pick a
-# different name.
+# `MODEL_NAME` so the alias can be renamed if you want the bootstrap
+# to pick a different name.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Precedence: MODEL_NAME > E2B_MODEL > E4B_MODEL > default.
-MODEL_ALIAS="${MODEL_NAME:-${E2B_MODEL:-${E4B_MODEL:-ternary-bonsai-8b}}}"
+MODEL_ALIAS="${MODEL_NAME:-ternary-bonsai-8b}"
 
 echo "=== KChat SLM Demo — Model Setup ==="
 echo ""

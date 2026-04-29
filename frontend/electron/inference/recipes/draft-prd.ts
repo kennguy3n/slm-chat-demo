@@ -1,8 +1,7 @@
 // draft_prd recipe — wraps buildDraftArtifact from tasks.ts with
 // artifactType 'PRD'. The underlying helper builds the prompt + source
 // list deterministically so the renderer can stream the actual body
-// over `ai:stream`. PRD drafting benefits from E4B reasoning, which
-// matches the helper's reasoning-heavy default tier.
+// over `ai:stream`, running on the on-device Ternary-Bonsai-8B model.
 
 import { buildDraftArtifact } from '../tasks.js';
 import type { RecipeContext, RecipeDefinition, RecipeResult } from './registry.js';
@@ -14,7 +13,7 @@ export const draftPRDRecipe: RecipeDefinition = {
   description:
     'Draft a product requirements document — goal, requirements, success metrics, risks — from a work thread, with source pins for human review.',
   taskType: 'draft_artifact',
-  preferredTier: 'e4b',
+  preferredTier: 'local',
   async execute(
     router: InferenceRouter,
     context: RecipeContext,
@@ -24,7 +23,7 @@ export const draftPRDRecipe: RecipeDefinition = {
         status: 'refused',
         output: { prompt: '', sources: [], threadId: context.threadId ?? '', channelId: context.channelId },
         model: '',
-        tier: 'e4b',
+        tier: 'local',
         reason: 'draft_prd: thread is empty; refusing to draft a PRD.',
       };
     }

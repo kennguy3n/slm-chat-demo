@@ -215,7 +215,6 @@ export function classifyType(hint: string): ExtractedTask['type'] {
 
 // ---------- B2B thread summary ----------
 
-const THREAD_SUMMARY_SHORT = 8;
 const THREAD_SUMMARY_MAX_MESSAGES = 30;
 
 export function buildThreadSummary(
@@ -239,12 +238,8 @@ export function buildThreadSummary(
   });
 
   let model = 'ternary-bonsai-8b';
-  let tier: ThreadSummaryResponse['tier'] = 'e2b';
-  let reason = 'Short thread routed to E2B.';
-  if (messages.length > THREAD_SUMMARY_SHORT) {
-    tier = 'e4b';
-    reason = 'Thread is long enough to benefit from E4B reasoning.';
-  }
+  let tier: ThreadSummaryResponse['tier'] = 'local';
+  let reason = 'Thread summary routed to on-device Ternary-Bonsai-8B.';
   const decision = router.decide({ taskType: 'summarize', prompt });
   if (decision.allow) {
     model = decision.model;
@@ -425,8 +420,8 @@ export async function runPrefillApproval(
 
   const sourceMessageIds = collectApprovalSources(fields, limited);
 
-  const tier: Tier = decision.tier ?? 'e4b';
-  const reason = decision.reason || `Routed prefill_approval to ${tier.toUpperCase()}.`;
+  const tier: Tier = decision.tier ?? 'local';
+  const reason = decision.reason || `Routed prefill_approval to ${tier === 'server' ? 'confidential server' : 'on-device Ternary-Bonsai-8B'}.`;
 
   return {
     threadId: req.threadId,
@@ -502,7 +497,6 @@ function collectApprovalSources(
 
 // ---------- B2B draft artifact section ----------
 
-const DRAFT_ARTIFACT_SHORT = 6;
 const DRAFT_ARTIFACT_MAX_MESSAGES = 30;
 
 const ARTIFACT_TYPE_HINT: Record<ArtifactKind, string> = {
@@ -547,16 +541,12 @@ export function buildDraftArtifact(
     };
   });
 
-  // Default tier follows length AND artifact type. Long threads (or PRDs/
-  // QBRs that always benefit from reasoning) prefer E4B; the router's
-  // decision still wins when a real adapter is wired in.
-  const reasoningHeavy = req.artifactType === 'PRD' || req.artifactType === 'QBR';
-  let tier: Tier = reasoningHeavy || req.messages.length > DRAFT_ARTIFACT_SHORT ? 'e4b' : 'e2b';
+  // Default: route to the on-device model. The router's decision
+  // still wins when the confidential-server tier is wired in and the
+  // dispatcher asks for it explicitly.
+  let tier: Tier = 'local';
   let model = 'ternary-bonsai-8b';
-  let reason =
-    tier === 'e4b'
-      ? `Drafting a ${req.artifactType} benefits from E4B reasoning.`
-      : `Short ${req.artifactType} draft routed to E2B.`;
+  let reason = `Drafting a ${req.artifactType} routed to on-device Ternary-Bonsai-8B.`;
 
   const decision = router.decide({
     taskType: 'draft_artifact',
@@ -660,8 +650,8 @@ export async function runPrefillForm(
 
   const parsed = parseFormFields(resp.output, fields);
   const sourceMessageIds = collectFormSources(parsed, limited);
-  const tier: Tier = decision.tier ?? 'e4b';
-  const reason = decision.reason || `Routed prefill_form to ${tier.toUpperCase()}.`;
+  const tier: Tier = decision.tier ?? 'local';
+  const reason = decision.reason || `Routed prefill_form to ${tier === 'server' ? 'confidential server' : 'on-device Ternary-Bonsai-8B'}.`;
 
   return {
     threadId: req.threadId,

@@ -17,8 +17,8 @@ const sample: DraftArtifactResponse = {
   section: 'all',
   title: 'PRD: Inline translation',
   model: 'ternary-bonsai-8b',
-  tier: 'e4b',
-  reason: 'Drafting a PRD benefits from E4B reasoning.',
+  tier: 'local',
+  reason: 'Drafting a PRD benefits from Ternary-Bonsai-8B reasoning.',
   messageCount: 2,
   computeLocation: 'on_device',
   dataEgressBytes: 0,
@@ -28,7 +28,7 @@ describe('ArtifactDraftCard', () => {
   it('renders the title, tier and section', () => {
     renderWithProviders(<ArtifactDraftCard draft={sample} streamingText="ok" />);
     expect(screen.getByTestId('artifact-draft-title')).toHaveTextContent('PRD');
-    expect(screen.getByTestId('artifact-draft-tier')).toHaveTextContent('E4B');
+    expect(screen.getByTestId('artifact-draft-tier')).toHaveTextContent('LOCAL');
     expect(screen.getByTestId('artifact-draft-section')).toHaveTextContent(/draft/i);
   });
 

@@ -1,11 +1,11 @@
 // Phase 2 B2C "second brain" task helpers — family checklists,
 // shopping-list nudges, and community event/RSVP cards. All three
 // surfaces share the same shape: read recent chat messages, run a
-// single E2B inference, parse the model output deterministically, and
+// single on-device inference (Ternary-Bonsai-8B), parse the model output deterministically, and
 // match items back to the messages that produced them.
 //
 // The router still owns tier selection. We pass `taskType: 'extract_tasks'`
-// (the closest existing task in `TaskType`) so requests stay E2B-bound;
+// (the closest existing task in `TaskType`) so requests stay on-device;
 // adding new TaskType values would require a Go-side companion change
 // even though the Go backend no longer runs inference.
 
@@ -69,8 +69,8 @@ export async function runFamilyChecklist(
   }
 
   const sourceMessageIds = uniqueSourceIds(items, limited);
-  const tier: Tier = decision.tier ?? 'e2b';
-  const reason = decision.reason || `Routed family checklist to ${tier.toUpperCase()}.`;
+  const tier: Tier = decision.tier ?? 'local';
+  const reason = decision.reason || `Routed family checklist to ${tier === 'server' ? 'confidential server' : 'on-device Ternary-Bonsai-8B'}.`;
   const title = req.eventHint
     ? `Checklist — ${truncateForPrompt(req.eventHint, 60)}`
     : 'Family checklist';
@@ -176,8 +176,8 @@ export async function runShoppingNudges(
   );
 
   const sourceMessageIds = uniqueSourceIds(nudges, limited);
-  const tier: Tier = decision.tier ?? 'e2b';
-  const reason = decision.reason || `Routed shopping nudges to ${tier.toUpperCase()}.`;
+  const tier: Tier = decision.tier ?? 'local';
+  const reason = decision.reason || `Routed shopping nudges to ${tier === 'server' ? 'confidential server' : 'on-device Ternary-Bonsai-8B'}.`;
 
   return {
     channelId: req.channelId,
@@ -250,8 +250,8 @@ export async function runEventRSVP(
   const events = parseRSVPEvents(resp.output, limited);
 
   const sourceMessageIds = uniqueSourceIds(events, limited);
-  const tier: Tier = decision.tier ?? 'e2b';
-  const reason = decision.reason || `Routed RSVP extraction to ${tier.toUpperCase()}.`;
+  const tier: Tier = decision.tier ?? 'local';
+  const reason = decision.reason || `Routed RSVP extraction to ${tier === 'server' ? 'confidential server' : 'on-device Ternary-Bonsai-8B'}.`;
 
   return {
     channelId: req.channelId,

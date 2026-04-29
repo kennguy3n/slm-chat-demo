@@ -99,7 +99,7 @@ export interface SkillDefinition<Input = unknown, Output = unknown> {
   guardrails: GuardrailPolicy;
   responseTemplate: ResponseTemplate;
 
-  preferredTier: 'e2b' | 'e4b';
+  preferredTier: 'local';
   taskType: TaskType;
 
   // Pure parser: takes the raw model output and the input context and
@@ -145,7 +145,7 @@ export interface SkillRefusal {
 export interface PrivacyStripMetadata {
   computeLocation: 'on_device';
   modelName: string;
-  tier: 'e2b' | 'e4b';
+  tier: 'local';
   reason: string;
   dataEgressBytes: 0;
   sources: SkillSource[];
@@ -376,7 +376,7 @@ export async function runSkill<I, O>(
   // 3. Run inference (unless the caller pre-supplied raw output).
   let rawOutput: string;
   let model = '';
-  let tier: 'e2b' | 'e4b' = def.preferredTier;
+  let tier: 'local' = def.preferredTier;
   let routeReason = '';
   if (opts.rawOutputOverride !== undefined) {
     rawOutput = opts.rawOutputOverride;
@@ -391,6 +391,9 @@ export async function runSkill<I, O>(
       model = resp.model;
       const decision = router.lastDecision();
       if (decision.tier && decision.tier !== 'server') tier = decision.tier;
+      // `decision.tier` is typed Tier = 'local' | 'server'; we only
+      // accept 'local' here since server-routed dispatches go through
+      // the confidential-server pathway instead of skill framework.
       routeReason = decision.reason;
     } catch (e) {
       return refuseFromError(def, e);

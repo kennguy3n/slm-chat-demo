@@ -2,14 +2,13 @@
 
 Ollama Modelfile that creates the local alias the app looks for by
 default (`ternary-bonsai-8b` — the value
-`frontend/electron/inference/bootstrap.ts` uses when `E2B_MODEL` /
-`E4B_MODEL` env vars are unset). Both the E2B and E4B tier slots in the
-router point at the same alias; the two-tier logic is retained for
-future flexibility but a single 8B model currently serves both roles.
+`frontend/electron/inference/bootstrap.ts` uses when `MODEL_NAME` is
+unset). The demo ships a single on-device model; all non-server
+inference routes through this alias.
 
-| Alias               | Modelfile             | Base model                                          | Tier       | Use case                            |
-|---------------------|-----------------------|-----------------------------------------------------|------------|-------------------------------------|
-| `ternary-bonsai-8b` | `Modelfile.bonsai8b`  | `hf.co/prism-ml/Ternary-Bonsai-8B-gguf`             | Both tiers | Summaries, drafts, reasoning, tasks |
+| Alias               | Modelfile             | Base model                                          | Tier  | Use case                            |
+|---------------------|-----------------------|-----------------------------------------------------|-------|-------------------------------------|
+| `ternary-bonsai-8b` | `Modelfile.bonsai8b`  | `hf.co/prism-ml/Ternary-Bonsai-8B-gguf`             | local | Summaries, drafts, reasoning, tasks |
 
 Source: [prism-ml/Ternary-Bonsai-8B-gguf](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf).
 
@@ -47,20 +46,11 @@ curl -L -o models/Ternary-Bonsai-8B.Q4_K_M.gguf \
 
 ## Custom alias names
 
-If you want a different *alias name*, override at runtime — the
-bootstrap respects `E2B_MODEL` / `E4B_MODEL` (both default to
-`ternary-bonsai-8b`):
+If you want a different *alias name*, override at runtime with
+`MODEL_NAME` — the bootstrap and the setup script both honour it:
 
 ```bash
-export E2B_MODEL=my-custom-bonsai
-export E4B_MODEL=my-custom-bonsai
-cd frontend && npm run electron:dev
-```
-
-The setup script also honours `MODEL_NAME` (and `E2B_MODEL` /
-`E4B_MODEL` for backward compatibility), so you can create the alias
-under whatever name the app expects:
-
-```bash
+export MODEL_NAME=my-custom-bonsai
 MODEL_NAME=my-custom-bonsai ./scripts/setup-models.sh
+cd frontend && npm run electron:dev
 ```

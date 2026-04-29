@@ -11,8 +11,8 @@ import type {
 const privacy: TripPlannerPrivacy = {
   computeLocation: 'on_device',
   modelName: 'ternary-bonsai-8b',
-  tier: 'e2b',
-  reason: 'Routed guardrail review to E2B.',
+  tier: 'local',
+  reason: 'Routed guardrail review to on-device Ternary-Bonsai-8B.',
   dataEgressBytes: 0,
   sources: [],
 };

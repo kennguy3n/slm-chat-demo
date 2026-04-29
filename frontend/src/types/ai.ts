@@ -7,12 +7,6 @@ export interface ModelStatus {
   quant: string;
   ramUsageMB: number;
   sidecar: string;
-  // Phase 3 — E4B routing completion. When `hasE4B` is true the
-  // bootstrap wired a real E4B adapter; the renderer surfaces both
-  // tiers in the device-capability panel.
-  e4bModel?: string;
-  e4bLoaded?: boolean;
-  hasE4B?: boolean;
   // Phase 6 — confidential-server tier reporting. `serverAvailable`
   // means the bootstrap successfully pinged the server AND the
   // workspace policy currently permits its use; the
@@ -95,7 +89,7 @@ export interface AIRouteResponse {
   // Phase 1+: human-readable explanation of the routing decision (which
   // tier, why) — surfaced by the privacy strip.
   reason?: string;
-  tier?: 'e2b' | 'e4b';
+  tier?: 'local' | 'server';
 }
 
 export type AITaskType =
@@ -204,7 +198,7 @@ export interface ThreadSummaryResponse {
   threadId: string;
   channelId: string;
   model: string;
-  tier: 'e2b' | 'e4b';
+  tier: 'local' | 'server';
   reason: string;
   messageCount: number;
   computeLocation: ComputeLocation;
@@ -252,7 +246,7 @@ export interface PrefillApprovalResponse {
   fields: PrefilledApprovalFields;
   sourceMessageIds: string[];
   model: string;
-  tier: 'e2b' | 'e4b';
+  tier: 'local' | 'server';
   reason: string;
   computeLocation: ComputeLocation;
   dataEgressBytes: number;
@@ -267,7 +261,7 @@ export interface PrefillFormResponse {
   fields: Record<string, string>;
   sourceMessageIds: string[];
   model: string;
-  tier: 'e2b' | 'e4b';
+  tier: 'local' | 'server';
   reason: string;
   computeLocation: ComputeLocation;
   dataEgressBytes: number;
@@ -287,7 +281,7 @@ export interface DraftArtifactResponse {
   section: ArtifactSection;
   title: string;
   model: string;
-  tier: 'e2b' | 'e4b';
+  tier: 'local' | 'server';
   reason: string;
   messageCount: number;
   computeLocation: ComputeLocation;
@@ -308,7 +302,7 @@ export interface FamilyChecklistResponse {
   items: FamilyChecklistItem[];
   sourceMessageIds: string[];
   model: string;
-  tier: 'e2b' | 'e4b';
+  tier: 'local' | 'server';
   reason: string;
   computeLocation: ComputeLocation;
   dataEgressBytes: number;
@@ -325,7 +319,7 @@ export interface ShoppingNudgesResponse {
   nudges: ShoppingNudge[];
   sourceMessageIds: string[];
   model: string;
-  tier: 'e2b' | 'e4b';
+  tier: 'local' | 'server';
   reason: string;
   computeLocation: ComputeLocation;
   dataEgressBytes: number;
@@ -344,7 +338,7 @@ export interface EventRSVPResponse {
   events: RSVPEvent[];
   sourceMessageIds: string[];
   model: string;
-  tier: 'e2b' | 'e4b';
+  tier: 'local' | 'server';
   reason: string;
   computeLocation: ComputeLocation;
   dataEgressBytes: number;

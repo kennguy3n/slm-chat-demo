@@ -220,11 +220,8 @@ export function registerIPCHandlers(): void {
     const stack = await getStack();
     const {
       status,
-      e4bStatus,
       defaultModel,
-      defaultE4BModel,
       defaultQuant,
-      hasE4B,
       hasServer,
       defaultServerModel,
       serverUrl,
@@ -243,22 +240,8 @@ export function registerIPCHandlers(): void {
       if (!base.model) base.model = defaultModel;
       if (!base.quant) base.quant = defaultQuant;
     }
-    let e4bLoaded = false;
-    let e4bModelName = defaultE4BModel;
-    if (hasE4B && e4bStatus) {
-      try {
-        const e4bSt = await e4bStatus.status();
-        e4bLoaded = e4bSt.loaded;
-        e4bModelName = e4bSt.model || defaultE4BModel;
-      } catch {
-        // tolerate transient e4b status errors — leave defaults
-      }
-    }
     return {
       ...base,
-      e4bModel: e4bModelName,
-      e4bLoaded,
-      hasE4B,
       // Phase 6 — confidential-server reporting. `serverAvailable`
       // means the bootstrap successfully pinged the server AND the
       // workspace policy currently permits its use; the server
@@ -332,7 +315,7 @@ export async function runRecipe(
       status: 'refused',
       output: null,
       model: '',
-      tier: 'e2b',
+      tier: 'local',
       reason: `recipe "${req.recipeId}" is not registered`,
     };
   }

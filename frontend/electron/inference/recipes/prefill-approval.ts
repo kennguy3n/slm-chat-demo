@@ -14,7 +14,7 @@ export const prefillApprovalRecipe: RecipeDefinition = {
   description:
     'Prefill a draft approval card (vendor, amount, justification, risk) from a work thread, with per-field source pins so a human can confirm before anything is written.',
   taskType: 'prefill_approval',
-  preferredTier: 'e4b',
+  preferredTier: 'local',
   async execute(
     router: InferenceRouter,
     context: RecipeContext,
@@ -29,7 +29,7 @@ export const prefillApprovalRecipe: RecipeDefinition = {
           channelId: context.channelId,
         },
         model: '',
-        tier: 'e4b',
+        tier: 'local',
         reason: 'prefill_approval: thread is empty; refusing to prefill approval.',
       };
     }

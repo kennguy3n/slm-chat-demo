@@ -13,7 +13,7 @@ export const extractTasksRecipe: RecipeDefinition = {
   description:
     'Pull concrete action items, owners, and due dates out of a work thread, preserving source-message provenance for human review.',
   taskType: 'extract_tasks',
-  preferredTier: 'e2b',
+  preferredTier: 'local',
   async execute(
     router: InferenceRouter,
     context: RecipeContext,
@@ -23,7 +23,7 @@ export const extractTasksRecipe: RecipeDefinition = {
         status: 'refused',
         output: { tasks: [] },
         model: '',
-        tier: 'e2b',
+        tier: 'local',
         reason: 'extract_tasks: thread is empty; refusing to extract tasks.',
       };
     }
@@ -43,8 +43,8 @@ export const extractTasksRecipe: RecipeDefinition = {
         channelId: resp.channelId,
       },
       model: resp.model,
-      tier: decision.tier ?? 'e2b',
-      reason: decision.reason || 'extract_tasks routed to E2B.',
+      tier: decision.tier ?? 'local',
+      reason: decision.reason || 'extract_tasks routed to on-device Ternary-Bonsai-8B.',
     };
   },
 };

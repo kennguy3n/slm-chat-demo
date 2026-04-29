@@ -30,7 +30,7 @@ export type {
   RecipeMessage,
   RecipeResult,
 } from './registry.js';
-export { summarizeRecipe, preferredTierForThread } from './summarize.js';
+export { summarizeRecipe } from './summarize.js';
 export { extractTasksRecipe } from './extract-tasks.js';
 export { draftPRDRecipe } from './draft-prd.js';
 export { draftProposalRecipe } from './draft-proposal.js';

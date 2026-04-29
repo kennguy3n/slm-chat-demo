@@ -13,13 +13,13 @@ function fakeRecipe(id: string): RecipeDefinition {
     name: `Fake ${id}`,
     description: 'fake recipe for tests',
     taskType: 'summarize',
-    preferredTier: 'e2b',
+    preferredTier: 'local',
     async execute() {
       return {
         status: 'ok',
         output: { id },
         model: 'mock-2b',
-        tier: 'e2b',
+        tier: 'local',
         reason: 'test',
       };
     },

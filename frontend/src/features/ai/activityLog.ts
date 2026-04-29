@@ -1,14 +1,17 @@
 // Lightweight in-memory activity log for the Phase 2 metrics dashboard.
 // Each successful AI skill execution logs an entry (skill id, model,
 // tier, items produced, latency, egress bytes). The dashboard reads
-// these entries to summarise on-device AI work for the user.
+// these entries to summarise on-device AI work for the user. `tier`
+// here distinguishes local vs. confidential-server compute; the demo
+// ships a single on-device model (Ternary-Bonsai-8B) so most entries
+// will be `local`.
 //
 // This module deliberately keeps no IndexedDB persistence today — the
 // metrics are session-scoped because that matches the demo flow ("how
 // much did the assistant just do for me on this device, right now?").
 // A persistent backing can be added later behind the same API.
 
-export type Tier = 'e2b' | 'e4b';
+export type Tier = 'local' | 'server';
 
 export interface ActivityEntry {
   id: string;

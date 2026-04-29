@@ -155,9 +155,9 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     if (!res.ok) throw new Error(`ollama: ping HTTP ${res.status}`);
   }
 
-  // listModels returns the names of every locally pulled model. Used by
-  // the bootstrap to decide whether the E4B adapter should be wired
-  // separately or aliased to E2B.
+  // listModels returns the names of every locally pulled model. Used
+  // by the bootstrap to sanity-check that the configured alias is
+  // actually available on the local Ollama daemon.
   async listModels(signal?: AbortSignal): Promise<string[]> {
     const res = await this.fetchImpl(`${this.baseURL}/api/tags`, { signal });
     if (!res.ok) throw new Error(`ollama: tags HTTP ${res.status}`);
@@ -178,14 +178,13 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     }
     const ps = (await res.json()) as OllamaPsResponse;
     const models = ps.models ?? [];
-    // Two adapter instances (E2B / E4B) share the same daemon, so each one
-    // must report only on the model it represents — finding any other model
-    // in /api/ps does NOT mean this adapter's model is loaded. Strip Ollama's
-    // optional `:tag` suffix (e.g. "ternary-bonsai-8b:q4_k_m") on BOTH sides of the
-    // comparison: users may set E2B_MODEL / E4B_MODEL to a tagged name and
-    // the daemon may report a different tag, but matching bare-vs-bare lets
-    // us track the model regardless of quantisation without confusing two
-    // distinct base models.
+    // Report only on the model this adapter represents — finding any
+    // other model in /api/ps does NOT mean this adapter's model is
+    // loaded. Strip Ollama's optional `:tag` suffix (e.g.
+    // "ternary-bonsai-8b:q4_k_m") on BOTH sides of the comparison: the
+    // operator may set MODEL_NAME to a tagged name and the daemon may
+    // report a different tag, but matching bare-vs-bare lets us track
+    // the model regardless of quantisation.
     const wanted = this.model.toLowerCase().split(':')[0];
     const match = models.find((m) => {
       const raw = (m.name || m.model || '').toLowerCase();
