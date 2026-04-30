@@ -69,13 +69,23 @@ cd frontend && npm run electron:dev
 
 ## CPU performance
 
-The ternary `Ternary-Bonsai-8B-Q2_0` quant used by the demo runs at
-**~0.3 tok/s on shared 8-core CPU VMs** — below the product threshold
-for every streaming AI surface (see
-[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
-per-surface thresholds and the full tuning checklist). The Modelfile
-in this directory now defaults to `num_ctx 2048` so that CPU-only
-hosts don't pay the 8K-context attention cost per token.
+The Ternary-Bonsai-8B weights that `./scripts/setup-models.sh` pulls
+today land on disk at ~16 GB and Ollama reports them as
+`quantization_level: F16` — not Q2_0 as older passes of these docs
+claimed. A 2-bit 8B quant would be ~2 GB; if you need that, see the
+PrismML fork path in
+[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md). The Modelfile
+in this directory defaults to `num_ctx 2048` so CPU-only hosts don't
+pay the 8K-context attention cost per token.
+
+**Measured rates (2026-04-30, AMD EPYC 7763 8 vCPU, 31 GiB RAM,
+CPU-only, default HF tag / F16):** sustained generation ~**4.2 tok/s**,
+prompt eval 14 – 23 tok/s at `num_ctx=2048`. Full table in
+[`demo/README.md` → On-device LLM performance](../demo/README.md#on-device-llm-performance).
+That clears the tuning guide's CPU-fallback floor (2 tok/s) but falls
+short of the short-assistant floor (5 tok/s) — streamed-text surfaces
+like morning-digest and smart-reply still need a smaller model or a
+GPU / Metal / NPU path.
 
 For CPU-only deployments, prefer a smaller model. Good candidates
 (see [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the

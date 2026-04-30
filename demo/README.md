@@ -8,25 +8,29 @@ the enriched seed data (`backend/internal/store/seed.go`).
 - [B2C — personal memory & family / community flows](#b2c-flows)
 - [B2B — workspace & AI-employee flows](#b2b-flows)
 - [On-device LLM — privacy posture](#on-device-llm-demonstration)
+- [On-device LLM — measured performance](#on-device-llm-performance)
 - [How to reproduce each screenshot](#how-to-reproduce)
 
 > **Note on coverage.** Most screenshots are captured from the Vite
 > renderer served at `http://localhost:5173/` (the same React app the
 > Electron shell loads). The 2026-04-30 pass also re-captured a set of
-> shots against the **real** `Ternary-Bonsai-8B-Q2_0.gguf` wired
-> through the PrismML llama.cpp fork (`prism` branch) → an Ollama-API
-> shim → the Electron shell's `OllamaAdapter` — those shots show the
-> `ternary-bonsai-8b · idle` chip in the top-right header instead of
-> the mock badge, and pending in-flight LLM calls render the
+> shots against the **real** Ternary-Bonsai-8B weights pulled through
+> `./scripts/setup-models.sh` (→ `hf.co/prism-ml/Ternary-Bonsai-8B-gguf`
+> → Ollama → the Electron shell's `OllamaAdapter`) — those shots show
+> the `ternary-bonsai-8b · idle` chip in the top-right header instead
+> of the mock badge, and pending in-flight LLM calls render the
 > `Translating on-device…` and `Drafting on-device replies…` markers
 > visible in several frames. A subset of screens require a fully
-> streamed AI result that the model cannot finish within a reasonable
-> capture window on this 8-core CPU box (~0.3 tok/s on Q2_0 without
-> Apple Silicon NEON / Metal kernels) — those entries remain marked
-> **(pending)** below. The accompanying demo flow is still
-> reproducible by hand using the **How to reproduce** instructions.
+> streamed AI result whose wall-time does not fit a single capture
+> window — those entries remain marked **(pending)** below. The
+> accompanying demo flow is still reproducible by hand using the
+> **How to reproduce** instructions. Live benchmark numbers for this
+> VM class (AMD EPYC 7763, 8 vCPU, 31 GiB RAM, CPU-only) are in
+> [On-device LLM performance](#on-device-llm-performance) below; see
+> [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
+> host-class expectations.
 >
-> Captured in this pass (real Q2_0 model loaded, 2026-04-30):
+> Captured in this pass (real on-device model loaded, 2026-04-30):
 >
 > - Standalone: `local-model-status`.
 > - B2C (header chip shows `ternary-bonsai-8b · idle`,
@@ -46,8 +50,8 @@ the enriched seed data (`backend/internal/store/seed.go`).
 >   `06-artifact-draft`.
 >
 > Pending (need a manual capture pass — these surfaces require a fully
-> completed live AI stream from the Electron shell, which is too slow
-> on a CPU-only Q2_0 build to fit a single capture window): `b2c/02`,
+> completed live AI stream whose wall-time does not fit a single
+> capture window at ~4 tok/s CPU-only generation): `b2c/02`,
 > `b2c/05`, `b2c/07`, `b2c/09`, `b2c/10`, `b2c/11`, `b2b/07`, `b2b/09`,
 > `privacy-strip-on-device.png`, `egress-summary-zero.png`.
 
@@ -104,11 +108,72 @@ Source workspace: **Acme Corp** (`ws_acme`) with two domains —
 All B2C and B2B screenshots in this directory show the privacy strip /
 header reporting `on-device` and `0 B egress`. The 2026-04-30 pass
 re-captured the shots listed in **Captured in this pass** above against
-the live `Ternary-Bonsai-8B-Q2_0.gguf` GGUF served from the PrismML
-llama.cpp fork; the rest still come from the renderer's deterministic
-mock outputs. The three standalone shots in this section call out the
-on-device posture as a standalone artefact (only `local-model-status`
-has been re-captured against the live model so far).
+the live Ternary-Bonsai-8B weights pulled via
+`./scripts/setup-models.sh` through Ollama; the rest still come from
+the renderer's deterministic mock outputs. The three standalone shots
+in this section call out the on-device posture as a standalone
+artefact (only `local-model-status` has been re-captured against the
+live model so far).
+
+## On-device LLM performance
+
+Live numbers, 2026-04-30, against the Ternary-Bonsai-8B weights that
+`./scripts/setup-models.sh` pulls today (via
+`hf.co/prism-ml/Ternary-Bonsai-8B-gguf`), served by the bundled Ollama
+runtime. Host: AMD EPYC 7763, 8 vCPU (no NUMA split, AVX2 + FMA +
+BMI2), 31 GiB RAM, 0 swap, CPU-only (no GPU / Metal / NPU).
+
+**What's actually loaded.** Ollama reports `quantization_level: F16`
+for the file under the HF default tag (confirmed via the GGUF
+`general.file_type=1` header and the 16 005 MB on-disk footprint — a
+true 2-bit 8B GGUF would be ~2 GB). Earlier versions of these docs
+called the weights "Q2_0 ternary"; that is correct as an aspirational
+target for the PrismML fork but does **not** describe what
+`./scripts/setup-models.sh` ends up with today. Treat any "Q2_0 tok/s"
+numbers in older doc snapshots as stale.
+
+**Sustained generation rate (warm, single request):** ~**4.2 tok/s**
+across prompt sizes.
+
+| Task                             | `num_ctx` | `prompt_eval` tok/s | `eval` tok/s |
+| -------------------------------- | --------- | ------------------- | ------------ |
+| classifier / short task          |     512   | 14 – 18             | **4.2**      |
+| default task prompt              |    2048   | 14 – 23             | **4.1 – 4.2**|
+| long-context prompt              |    8192   |  8 – 18             | **3.2 – 4.2**|
+| 256-token sustained (draft)      |    2048   | —                   | **4.11**     |
+
+**Resident RAM while the model is loaded** (from `GET /api/ps`):
+
+| `num_ctx` | resident RAM | vs 2048        |
+| --------- | ------------ | -------------- |
+|     512   | 15 787 MB    | −218 MB        |
+|    2048   | 16 005 MB    | —              |
+|    8192   | 16 875 MB    | +870 MB        |
+
+Context headroom beyond 2048 costs roughly 53 MB per 512 additional
+tokens. The `num_ctx 2048` default in
+`models/Modelfile.bonsai8b` trades ~870 MB of RAM and roughly 2×
+prompt-eval throughput for the same sustained generation rate as
+`num_ctx 8192`.
+
+**Wall-time latency** (generation + prompt eval, warm):
+
+| Surface shape                          | tokens produced | wall-time |
+| -------------------------------------- | --------------- | --------- |
+| 3-bullet summary (`stop` hit)          |  ~50            | ~19 s     |
+| EN → ES one-line translation (64-cap)  |  64             | ~19 s     |
+| 256-token draft email (`think=false`)  | 256             | ~62 s     |
+
+Qwen3 thinking mode burns output tokens inside `<think>…</think>`
+before any user-visible text. For latency-sensitive surfaces either
+set `think=false` on the request or allocate `num_predict ≥ 256`.
+
+**Calibration note.** Older anchor numbers ("~0.3 tok/s") in prior
+passes of this file were measured against a different quant / weaker
+VM class and do NOT describe the current `./scripts/setup-models.sh`
+baseline on this host class. If your box is slower than ~2 tok/s after
+following [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md),
+switch to a smaller model.
 
 ## How to reproduce
 
@@ -184,18 +249,16 @@ has been re-captured against the live model so far).
    - `--no-mmap`: avoids slow page faults on VMs with slow virtual
      disk; test both with and without on your host.
 
-   On a CPU-only host the Q2_0 quant runs around 0.3 tok/s, so
-   surfaces that need a fully-streamed AI result (smart-reply,
-   morning-digest streaming text, knowledge-graph extraction with
-   long output) take 5–17 minutes per call. The shots flagged
-   `(pending)` above could not be captured inside a reasonable window
-   on this 8-core box; run on Apple Silicon (NEON / Metal) or a
-   discrete GPU to capture them. Benchmark your box before blaming
-   the model:
+   Wall-time for fully-streamed AI results depends heavily on host
+   class — see [On-device LLM performance](#on-device-llm-performance)
+   for measured numbers on the VM that ships with the demo, and
+   [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
+   full host-class matrix. Benchmark your box before blaming the
+   model:
 
    ```bash
    ./build/bin/llama-bench \
-     -m /path/to/Ternary-Bonsai-8B-Q2_0.gguf \
+     -m /path/to/Ternary-Bonsai-8B.gguf \
      -p 128 -n 128 -c 1024 -t 4
    ```
 
