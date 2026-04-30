@@ -19,25 +19,50 @@ interface Props {
   // Optional fallback text for the original message, used for the top
   // panel while the translation streams.
   originalFallback?: string;
+  // The viewer's preferred language. When the translation is into
+  // this language, the bottom (translated) panel takes visual
+  // emphasis. When the translation is into a *partner* language
+  // (i.e. the viewer wrote in their preferred language and is
+  // showing it to a partner), the original stays prominent and the
+  // translation drops to the secondary panel. Defaults to 'en'.
+  preferredLanguage?: string;
 }
 
-// Human-readable language names for the bottom-panel label. Falls
-// back to the raw code for languages we haven't listed.
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: 'English',
-  es: 'Spanish',
-  vi: 'Vietnamese',
-  ja: 'Japanese',
-  ko: 'Korean',
-  zh: 'Chinese',
-  fr: 'French',
-  de: 'German',
+// Human-readable language names + a small flag emoji used by the
+// per-panel label. Defaults to a generic globe when we don't know
+// the language.
+const LANGUAGE_META: Record<string, { name: string; flag: string }> = {
+  en: { name: 'English', flag: '🇺🇸' },
+  es: { name: 'Spanish', flag: '🇪🇸' },
+  vi: { name: 'Vietnamese', flag: '🇻🇳' },
+  ja: { name: 'Japanese', flag: '🇯🇵' },
+  ko: { name: 'Korean', flag: '🇰🇷' },
+  zh: { name: 'Chinese', flag: '🇨🇳' },
+  fr: { name: 'French', flag: '🇫🇷' },
+  de: { name: 'German', flag: '🇩🇪' },
 };
+
+function normaliseCode(code: string | undefined): string {
+  if (!code) return '';
+  return code.toLowerCase().split(/[-_]/)[0] ?? '';
+}
 
 function languageName(code: string | undefined): string {
   if (!code) return '';
-  const base = code.toLowerCase().split(/[-_]/)[0] ?? '';
-  return LANGUAGE_NAMES[base] ?? code;
+  const base = normaliseCode(code);
+  return LANGUAGE_META[base]?.name ?? code;
+}
+
+function languageFlag(code: string | undefined): string {
+  const base = normaliseCode(code);
+  return LANGUAGE_META[base]?.flag ?? '🌐';
+}
+
+// Build a panel label string like "🇺🇸 English". Falls back to a
+// globe + the raw code when we don't recognise the language.
+function panelLabel(code: string | undefined): string {
+  if (!code) return 'Original';
+  return `${languageFlag(code)} ${languageName(code)}`;
 }
 
 // TranslationCaption is the two-panel translation card surface from
@@ -54,6 +79,7 @@ export function TranslationCaption({
   autoFetch = true,
   showPrivacyStrip = false,
   originalFallback,
+  preferredLanguage = 'en',
 }: Props) {
   const queryClient = useQueryClient();
   // MessageList seeds this cache key with `null` while a batched SLM
@@ -119,6 +145,30 @@ export function TranslationCaption({
   const computeLabel =
     data.computeLocation === 'on_device' ? 'on-device' : data.computeLocation;
 
+  // Context-aware emphasis: in a bilingual chat the message arrives
+  // either in the viewer's preferred language (they wrote it; the
+  // bottom panel shows the partner's-language version) or in the
+  // partner's language (incoming message; bottom panel shows the
+  // viewer's-language version). When the translation lands in the
+  // viewer's preferred language we promote the bottom panel as
+  // primary so the eye lands on text the viewer can read; when it's
+  // outgoing context (translation INTO the partner language), the
+  // original stays prominent.
+  const targetBase = normaliseCode(data.targetLanguage);
+  const preferredBase = normaliseCode(preferredLanguage);
+  const intoPreferred = targetBase === preferredBase;
+  const originalLanguage = intoPreferred
+    ? // Translation is INTO the viewer's language; the original is
+      // therefore in some other language. We don't know its exact
+      // code from the response (the adapter doesn't echo a source
+      // language) so we leave the label as "Original" if the source
+      // looks ambiguous, but if the partnerLanguage hint matches we
+      // use it.
+      undefined
+    : // Translation is INTO the partner language → the original is
+      // in the viewer's preferred language.
+      preferredLanguage;
+
   const privacy: PrivacyStripData = {
     computeLocation: data.computeLocation,
     modelName: data.model,
@@ -139,15 +189,23 @@ export function TranslationCaption({
     },
   };
 
+  const originalPanelClass =
+    'translation-card__panel translation-card__panel--original' +
+    (intoPreferred ? ' translation-card__panel--secondary' : ' translation-card__panel--primary');
+  const translatedPanelClass =
+    'translation-card__panel translation-card__panel--translated' +
+    (intoPreferred ? ' translation-card__panel--primary' : ' translation-card__panel--secondary');
+
   return (
     <aside
       className="translation-caption translation-card"
       data-testid="translation-caption"
+      data-emphasis={intoPreferred ? 'translated' : 'original'}
       aria-label={`Translation into ${targetLabel}`}
     >
-      <div className="translation-card__panel translation-card__panel--original">
+      <div className={originalPanelClass}>
         <span className="translation-card__label" aria-hidden>
-          Original
+          {originalLanguage ? panelLabel(originalLanguage) : 'Original'}
         </span>
         <p
           className="translation-card__body translation-card__body--original"
@@ -157,9 +215,9 @@ export function TranslationCaption({
         </p>
       </div>
       <hr className="translation-card__divider" aria-hidden />
-      <div className="translation-card__panel translation-card__panel--translated">
+      <div className={translatedPanelClass}>
         <span className="translation-card__label" aria-hidden>
-          {targetLabel}
+          {panelLabel(data.targetLanguage)}
         </span>
         <p
           className="translation-card__body translation-card__body--translated"

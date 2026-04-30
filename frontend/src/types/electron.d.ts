@@ -244,6 +244,8 @@ interface ElectronAIBridge {
       name: string;
       messages: { id: string; channelId: string; senderId: string; content: string }[];
     }[];
+    bilingualPartnerLanguage?: string;
+    viewerLanguage?: string;
   }): Promise<UnreadSummaryResponse>;
   familyChecklist(req: {
     channelId: string;

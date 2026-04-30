@@ -23,9 +23,11 @@ chasing parsers through `tasks.ts`.
 
 The same product surface ships in two contexts:
 
-- **B2C** — personal chats, family and community groups, on-device
-  AI memory, smart reply, inline translation, task extraction, RSVP
-  cards.
+- **B2C** — bilingual chat demo (Alice 🇺🇸 ↔ Minh 🇻🇳) where every
+  bubble is translated on-device by the local SLM; right-rail
+  Conversation Summary, AI Memory, and on-device Metrics surface the
+  privacy + audit story. See the
+  [bilingual chat demo flow](#bilingual-chat-demo-b2c) below.
 - **B2B** — workspace / domain / channel collaboration with KApps,
   AI Employees, approvals, artifacts (PRD / RFC / SOP / QBR), and
   human-reviewable AI output anchored to the originating thread.
@@ -117,6 +119,28 @@ knobs and local-GGUF fallback instructions live in
 runtime with `MODEL_NAME=some-other-alias`; if it resolves to a
 model the daemon hasn't pulled, the bootstrap falls back to
 `MockAdapter` and `DeviceCapabilityPanel` surfaces the fallback.
+
+## Bilingual chat demo (B2C)
+
+The B2C surface is built around a single, real-LLM scenario: Alice
+(English) and Minh (Vietnamese) chatting in the seeded
+`ch_dm_alice_minh` DM. The channel is auto-selected the moment B2C
+mounts, so opening the app drops you straight into the conversation.
+
+| Surface | What you see | What the SLM does |
+| ------- | ------------ | ----------------- |
+| Chat bubble | A two-panel translation card per message — original on top, translation below, with per-language flag labels (🇺🇸 English / 🇻🇳 Vietnamese). The panel in **your** preferred language is the primary one; the other panel is muted. | One `translate` call per visible bubble, batched into a single IPC round-trip on render. `MessageList` sets `partnerLanguage="vi"` on the channel so outgoing English bubbles also auto-translate to Vietnamese for context. |
+| Privacy strip | Expandable strip on every translation showing `compute: on-device`, `model: bonsai-8b`, `egress: 0 B`, plus the source-message pin. | None — the strip just reflects the response metadata. |
+| **Summary** tab (right rail) | A bilingual conversation summary, written in your preferred language, listing topics, action items, and decisions. | A `summarize` task with a bilingual-aware prompt (see `frontend/electron/inference/tasks.ts` → `buildUnreadSummary`). The mock adapter switches its canned digest when it detects a bilingual prompt. |
+| **Memory** tab | Local-only IndexedDB-backed `AIMemoryPage`. Add/remove facts the model never auto-writes. | None (storage only — 0 B egress). |
+| **Stats** tab | Per-task `MetricsDashboard` (translate runs, tokens, latency, egress). | Reads from the local `activityLog`. |
+
+The demo runs end-to-end against `MockAdapter` (no Ollama needed —
+hand-curated translations seeded in
+[`frontend/electron/inference/mock.ts`](./frontend/electron/inference/mock.ts))
+and against a real `OllamaAdapter` bound to `bonsai-8b`. Switching
+between the two is automatic: the bootstrap pings Ollama on startup
+and falls back to the mock when it isn't reachable.
 
 ## Project structure
 
@@ -212,7 +236,7 @@ applicable.
 | ----- | ----------- | -------- | ------- |
 | Phase 0 — Consolidated prototype foundation | Complete    | 100% | Electron shell, B2C/B2B layouts, KApp card system, Privacy Strip, AI Action Launcher, Go data API. |
 | Phase 1 — Local LLM MVP                     | Complete    | 100% | Ollama adapter, single-tier on-device router, IPC streaming, real privacy strip, B2C/B2B inference helpers. |
-| Phase 2 — B2C second-brain demo             | Complete    | 100% | AI Memory, family checklist, shopping nudges, RSVP, trip planner, guardrails, metrics dashboard, skills framework. |
+| Phase 2 — B2C bilingual chat demo            | Complete    | 100% | Bilingual Alice ↔ Minh chat with on-device translation per bubble, conversation summary, AI Memory, metrics dashboard, skills framework. |
 | Phase 3 — B2B KApps MVP                     | Complete    | 100% | Workspace navigation, Tasks/Approvals/Artifacts/Forms KApps, audit log, human review gates, source pins. |
 | Phase 4 — AI Employees and recipe engine    | Complete    | 100% | Three seeded employees, recipe registry, queue, budget controls, output gate, mode badges. |
 | Phase 5 — Connectors and knowledge graph    | Complete    | 100% | Drive + OneDrive mock connectors, channel-scoped retrieval, source picker, knowledge graph, citations, ACL sync. |

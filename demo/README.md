@@ -23,9 +23,23 @@ the enriched seed data (`backend/internal/store/seed.go`).
 
 ## B2C flows
 
-Source channels: `ch_dm_alice_bob`, `ch_family`, `ch_neighborhood` in
-the **Personal** workspace. Each demo flow maps to one of the four
-PROPOSAL.md §5 scenarios.
+> ⚠️ **Pending re-capture (2026-04-30 redesign).** The B2C surface
+> was reground around the bilingual Alice ↔ Minh chat demo (PR #50).
+> Several of the captures below — `07-shopping-nudges.png`,
+> `08-event-rsvp.png`, the family-checklist shots, the trip-planner
+> shot — show right-rail surfaces that no longer mount in the new
+> layout, and the digest panel was renamed to "Conversation
+> summary". The eight new bilingual captures (full chat overview;
+> single VI→EN bubble close-up; outgoing EN→VI bubble; smart-reply
+> after a Vietnamese message; expanded privacy strip;
+> conversation-summary panel; device-capability panel; metrics
+> dashboard with translation runs) are still pending — see the
+> "Bilingual chat capture" subsection below for the manual flow,
+> which the next capture pass will run end-to-end.
+
+Source channels: the bilingual DM `ch_dm_alice_minh` (the new
+default), plus `ch_dm_alice_bob`, `ch_family`, `ch_neighborhood` in
+the **Personal** workspace.
 
 | # | File | PROPOSAL §5 flow | Privacy strip | What it shows |
 |---|------|------------------|---------------|---------------|
@@ -160,6 +174,40 @@ on x86. After diagnosing the kernel-coverage gap (see the
 default is now `Bonsai-8B-Q1_0.gguf`, which runs at ~11.7 tok/s on
 the same EPYC reference box — a ~25× improvement at half the disk
 footprint, with no host-class change.
+
+## Bilingual chat capture (B2C redesign)
+
+The redesigned B2C surface (PR #50) needs eight new screenshots that
+the next capture pass will produce. Steps are reproducible against
+either `MockAdapter` (deterministic — no Ollama required) or the
+live `bonsai-8b` Ollama path.
+
+Pre-conditions (one-time):
+
+```bash
+cd backend && go run ./cmd/server &        # data API
+cd frontend && npm install && npm run electron:dev
+```
+
+The bilingual DM `ch_dm_alice_minh` is auto-selected on first mount
+of `B2CLayout`, so the app opens directly into the chat.
+
+| # | Filename (target) | What to capture | Notes |
+|---|-------------------|-----------------|-------|
+| 1 | `b2c/13-bilingual-chat-overview.png` | Full `ch_dm_alice_minh` chat with several visible bubbles, each rendering its two-panel translation card. | Scroll up so at least one EN bubble and one VI bubble are visible side-by-side. |
+| 2 | `b2c/14-translation-card-vi-to-en.png` | Close-up of a single Vietnamese bubble (e.g. `msg_minh_2`) translated into English. The English panel must be primary; the Vietnamese panel muted. | Highlight the SLM attribution pill (`on-device · bonsai-8b · 0 B egress`). |
+| 3 | `b2c/15-translation-card-en-to-vi.png` | Close-up of an Alice (English) bubble translated into Vietnamese (the partner side). Original English panel is primary; Vietnamese translation is muted secondary. | Demonstrates context-aware emphasis. |
+| 4 | `b2c/16-smart-reply-bilingual.png` | After a Vietnamese bubble lands, focus the composer so `SmartReplyBar` renders 2–3 English suggestions. | The mock adapter ships the canned three-line smart-reply output; the live model produces variations. |
+| 5 | `b2c/17-privacy-strip-bilingual.png` | Expanded `PrivacyStrip` on a Vietnamese-bubble translation card, showing all 8 elements (compute location, model, sources, egress, confidence, why-suggested, accept/edit/discard, linked origin). | Confirms 0 B egress for the translate task. |
+| 6 | `b2c/18-conversation-summary.png` | Right-rail **Summary** tab after the bilingual `summarize` call returns: bullet list in English, with the privacy strip and source pin to the chat. | The panel runs once on mount and caches per-channel; refresh by switching tabs and back. |
+| 7 | `b2c/19-device-capability-panel.png` | `DeviceCapabilityPanel` showing `bonsai-8b` loaded (or "fallback to mock" when Ollama is offline). | Same composition as `10-device-capability-panel.png` but pin it on the redesigned surface. |
+| 8 | `b2c/20-metrics-dashboard-translate.png` | `MetricsDashboard` (Stats tab) after letting the chat translate every visible bubble — it should show a non-trivial `translate` run count and `0 B` egress. | Capture *after* the batch translate has finished so latency / token columns are populated. |
+
+Once captured, append these eight rows to the B2C flows table above
+and remove the "Pending re-capture" warning. A Playwright capture
+script lives at [`demo/capture.ts`](./capture.ts) (for the existing
+27 shots); a `capture-b2c-bilingual.ts` companion will be added in
+the same follow-up.
 
 ## How to reproduce
 

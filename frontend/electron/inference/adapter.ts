@@ -340,6 +340,13 @@ export interface UnreadSummaryRequest {
     name: string;
     messages: { id: string; channelId: string; senderId: string; content: string }[];
   }[];
+  // When set, the request is treated as a bilingual conversation
+  // summary (single channel, mixed languages) rather than the default
+  // multi-chat morning catch-up. The prompt instructs the model to
+  // summarise across the two languages and produce its output in
+  // `viewerLanguage` (defaults to English).
+  bilingualPartnerLanguage?: string;
+  viewerLanguage?: string;
 }
 
 export interface UnreadSummaryResponse {

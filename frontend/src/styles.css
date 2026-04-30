@@ -1257,6 +1257,26 @@ button {
   padding-bottom: 14px;
 }
 
+/*
+ * Context-aware emphasis for the bilingual demo: in a partner-language
+ * channel, every bubble shows both the source line and a translation,
+ * but only one of those panels is the "headline" the viewer cares
+ * about. The primary panel uses the full body weight + size; the
+ * secondary panel is slightly muted and one step smaller so the eye
+ * lands on the readable side first.
+ */
+.translation-card__panel--secondary .translation-card__body {
+  color: #475569;
+  font-size: 13.5px;
+  font-weight: 400;
+}
+
+.translation-card__panel--primary .translation-card__body {
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 500;
+}
+
 .translation-card__label {
   display: block;
   font-size: 10px;

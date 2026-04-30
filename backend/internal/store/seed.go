@@ -414,15 +414,30 @@ func seedMessages(m *Memory, base time.Time) {
 	addMsg(m, "msg_dm_8", "ch_dm_alice_bob", "", "user_alice", "¿nos vemos a las siete en el restaurante de siempre?", base.Add(-2*time.Hour-20*time.Minute))
 	addMsg(m, "msg_dm_9", "ch_dm_alice_bob", "", "user_bob", "sí! 7pm confirmed — Carol is in too, she'll meet us there", base.Add(-2*time.Hour-18*time.Minute))
 
-	// B2C — Alice ↔ Minh (English / Vietnamese). Back-and-forth so the
-	// SLM Translate affordance is exercised on every bubble. Topics:
-	// dinner plans, a small technical question, a casual check-in. The
-	// messages alternate source language so the target-language toggle
-	// flips on every line.
-	addMsg(m, "msg_vi_1", "ch_dm_alice_minh", "", "user_minh", "Chào Alice, tối mai bạn rảnh đi ăn phở không?", base.Add(-4*time.Hour))
-	addMsg(m, "msg_vi_2", "ch_dm_alice_minh", "", "user_alice", "Hi Minh! I'd love to — 7pm at that pho place on the corner?", base.Add(-4*time.Hour+3*time.Minute))
-	addMsg(m, "msg_vi_3", "ch_dm_alice_minh", "", "user_minh", "Ok, mình đặt bàn cho hai người.", base.Add(-4*time.Hour+6*time.Minute))
-	addMsg(m, "msg_vi_4", "ch_dm_alice_minh", "", "user_alice", "Sounds perfect — see you at 7!", base.Add(-4*time.Hour+9*time.Minute))
+	// B2C — Alice ↔ Minh (English / Vietnamese). The redesigned B2C
+	// demo is centred on this channel: every bubble exercises the SLM
+	// Translate affordance, both directions (EN→VI for Alice's lines
+	// and VI→EN for Minh's). Topics are a relatable weekend-meetup
+	// arrangement (new Vietnamese restaurant downtown) so the
+	// conversation summary has decisions, action items, and food
+	// vocabulary worth surfacing.
+	viBase := base.Add(-4 * time.Hour)
+	addMsg(m, "msg_minh_1", "ch_dm_alice_minh", "", "user_alice", "Hey Minh! Are you free this Saturday? I was thinking we could check out that new Vietnamese restaurant downtown.", viBase)
+	addMsg(m, "msg_minh_2", "ch_dm_alice_minh", "", "user_minh", "Chào Alice! Thứ Bảy này mình rảnh. Nhà hàng nào vậy? Mình nghe nói có một quán phở mới mở ở trung tâm.", viBase.Add(2*time.Minute))
+	addMsg(m, "msg_minh_3", "ch_dm_alice_minh", "", "user_alice", "Yes! That's the one. I heard their pho is amazing. Want to meet around noon?", viBase.Add(4*time.Minute))
+	addMsg(m, "msg_minh_4", "ch_dm_alice_minh", "", "user_minh", "Trưa được nha! Mình sẽ đặt bàn trước. Bạn có ăn được cay không?", viBase.Add(6*time.Minute))
+	addMsg(m, "msg_minh_5", "ch_dm_alice_minh", "", "user_alice", "I can handle a little spice but not too much 😄 Can you order for us since you know Vietnamese food better?", viBase.Add(9*time.Minute))
+	addMsg(m, "msg_minh_6", "ch_dm_alice_minh", "", "user_minh", "Được rồi, mình sẽ gọi món cho. Mình sẽ chọn phở bò và gỏi cuốn. Bạn muốn uống gì?", viBase.Add(11*time.Minute))
+	addMsg(m, "msg_minh_7", "ch_dm_alice_minh", "", "user_alice", "Iced Vietnamese coffee sounds perfect! I've been wanting to try the real thing.", viBase.Add(13*time.Minute))
+	addMsg(m, "msg_minh_8", "ch_dm_alice_minh", "", "user_minh", "Cà phê sữa đá là lựa chọn tuyệt vời! Mình cũng sẽ gọi thêm chè cho tráng miệng.", viBase.Add(15*time.Minute))
+	addMsg(m, "msg_minh_9", "ch_dm_alice_minh", "", "user_alice", "What's chè? I don't think I've tried that before.", viBase.Add(18*time.Minute))
+	addMsg(m, "msg_minh_10", "ch_dm_alice_minh", "", "user_minh", "Chè là món tráng miệng truyền thống của Việt Nam, có nhiều loại lắm. Mình sẽ chọn chè ba màu cho bạn thử - rất ngon!", viBase.Add(20*time.Minute))
+	addMsg(m, "msg_minh_11", "ch_dm_alice_minh", "", "user_alice", "That sounds amazing! I love trying new desserts. Should I bring anything?", viBase.Add(23*time.Minute))
+	addMsg(m, "msg_minh_12", "ch_dm_alice_minh", "", "user_minh", "Không cần đâu, chỉ cần mang theo sự háo hức thôi! 😊 Gặp bạn lúc 12 giờ trưa thứ Bảy nhé.", viBase.Add(25*time.Minute))
+	addMsg(m, "msg_minh_13", "ch_dm_alice_minh", "", "user_alice", "Perfect! See you Saturday at noon. Can't wait! 🎉", viBase.Add(28*time.Minute))
+	addMsg(m, "msg_minh_14", "ch_dm_alice_minh", "", "user_minh", "Hẹn gặp bạn! Mình chắc chắn bạn sẽ thích đồ ăn Việt Nam. À, nhớ mang theo ô phòng khi trời mưa nhé.", viBase.Add(30*time.Minute))
+	addMsg(m, "msg_minh_15", "ch_dm_alice_minh", "", "user_alice", "Good call on the umbrella — the forecast does show some rain. Thanks for the heads up!", viBase.Add(33*time.Minute))
+	addMsg(m, "msg_minh_16", "ch_dm_alice_minh", "", "user_minh", "Không có gì! Thời tiết mùa này hay thay đổi lắm. Thôi mình đi đặt bàn trước nhé. Tạm biệt!", viBase.Add(35*time.Minute))
 
 	// B2C — Family group. Drives two demo flows:
 	//  - Morning Catch-up digest (PROPOSAL 5.1) needs multiple days of

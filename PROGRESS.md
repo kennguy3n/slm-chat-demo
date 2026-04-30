@@ -55,21 +55,22 @@ changelog. The phase scope itself is defined in
 
 ---
 
-## Phase 2 — B2C second-brain demo
+## Phase 2 — B2C bilingual chat demo
 
-- [x] Inline translation caption (`TranslationCaption`)
-- [x] AI task-created pill (`TaskCreatedPill` after `TaskExtractionCard` accept)
+- [x] **Bilingual chat demo (Alice 🇺🇸 ↔ Minh 🇻🇳)** — auto-selected `ch_dm_alice_minh` channel, 16-message seeded conversation, every bubble exercises an on-device translation
+- [x] Inline translation caption (`TranslationCaption`) — two-panel card with per-panel language flags and context-aware emphasis (viewer-language panel is primary)
+- [x] Conversation summary (`MorningDigestPanel`) — bilingual-aware `summarize` call over the visible chat, written in the viewer's language
 - [x] "Why suggested" explanations — `PrivacyStrip` expandable `whyDetails[]`
 - [x] AI Memory page — `AIMemoryPage` + IndexedDB-backed `memoryStore.ts` (local-only, 0 B egress)
-- [x] Family checklist (`ai:family-checklist`, `FamilyChecklistCard`)
-- [x] Shopping nudges (`ai:shopping-nudges`, `ShoppingNudgesPanel`)
-- [x] Community event / RSVP card (`ai:event-rsvp`, `EventRSVPCard`)
 - [x] Guardrail rewrite (`ai:guardrail-check`, `runGuardrailRewrite` skill, `GuardrailRewriteCard`)
-- [x] Morning digest (`MorningDigestPanel` reusing the unread-summary IPC)
-- [x] Local-only memory index — IndexedDB `kchat-slm-memory` / `facts` with in-memory fallback
 - [x] AI Skills Framework (`skill-framework.ts`) — `SkillDefinition`, `runSkill`, `INSUFFICIENT_RULE`, pre/post-inference guardrails
-- [x] Trip planner skill (`skills/trip-planner.ts`, `MockSearchService`, `TripPlannerCard`)
+- [x] Local-only memory index — IndexedDB `kchat-slm-memory` / `facts` with in-memory fallback
 - [x] Metrics dashboard — `MetricsDashboard` reading from `features/ai/activityLog.ts`
+- [x] AI task-created pill (`TaskCreatedPill` after `TaskExtractionCard` accept)
+- [-] Family checklist (`FamilyChecklistCard`) — disconnected from the active B2C layout in the bilingual redesign; component file retained for follow-up
+- [-] Shopping nudges (`ShoppingNudgesPanel`) — disconnected (see above)
+- [-] Community event / RSVP card (`EventRSVPCard`) — disconnected (see above)
+- [-] Trip planner skill (`TripPlannerCard`) — disconnected (see above)
 
 ---
 
@@ -177,6 +178,7 @@ placeholders so it's obvious in the UI when the real LLM isn't running.
 | Date | Change |
 |------|--------|
 | 2026-04-30 | Phase 7 — B2B real-LLM redesign. Stripped seed-coupled `MockAdapter` outputs (no more `msg_fam_*` / `msg_vend_*` IDs, generic `[MOCK]` placeholders). Added the `frontend/electron/inference/prompts/` library tuned for Bonsai-8B-Q1_0 (≤200-token system instructions, structured `\|`-delimited / `key: value` outputs, `INSUFFICIENT: <reason>` refusal contract). Wired every B2B task helper through the library. Added LLM-driven knowledge extraction (`ai:extract-knowledge` IPC + `runExtractKnowledge` skill) with the regex extractor as the fallback. Enriched B2B seed data to 12 vendor-management messages and added a new `ch_product_launch` cross-functional thread. Test suites pass: 559 frontend + Go handlers / services / store. |
+| 2026-04-30 | **B2C ground-zero redesign.** Stripped the mock-heavy second-brain surfaces (family checklist, shopping nudges, event RSVP, trip planner) from `B2CLayout` and rebuilt B2C around an LLM-first bilingual chat demo (English ↔ Vietnamese). `ch_dm_alice_minh` now seeds a 16-message Alice/Minh conversation with proper diacritics and is auto-selected on B2C mount. `TranslationCaption` gained per-panel language flags (🇺🇸/🇻🇳) and context-aware emphasis (the panel in the viewer's language is primary). The right rail collapsed to three tabs — **Summary / Memory / Stats** — and the Summary panel now drives a real bilingual `summarize` call over the visible chat with the on-device adapter. `MockAdapter.mockTranslate` got hand-curated VI↔EN seeds for every new bubble; `MockAdapter` summarize now branches on a bilingual prompt marker. Phase 2 status updated below to reflect the redesign. |
 | 2026-04-30 | Demo screenshot capture pass: refreshed all 27 screenshots (12 B2C, 12 B2B, 3 standalone) via Playwright over Electron CDP against the live Vite + Go stack. `demo/README.md` pending markers reset to captured. |
 | 2026-04-30 | Post-PR-#44 documentation audit: confirmed `scripts/setup-models.sh`, `models/Modelfile.bonsai8b`, `frontend/electron/inference/mock.ts`, and `docs/cpu-perf-tuning.md` already match the canonical-quant rename. README and ARCHITECTURE re-verified; both test suites green. |
 | 2026-04-30 | Real-LLM demo capture pass against `Ternary-Bonsai-8B-Q2_0`. Built the PrismML `llama.cpp` fork and ran an Ollama-API shim so the existing `OllamaAdapter` could talk to `llama-server`; re-captured eight non-streaming surfaces under the live model. Streaming surfaces remain pending because Q2_0 on x86 CPU runs ~0.3 tok/s. |

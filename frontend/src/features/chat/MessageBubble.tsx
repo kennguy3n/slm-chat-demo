@@ -67,6 +67,7 @@ export function MessageBubble({
             messageId={message.id}
             channelId={message.channelId}
             targetLanguage={translateInto}
+            preferredLanguage={preferredLanguage}
             autoFetch
             showPrivacyStrip={false}
             originalFallback={message.content}

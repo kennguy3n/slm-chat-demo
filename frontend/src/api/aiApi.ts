@@ -95,6 +95,41 @@ export async function fetchUnreadSummary(): Promise<UnreadSummaryResponse> {
   return apiFetch<UnreadSummaryResponse>('/api/chats/unread-summary');
 }
 
+// fetchBilingualSummary: summarise a single bilingual channel
+// (English ↔ partner language). The IPC handler runs the same
+// `buildUnreadSummary` prompt-builder but the bilingual branch
+// targets the viewer language and instructs the model to call out
+// that the source spans two languages. Falls back to the legacy HTTP
+// summary endpoint when the bridge isn't available.
+export async function fetchBilingualSummary(req: {
+  channelId: string;
+  channelName: string;
+  partnerLanguage: string;
+  viewerLanguage?: string;
+}): Promise<UnreadSummaryResponse> {
+  const ipc = getElectronAI();
+  if (ipc) {
+    const messages = await fetchChannelMessages(req.channelId);
+    return ipc.unreadSummary({
+      chats: [
+        {
+          id: req.channelId,
+          name: req.channelName,
+          messages: messages.map((m) => ({
+            id: m.id,
+            channelId: m.channelId,
+            senderId: m.senderId,
+            content: m.content,
+          })),
+        },
+      ],
+      bilingualPartnerLanguage: req.partnerLanguage,
+      viewerLanguage: req.viewerLanguage ?? 'English',
+    });
+  }
+  return apiFetch<UnreadSummaryResponse>('/api/chats/unread-summary');
+}
+
 export async function fetchEgressPreview(): Promise<EgressPreview> {
   return apiFetch<EgressPreview>('/api/privacy/egress-preview');
 }

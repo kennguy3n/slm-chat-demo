@@ -691,20 +691,43 @@ export function buildDraftArtifact(
 
 const UNREAD_SUMMARY_MAX_MESSAGES = 20;
 
+// Per-channel cap for the standard multi-chat morning digest. The
+// bilingual variant lifts this so a single ~20-message conversation
+// is summarised in full.
+const PER_CHAT_MESSAGE_TAIL = 5;
+
 export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResponse {
   const sources: UnreadSummaryResponse['sources'] = [];
+  const isBilingual = Boolean(req.bilingualPartnerLanguage);
+  const viewerLang = req.viewerLanguage?.trim() || 'English';
+  const partnerLang = req.bilingualPartnerLanguage?.trim() ?? '';
+
   let prompt = '';
-  prompt += 'Summarise these recent unread messages into a short digest. ';
-  prompt += 'Call out deadlines, RSVPs, and replies needed.\n\n';
+  if (isBilingual) {
+    prompt +=
+      `Summarise the following ${viewerLang} ↔ ${partnerLang} bilingual chat ` +
+      `for an ${viewerLang}-speaking reader. Write the summary in ${viewerLang}. ` +
+      `Note key topics, action items, decisions, and any plans the two ` +
+      `participants agreed on. Mention briefly that the conversation was ` +
+      `conducted in two languages.\n\n`;
+  } else {
+    prompt += 'Summarise these recent unread messages into a short digest. ';
+    prompt += 'Call out deadlines, RSVPs, and replies needed.\n\n';
+  }
+
+  // Bilingual mode: take the full tail of the single channel, capped
+  // at UNREAD_SUMMARY_MAX_MESSAGES. Default mode: tail per chat.
   outer: for (const ch of req.chats) {
     const msgs = ch.messages;
-    const start = Math.max(0, msgs.length - 5);
+    const start = isBilingual
+      ? Math.max(0, msgs.length - UNREAD_SUMMARY_MAX_MESSAGES)
+      : Math.max(0, msgs.length - PER_CHAT_MESSAGE_TAIL);
     for (const m of msgs.slice(start)) {
       sources.push({
         id: m.id,
         channelId: m.channelId,
         sender: m.senderId,
-        excerpt: truncateForPrompt(m.content, 120),
+        excerpt: truncateForPrompt(m.content, 160),
       });
       prompt += `- [${ch.name}] ${m.senderId}: ${m.content}\n`;
       if (sources.length >= UNREAD_SUMMARY_MAX_MESSAGES) break outer;

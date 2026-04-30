@@ -8,6 +8,15 @@ import type { Channel } from '../../types/workspace';
 
 const chats: Channel[] = [
   {
+    id: 'ch_dm_alice_minh',
+    workspaceId: 'ws_personal',
+    name: 'Minh Nguyen',
+    kind: 'dm',
+    context: 'b2c',
+    memberIds: ['user_alice', 'user_minh'],
+    partnerLanguage: 'vi',
+  },
+  {
     id: 'ch_dm',
     workspaceId: 'ws_personal',
     name: 'Bob Martinez',
@@ -57,6 +66,7 @@ describe('B2CLayout', () => {
     expect(screen.getByRole('heading', { name: /personal chats/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /family groups/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /community groups/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /minh nguyen/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /bob martinez/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /family group/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /neighborhood community/i })).toBeInTheDocument();
@@ -65,7 +75,23 @@ describe('B2CLayout', () => {
     await waitFor(() => expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument());
   });
 
-  it('mounts the morning digest panel in the right rail', async () => {
+  it('mounts only the new Summary / Memory / Stats right-rail tabs', async () => {
+    renderWithProviders(<B2CLayout chats={chats} users={{}} />);
+    expect(screen.getByTestId('b2c-right-tab-summary')).toBeInTheDocument();
+    expect(screen.getByTestId('b2c-right-tab-memory')).toBeInTheDocument();
+    expect(screen.getByTestId('b2c-right-tab-stats')).toBeInTheDocument();
+    // Old tabs from the second-brain era must not render any more.
+    expect(screen.queryByTestId('b2c-right-tab-family')).toBeNull();
+    expect(screen.queryByTestId('b2c-right-tab-shopping')).toBeNull();
+    expect(screen.queryByTestId('b2c-right-tab-events')).toBeNull();
+    expect(screen.queryByTestId('b2c-right-tab-trip')).toBeNull();
+    expect(screen.queryByTestId('b2c-right-tab-digest')).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument(),
+    );
+  });
+
+  it('mounts the conversation summary panel in the right rail', async () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
     expect(screen.getByTestId('morning-digest-panel')).toBeInTheDocument();
     await waitFor(() =>
@@ -73,21 +99,25 @@ describe('B2CLayout', () => {
     );
   });
 
-  it('preserves the local shopping list across right-rail tab switches', async () => {
+  it('auto-selects the bilingual ch_dm_alice_minh channel on first mount', async () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
-    // Let AIMemoryPage finish its initial load before driving the UI.
+    await waitFor(() =>
+      expect(useWorkspaceStore.getState().selectedChatId).toBe('ch_dm_alice_minh'),
+    );
     await waitFor(() =>
       expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument(),
     );
-    await userEvent.click(screen.getByTestId('b2c-right-tab-shopping'));
-    await userEvent.type(screen.getByTestId('shopping-nudges-draft'), 'Bananas');
-    await userEvent.click(screen.getByTestId('shopping-nudges-add'));
-    expect(screen.getByTestId('shopping-nudges-list')).toHaveTextContent('Bananas');
+  });
 
-    // Switch away to the memory tab, then back; the locally-curated list
-    // must still be there (panels stay mounted).
-    await userEvent.click(screen.getByTestId('b2c-right-tab-memory'));
-    await userEvent.click(screen.getByTestId('b2c-right-tab-shopping'));
-    expect(screen.getByTestId('shopping-nudges-list')).toHaveTextContent('Bananas');
+  it('keeps the user-selected chat when the layout remounts after a tab switch', async () => {
+    useWorkspaceStore.setState({ selectedChatId: 'ch_family' });
+    renderWithProviders(<B2CLayout chats={chats} users={{}} />);
+    expect(useWorkspaceStore.getState().selectedChatId).toBe('ch_family');
+    await waitFor(() =>
+      expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument(),
+    );
+    // Tab switch must not reset the selected chat.
+    await userEvent.click(screen.getByTestId('b2c-right-tab-stats'));
+    expect(useWorkspaceStore.getState().selectedChatId).toBe('ch_family');
   });
 });
