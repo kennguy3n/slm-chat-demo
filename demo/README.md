@@ -262,7 +262,7 @@ smaller model.
 
    ```bash
    ./build/bin/llama-bench \
-     -m /path/to/Ternary-Bonsai-8B.gguf \
+     -m /path/to/Ternary-Bonsai-8B-Q2_0.gguf \
      -p 128 -n 128 -c 1024 -t 4
    ```
 
