@@ -43,7 +43,7 @@ describe('OllamaAdapter.run', () => {
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toContain('/api/generate');
     const body = JSON.parse((init as RequestInit).body as string);
-    expect(body).toMatchObject({ model: 'bonsai-8b', prompt: 'hi', stream: true });
+    expect(body).toMatchObject({ model: 'bonsai-8b-q1_0', prompt: 'hi', stream: true, think: false });
 
     expect(resp.output).toBe('hello world');
     expect(resp.tokensUsed).toBe(2);
@@ -111,13 +111,14 @@ describe('OllamaAdapter.status', () => {
   });
 
   it('reports loaded=true when /api/ps returns a model', async () => {
+    // Match the adapter's new default alias (quant-suffixed).
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
+      jsonResponse({ models: [{ name: 'bonsai-8b-q1_0', size: 1_200 * 1024 * 1024 }] }),
     );
     const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
     const s = await ad.status();
     expect(s.loaded).toBe(true);
-    expect(s.model).toBe('bonsai-8b');
+    expect(s.model).toBe('bonsai-8b-q1_0');
     expect(s.ramUsageMB).toBeGreaterThan(0);
   });
 
@@ -184,13 +185,34 @@ describe('OllamaAdapter.status', () => {
     expect(refused.quant).toBe('q2_0');
   });
 
-  it('defaults quant to q4_k_m when the constructor option is omitted (back-compat)', async () => {
+  it('defaults quant to q1_0 when the constructor option is omitted (Bonsai-8B-Q1_0 is the pinned artifact)', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
+      jsonResponse({ models: [{ name: 'bonsai-8b-q1_0', size: 1_200 * 1024 * 1024 }] }),
     );
     const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
     const s = await ad.status();
-    expect(s.quant).toBe('q4_k_m');
+    expect(s.quant).toBe('q1_0');
+  });
+
+  it('warns when a Q1_0-configured adapter sees a resident-set size that looks like the wrong GGUF', async () => {
+    // 16 GB resident with quant=q1_0 is the tell-tale sign of an alias
+    // bound to an F16 GGUF. The adapter should log a warning but still
+    // report loaded=true so the demo keeps running.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ models: [{ name: 'bonsai-8b-q1_0', size: 16 * 1024 * 1024 * 1024 }] }),
+    );
+    const ad = new OllamaAdapter({
+      model: 'bonsai-8b-q1_0',
+      quant: 'q1_0',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const s = await ad.status();
+    expect(s.loaded).toBe(true);
+    expect(s.ramUsageMB).toBeGreaterThan(15_000);
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(warnSpy.mock.calls[0]![0]).toMatch(/bonsai-8b-q1_0.*loaded at.*MB.*q1_0/);
+    warnSpy.mockRestore();
   });
 
   it('matches the adapter model when an Ollama tag suffix is present', async () => {
