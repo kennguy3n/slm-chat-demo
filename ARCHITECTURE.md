@@ -179,7 +179,7 @@ frontend/
     ├── app/                          (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar)
     ├── features/
     │   ├── chat/                     (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer, launcherDispatch, translate-utils)
-    │   ├── ai/                       (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, AIEmployeeModeBadge, activityLog, useEgressSummary, formatEgressBytes)
+    │   ├── ai/                       (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, AIEmployeeModeBadge, activityLog, useEgressSummary, formatEgressBytes; FamilyChecklistCard / ShoppingNudgesPanel / EventRSVPCard / TripPlannerCard files retained but no longer mounted by the bilingual B2C layout)
     │   ├── memory/                   (AIMemoryPage, memoryStore — Phase 2)
     │   ├── kapps/                    (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)
     │   ├── artifacts/                (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections — Phase 3)
@@ -393,7 +393,17 @@ the IPC bridge and keep AI surfaces responsive on slow CPU hosts.
 - **Auto-run morning digest.** `MorningDigestPanel` runs the digest
   once on mount (via a `startedRef`-guarded `useEffect`) and caches
   the completed result under `DIGEST_CACHE_KEY` in react-query, so
-  re-mounting the panel never restarts inference.
+  re-mounting the panel never restarts inference. In the redesigned
+  bilingual B2C surface the same panel detects a partner-language
+  channel (`channel.partnerLanguage`), switches its title to
+  "Conversation summary", and uses a per-channel cache key so
+  switching back to the bilingual chat doesn't refetch.
+- **Bilingual B2C right rail.** `B2CLayout` collapsed its right-rail
+  tabs to **Summary / Memory / Stats** in the redesign; the older
+  family / shopping / event / trip components remain in
+  `features/ai/` but are no longer mounted. The bilingual DM
+  `ch_dm_alice_minh` is auto-selected on first mount of the layout
+  so the demo opens directly into the translation flow.
 - **Smart-reply IPC guard.** `frontend/src/api/aiApi.ts` exposes
   `waitForElectronAI(timeoutMs = 400)`; `fetchSmartReply` awaits it
   rather than calling `getElectronAI()` synchronously, closing the

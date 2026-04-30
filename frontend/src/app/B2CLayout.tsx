@@ -1,13 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { Channel, User } from '../types/workspace';
 import { ChatSurface } from '../features/chat/ChatSurface';
 import { DeviceCapabilityPanel } from '../features/ai/DeviceCapabilityPanel';
 import { MorningDigestPanel } from '../features/ai/MorningDigestPanel';
-import { FamilyChecklistCard } from '../features/ai/FamilyChecklistCard';
-import { ShoppingNudgesPanel } from '../features/ai/ShoppingNudgesPanel';
-import { EventRSVPCard } from '../features/ai/EventRSVPCard';
-import { TripPlannerCard } from '../features/ai/TripPlannerCard';
 import { MetricsDashboard } from '../features/ai/MetricsDashboard';
 import { AIMemoryPage } from '../features/memory/AIMemoryPage';
 
@@ -19,33 +15,30 @@ interface Props {
   currentUserId?: string;
 }
 
-type RightPanelTab =
-  | 'digest'
-  | 'family'
-  | 'shopping'
-  | 'events'
-  | 'trip'
-  | 'memory'
-  | 'stats';
+type RightPanelTab = 'summary' | 'memory' | 'stats';
 
 const RIGHT_TABS: { id: RightPanelTab; label: string }[] = [
-  { id: 'digest', label: 'Digest' },
-  { id: 'family', label: 'Family' },
-  { id: 'shopping', label: 'Shopping' },
-  { id: 'events', label: 'Events' },
-  { id: 'trip', label: 'Trip' },
+  { id: 'summary', label: 'Summary' },
   { id: 'memory', label: 'Memory' },
   { id: 'stats', label: 'Stats' },
 ];
 
-// B2CLayout is the messaging-first consumer layout: a simpler sidebar showing
-// personal DMs, family groups, and community groups, plus the main chat. The
-// right rail tabs through the B2C "second brain" surfaces (Phase 2): catch-up
-// digest, family checklist, shopping nudges, community RSVPs, and the local
-// AI Memory index.
+// The default channel auto-selected on first mount when nothing is
+// selected yet. The bilingual Alice ↔ Minh DM is the centrepiece of
+// the redesigned B2C demo (English ↔ Vietnamese with on-device
+// translation on every bubble).
+const DEFAULT_B2C_CHANNEL_ID = 'ch_dm_alice_minh';
+
+// B2CLayout is the messaging-first consumer layout. The redesigned
+// right rail focuses on surfaces that exercise the on-device LLM:
+// a bilingual conversation summary, the local-only AI Memory page,
+// and the on-device metrics dashboard. Family / shopping / events /
+// trip panels lived here in earlier phases but were removed because
+// they relied on canned MockAdapter outputs rather than real local
+// inference.
 export function B2CLayout({ chats, users, currentUserId }: Props) {
   const { selectedChatId, setSelectedChatId } = useWorkspaceStore();
-  const [rightTab, setRightTab] = useState<RightPanelTab>('digest');
+  const [rightTab, setRightTab] = useState<RightPanelTab>('summary');
 
   const sections = useMemo(() => {
     return {
@@ -53,6 +46,18 @@ export function B2CLayout({ chats, users, currentUserId }: Props) {
       family: chats.filter((c) => c.kind === 'family'),
       community: chats.filter((c) => c.kind === 'community'),
     };
+  }, [chats]);
+
+  // Auto-select the bilingual DM on first mount so the demo opens on
+  // the headline scenario. Only fires when nothing else is selected
+  // and the channel actually exists in the seed data.
+  useEffect(() => {
+    if (selectedChatId) return;
+    const target = chats.find((c) => c.id === DEFAULT_B2C_CHANNEL_ID);
+    if (target) {
+      setSelectedChatId(target.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chats]);
 
   const selected = chats.find((c) => c.id === selectedChatId) ?? null;
@@ -115,33 +120,15 @@ export function B2CLayout({ chats, users, currentUserId }: Props) {
         <div className="rightpanel__body" data-testid={`b2c-right-body-${rightTab}`}>
           {/*
            * All panels stay mounted; we hide inactive ones with `hidden` so
-           * that user-curated state (the local shopping list, RSVP picks,
-           * generated checklist / digest) survives a tab switch instead of
-           * being thrown away by an unmount.
+           * that user-curated state (memory facts, generated summary)
+           * survives a tab switch instead of being thrown away by an
+           * unmount.
            */}
-          <div role="tabpanel" hidden={rightTab !== 'digest'}>
-            <MorningDigestPanel />
-          </div>
-          <div role="tabpanel" hidden={rightTab !== 'family'}>
-            <FamilyChecklistCard
-              channelId={selected?.id ?? null}
-              channelName={selected?.name}
+          <div role="tabpanel" hidden={rightTab !== 'summary'}>
+            <MorningDigestPanel
+              channel={selected}
+              users={users}
             />
-          </div>
-          <div role="tabpanel" hidden={rightTab !== 'shopping'}>
-            <ShoppingNudgesPanel
-              channelId={selected?.id ?? null}
-              channelName={selected?.name}
-            />
-          </div>
-          <div role="tabpanel" hidden={rightTab !== 'events'}>
-            <EventRSVPCard
-              channelId={selected?.id ?? null}
-              channelName={selected?.name}
-            />
-          </div>
-          <div role="tabpanel" hidden={rightTab !== 'trip'}>
-            <TripPlannerCard />
           </div>
           <div role="tabpanel" hidden={rightTab !== 'memory'}>
             <AIMemoryPage />
