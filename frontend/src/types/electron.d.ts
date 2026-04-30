@@ -292,6 +292,7 @@ interface ElectronAIBridge {
       title: string;
       description: string;
       actors: string[];
+      dueDate?: string;
       status: 'open';
       createdAt: string;
       confidence: number;

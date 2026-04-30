@@ -95,6 +95,30 @@ describe('runExtractKnowledge', () => {
 
     const deadline = out.entities.find((e) => e.kind === 'deadline');
     expect(deadline?.actors).toEqual([]);
+    // dueDate from the parsed row must flow through to the entity
+    // so the renderer can display it (KnowledgeGraphPanel renders
+    // `entity.dueDate` for `deadline` entities).
+    expect(deadline?.dueDate).toBe('next Tuesday');
+    // Rows without a dueDate column should not gain one.
+    const decisionEntity = out.entities.find((e) => e.kind === 'decision');
+    expect(decisionEntity?.dueDate).toBeUndefined();
+  });
+
+  it("reports source: 'mock' when the router falls back to MockAdapter", async () => {
+    // Two-arg `InferenceRouter(local, fallback)` always picks the local
+    // adapter when supplied. To exercise the fallback path we omit the
+    // local adapter so the router routes through the MockAdapter and
+    // its decision reason contains the literal word `fallback`.
+    const stub = new StubAdapter({
+      extract_tasks: 'decision | Use Acme Logs | eve | ',
+    });
+    const router = new InferenceRouter(null, stub);
+    const out = await runExtractKnowledge(router, {
+      channelId: 'c',
+      messages: MESSAGES,
+    });
+    expect(out.source).toBe('mock');
+    expect(out.entities[0]?.source).toBe('mock');
   });
 
   it('honours the INSUFFICIENT refusal contract', async () => {

@@ -46,6 +46,10 @@ export interface ExtractedKnowledgeEntity {
   title: string;
   description: string;
   actors: string[];
+  // Free-form due-date string lifted from the LLM row when present
+  // (e.g. `"next Tuesday"`, `"EOW"`). Renderers display it as-is —
+  // there's no calendar parsing here.
+  dueDate?: string;
   status: 'open';
   createdAt: string;
   confidence: number;
@@ -89,6 +93,16 @@ export async function runExtractKnowledge(
     prompt,
     channelId: req.channelId,
   });
+  // Detect MockAdapter via the router's last decision. The router's
+  // `decide()` method returns a reason string containing the literal
+  // word `fallback` whenever the local adapter is unavailable and it
+  // routes through the MockAdapter (see `router.ts:155-156`). The
+  // adapter's reported `model` name is `bonsai-8b` either way, so it
+  // is *not* a reliable signal for this distinction.
+  const decisionReason = router.lastDecision().reason.toLowerCase();
+  const adapterSource: 'ollama' | 'mock' = decisionReason.includes('fallback')
+    ? 'mock'
+    : 'ollama';
   const parsed = parseExtractKnowledgeOutput(resp.output);
   const entities: ExtractedKnowledgeEntity[] = [];
   for (let i = 0; i < parsed.rows.length; i++) {
@@ -106,6 +120,7 @@ export async function runExtractKnowledge(
       title: titleFor(row.kind, row.description),
       description: row.description,
       actors: row.actor ? [row.actor.replace(/^@/, '').toLowerCase()] : [],
+      ...(row.dueDate ? { dueDate: row.dueDate } : {}),
       status: 'open',
       createdAt,
       // Bonsai-8B-Q1_0 is genuinely noisier than the larger
@@ -113,17 +128,14 @@ export async function runExtractKnowledge(
       // with a slightly lower confidence than the regex heuristic
       // (which the user can audit + delete in the panel).
       confidence: 0.65,
-      source: resp.model === 'mock' ? 'mock' : 'ollama',
+      source: adapterSource,
     });
   }
   return {
     channelId: req.channelId,
     entities,
     model: resp.model,
-    // Use the adapter name as the source signal; if the router
-    // fell back to MockAdapter the renderer can show the privacy
-    // strip's `[MOCK]` indicator.
-    source: resp.model === 'mock' ? 'mock' : 'ollama',
+    source: adapterSource,
   };
 }
 
