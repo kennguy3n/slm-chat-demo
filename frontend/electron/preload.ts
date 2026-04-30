@@ -49,6 +49,7 @@ const api: ElectronAI = {
   },
   smartReply: (req) => ipcRenderer.invoke('ai:smart-reply', req),
   translate: (req) => ipcRenderer.invoke('ai:translate', req),
+  translateBatch: (req) => ipcRenderer.invoke('ai:translate-batch', req),
   extractTasks: (req) => ipcRenderer.invoke('ai:extract-tasks', req),
   summarizeThread: (req) => ipcRenderer.invoke('ai:summarize-thread', req),
   extractKAppTasks: (req) => ipcRenderer.invoke('ai:kapps-extract-tasks', req),

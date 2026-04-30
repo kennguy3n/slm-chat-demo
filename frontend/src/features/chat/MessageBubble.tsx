@@ -3,6 +3,7 @@ import type { User } from '../../types/workspace';
 import type { AIEmployee } from '../../types/aiEmployee';
 import { TranslationCaption } from '../ai/TranslationCaption';
 import { AIEmployeeModeBadge } from '../ai/AIEmployeeModeBadge';
+import { computeTranslationTarget } from './translate-utils';
 
 interface Props {
   message: Message;
@@ -36,25 +37,6 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-// Vietnamese-specific diacritics that never appear in English text.
-const VI_DIACRITICS = /[ăâđêôơưẢạảấầẩẫậắằẳẵặẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝàáãèéìíòóõùúýĂÂĐÊÔƠƯ]/;
-// Spanish-specific characters (ñ, inverted punctuation, accented vowels).
-const ES_DIACRITICS = /[ñÑ¿¡]|[áéíóúÁÉÍÓÚ]/;
-// CJK unified ideographs (Chinese / Japanese kanji), kana, hangul.
-const CJK = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
-
-// Detect the most-likely ISO-639-1 source language of a message. The
-// check is intentionally coarse — it just needs to decide whether the
-// bubble should auto-render a translation card. When the detected
-// source matches the user's preferred language (or we can't tell), the
-// bubble renders the plain content.
-function detectLanguage(text: string): string {
-  if (VI_DIACRITICS.test(text)) return 'vi';
-  if (CJK.test(text)) return 'zh';
-  if (ES_DIACRITICS.test(text)) return 'es';
-  return 'en';
-}
-
 export function MessageBubble({
   message,
   sender,
@@ -63,21 +45,11 @@ export function MessageBubble({
   aiEmployee,
 }: Props) {
   const color = sender?.avatarColor ?? '#94a3b8';
-  const sourceLanguage = detectLanguage(message.content);
-  const trivial = message.content.trim().length <= 1;
-  // In bilingual channels we translate in both directions: messages
-  // in the partner's language render into the user's preferred
-  // language, and messages already in the user's preferred language
-  // render into the partner's language. Outside bilingual channels,
-  // only foreign-language messages get a translation card.
-  let translateInto: string | null = null;
-  if (!trivial) {
-    if (sourceLanguage !== preferredLanguage) {
-      translateInto = preferredLanguage;
-    } else if (partnerLanguage && partnerLanguage !== preferredLanguage) {
-      translateInto = partnerLanguage;
-    }
-  }
+  const translateInto = computeTranslationTarget(
+    message.content,
+    preferredLanguage,
+    partnerLanguage,
+  );
   const needsTranslation = translateInto !== null;
 
   return (

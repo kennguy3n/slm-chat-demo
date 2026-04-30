@@ -157,6 +157,24 @@ export interface TranslateResponse {
   dataEgressBytes: 0;
 }
 
+// Batch translation — one model call covers N messages. Much faster
+// than N separate /api/generate calls on CPU inference where each
+// independent request pays the prompt-eval cost up front.
+export interface TranslateBatchItem {
+  messageId: string;
+  channelId: string;
+  text: string;
+  targetLanguage: string;
+}
+
+export interface TranslateBatchRequest {
+  items: TranslateBatchItem[];
+}
+
+export interface TranslateBatchResponse {
+  results: TranslateResponse[];
+}
+
 export interface ExtractTasksRequest {
   channelId?: string;
   messageId?: string;
@@ -438,6 +456,7 @@ export interface ElectronAI {
   ): () => void;
   smartReply(req: SmartReplyRequest): Promise<SmartReplyResponse>;
   translate(req: TranslateRequest): Promise<TranslateResponse>;
+  translateBatch(req: TranslateBatchRequest): Promise<TranslateBatchResponse>;
   extractTasks(req: ExtractTasksRequest): Promise<ExtractTasksResponse>;
   summarizeThread(req: ThreadSummaryRequest): Promise<ThreadSummaryResponse>;
   extractKAppTasks(req: KAppsExtractTasksRequest): Promise<KAppsExtractTasksResponse>;

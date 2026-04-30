@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
+import { renderWithProviders as render } from '../../../test/renderWithProviders';
 import { MessageList } from '../MessageList';
 import type { Message } from '../../../types/chat';
 import type { User } from '../../../types/workspace';

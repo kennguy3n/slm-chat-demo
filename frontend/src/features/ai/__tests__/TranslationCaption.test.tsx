@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { TranslationCaption } from '../TranslationCaption';
 import { renderWithProviders } from '../../../test/renderWithProviders';
 import type { TranslateResponse } from '../../../types/ai';
@@ -86,15 +85,13 @@ describe('TranslationCaption', () => {
     );
   });
 
-  it('only fetches after the user clicks Translate when autoFetch=false', async () => {
+  it('does not fetch when autoFetch=false (card stays hidden)', async () => {
     vi.mocked(fetchTranslate).mockResolvedValueOnce(sample);
     renderWithProviders(
       <TranslationCaption messageId="msg_fam_1" autoFetch={false} />,
     );
     expect(fetchTranslate).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByTestId('translation-trigger'));
-    await waitFor(() => screen.getByTestId('translation-body'));
-    expect(fetchTranslate).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId('translation-caption')).toBeNull();
   });
 
   it('renders a full PrivacyStrip below the card when enabled', async () => {

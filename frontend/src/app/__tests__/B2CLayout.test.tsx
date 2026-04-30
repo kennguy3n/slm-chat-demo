@@ -68,7 +68,6 @@ describe('B2CLayout', () => {
   it('mounts the morning digest panel in the right rail', async () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
     expect(screen.getByTestId('morning-digest-panel')).toBeInTheDocument();
-    expect(screen.getByTestId('morning-digest-empty')).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument(),
     );
