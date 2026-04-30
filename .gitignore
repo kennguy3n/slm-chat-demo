@@ -21,3 +21,4 @@ models/*.gguf
 .vscode
 *.log
 /package-lock.json
+scripts/__pycache__/

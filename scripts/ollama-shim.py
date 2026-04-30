@@ -157,12 +157,23 @@ class ShimHandler(BaseHTTPRequestHandler):
         stream: bool = bool(body.get("stream", True))
         think: bool = bool(body.get("think", False))
         opts = body.get("options") or {}
-        num_predict = int(opts.get("num_predict", 256))
+        # `num_predict` may be omitted OR explicitly set to null by
+        # clients; `int(None)` would raise. Fall back to 256 in both
+        # cases.
+        num_predict = int(opts.get("num_predict") or 256)
 
         # Forward to llama-server /completion. llama-server's own
         # streaming protocol uses SSE-style `data: {json}\n\n` lines
         # when stream=true; we translate each frame into an Ollama-
         # shaped NDJSON frame.
+        #
+        # When `think=false` the demo wants the model's reasoning
+        # preamble suppressed. We deliberately do NOT pass `<think>`
+        # as a `stop` sequence here: Qwen3-lineage chat templates
+        # emit `<think>` as the very first token, so stopping on it
+        # would kill generation before any answer content arrives.
+        # Instead, `_stream_strip_think` filters the preamble out of
+        # the wire between llama-server and the client.
         upstream_body = {
             "prompt": prompt,
             "stream": stream,
@@ -173,12 +184,6 @@ class ShimHandler(BaseHTTPRequestHandler):
             # shell provides its own stop list when needed.
             "stop": opts.get("stop", []),
         }
-        # When the client asks for no thinking (the demo default, see
-        # bootstrap.ts), strip the `<think>…</think>` preamble the
-        # Qwen3-lineage model otherwise emits. llama-server doesn't
-        # have a native knob for this; the shim filters on the wire.
-        if not think:
-            upstream_body["stop"] = list(upstream_body.get("stop", [])) + ["<think>"]
 
         req = urlrequest.Request(
             f"{self.upstream}/completion",
@@ -195,81 +200,109 @@ class ShimHandler(BaseHTTPRequestHandler):
             self._send_json(502, {"error": f"upstream llama-server unreachable: {e}"})
             return
 
-        if not stream:
-            raw = resp.read()
-            try:
-                j = json.loads(raw.decode("utf-8"))
-            except json.JSONDecodeError:
-                self._send_json(502, {"error": "upstream returned non-JSON"})
-                return
-            text = _strip_think_tags(j.get("content", ""), drop=not think)
-            out = {
-                "model": self.alias,
-                "response": text,
-                "done": True,
-                "eval_count": j.get("tokens_predicted", 0),
-                "total_duration": time.monotonic_ns() - t0_ns,
-            }
-            self._send_json(200, out)
-            return
-
-        # Streaming path — llama-server emits SSE frames like:
-        #   data: {"content":"hello","stop":false,...}\n\n
-        # followed by a final `{"stop":true,...}` frame. We translate
-        # each chunk into an Ollama-flavoured NDJSON line.
-        self._send_stream_header()
-        buf = b""
-        in_think = False
+        # Always close the upstream socket — otherwise a slow client
+        # or an exception during streaming leaks the file descriptor.
         try:
-            while True:
-                chunk = resp.read1(4096) if hasattr(resp, "read1") else resp.read(4096)
-                if not chunk:
-                    break
-                buf += chunk
-                while b"\n\n" in buf:
-                    frame, buf = buf.split(b"\n\n", 1)
-                    line = frame.decode("utf-8", errors="replace").strip()
-                    if not line.startswith("data:"):
-                        continue
-                    try:
-                        data = json.loads(line[len("data:"):].strip())
-                    except json.JSONDecodeError:
-                        continue
-                    piece = data.get("content", "")
-                    stop = bool(data.get("stop", False))
-                    if not think:
-                        piece, in_think = _stream_strip_think(piece, in_think)
-                    if piece:
-                        eval_count += 1
-                        self._write_chunk(_fmt_ndjson({
-                            "model": self.alias,
-                            "response": piece,
-                            "done": False,
-                        }))
-                    if stop:
-                        self._write_chunk(_fmt_ndjson({
-                            "model": self.alias,
-                            "response": "",
-                            "done": True,
-                            "eval_count": eval_count,
-                            "total_duration": time.monotonic_ns() - t0_ns,
-                        }))
-                        self._write_last_chunk()
-                        return
-        except (BrokenPipeError, ConnectionResetError):
-            # Client went away — llama-server will eventually time out
-            # its own side. Nothing to do here.
-            return
-        # If we got here, the upstream closed without a stop frame.
-        # Emit a synthetic done so the adapter unblocks.
-        self._write_chunk(_fmt_ndjson({
-            "model": self.alias,
-            "response": "",
-            "done": True,
-            "eval_count": eval_count,
-            "total_duration": time.monotonic_ns() - t0_ns,
-        }))
-        self._write_last_chunk()
+            if not stream:
+                raw = resp.read()
+                try:
+                    j = json.loads(raw.decode("utf-8"))
+                except json.JSONDecodeError:
+                    self._send_json(502, {"error": "upstream returned non-JSON"})
+                    return
+                text = _strip_think_tags(j.get("content", ""), drop=not think)
+                out = {
+                    "model": self.alias,
+                    "response": text,
+                    "done": True,
+                    "eval_count": j.get("tokens_predicted", 0),
+                    "total_duration": time.monotonic_ns() - t0_ns,
+                }
+                self._send_json(200, out)
+                return
+
+            # Streaming path — llama-server emits SSE frames like:
+            #   data: {"content":"hello","stop":false,...}\n\n
+            # followed by a final `{"stop":true,...}` frame. We translate
+            # each chunk into an Ollama-flavoured NDJSON line.
+            self._send_stream_header()
+            buf = b""
+            in_think = False
+            think_pending = ""
+            try:
+                while True:
+                    chunk = resp.read1(4096) if hasattr(resp, "read1") else resp.read(4096)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    while b"\n\n" in buf:
+                        frame, buf = buf.split(b"\n\n", 1)
+                        line = frame.decode("utf-8", errors="replace").strip()
+                        if not line.startswith("data:"):
+                            continue
+                        try:
+                            data = json.loads(line[len("data:"):].strip())
+                        except json.JSONDecodeError:
+                            continue
+                        piece = data.get("content", "")
+                        stop = bool(data.get("stop", False))
+                        if not think:
+                            piece, in_think, think_pending = _stream_strip_think(
+                                piece, in_think, think_pending,
+                            )
+                        if piece:
+                            eval_count += 1
+                            self._write_chunk(_fmt_ndjson({
+                                "model": self.alias,
+                                "response": piece,
+                                "done": False,
+                            }))
+                        if stop:
+                            # Flush any buffered partial-tag bytes. If
+                            # the upstream ended mid-tag the buffered
+                            # text was never a real `<think>` opener,
+                            # so it's safe to emit as-is.
+                            if not think and think_pending:
+                                self._write_chunk(_fmt_ndjson({
+                                    "model": self.alias,
+                                    "response": think_pending,
+                                    "done": False,
+                                }))
+                                think_pending = ""
+                            self._write_chunk(_fmt_ndjson({
+                                "model": self.alias,
+                                "response": "",
+                                "done": True,
+                                "eval_count": eval_count,
+                                "total_duration": time.monotonic_ns() - t0_ns,
+                            }))
+                            self._write_last_chunk()
+                            return
+            except (BrokenPipeError, ConnectionResetError):
+                # Client went away — llama-server will eventually time
+                # out its own side. Nothing to do here.
+                return
+            # If we got here, the upstream closed without a stop frame.
+            # Emit a synthetic done so the adapter unblocks.
+            if not think and think_pending:
+                self._write_chunk(_fmt_ndjson({
+                    "model": self.alias,
+                    "response": think_pending,
+                    "done": False,
+                }))
+            self._write_chunk(_fmt_ndjson({
+                "model": self.alias,
+                "response": "",
+                "done": True,
+                "eval_count": eval_count,
+                "total_duration": time.monotonic_ns() - t0_ns,
+            }))
+            self._write_last_chunk()
+        finally:
+            try:
+                resp.close()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def _strip_think_tags(text: str, *, drop: bool) -> str:
@@ -290,26 +323,60 @@ def _strip_think_tags(text: str, *, drop: bool) -> str:
     return "".join(out)
 
 
-def _stream_strip_think(piece: str, in_think: bool) -> tuple[str, bool]:
-    """Incremental version of the think-tag stripper for streamed frames."""
-    out = []
+_OPEN = "<think>"
+_CLOSE = "</think>"
+
+
+def _stream_strip_think(
+    piece: str, in_think: bool, pending: str = "",
+) -> tuple[str, bool, str]:
+    """Incremental think-tag stripper for streamed frames.
+
+    Handles tags split across SSE frames. `pending` is text from prior
+    calls that looks like the start of an open/close tag but isn't yet
+    complete (e.g. `<thi` arrived with no trailing `nk>` yet). Call
+    with the `pending` returned from the previous invocation.
+
+    Returns (text_to_emit, still_in_think, new_pending).
+    """
+    buf = pending + piece
+    out: list[str] = []
     i = 0
-    while i < len(piece):
+    while i < len(buf):
         if in_think:
-            k = piece.find("</think>", i)
+            k = buf.find(_CLOSE, i)
             if k < 0:
-                return ("".join(out), True)
-            i = k + len("</think>")
+                # Keep just enough trailing bytes to recognise a split
+                # `</think>` on the next call. Discard the rest — we're
+                # inside the thinking block, so nothing to emit.
+                tail = buf[max(i, len(buf) - (len(_CLOSE) - 1)):]
+                pending_tail = _tail_for_partial(tail, _CLOSE)
+                return ("".join(out), True, pending_tail)
+            i = k + len(_CLOSE)
             in_think = False
         else:
-            j = piece.find("<think>", i)
+            j = buf.find(_OPEN, i)
             if j < 0:
-                out.append(piece[i:])
-                break
-            out.append(piece[i:j])
-            i = j + len("<think>")
+                # No full `<think>` — but the tail could be a prefix of
+                # one. Emit everything up to the point a prefix could
+                # still match, and buffer the possible prefix.
+                tail_start = max(i, len(buf) - (len(_OPEN) - 1))
+                partial = _tail_for_partial(buf[tail_start:], _OPEN)
+                out.append(buf[i:len(buf) - len(partial)])
+                return ("".join(out), False, partial)
+            out.append(buf[i:j])
+            i = j + len(_OPEN)
             in_think = True
-    return ("".join(out), in_think)
+    return ("".join(out), in_think, "")
+
+
+def _tail_for_partial(tail: str, needle: str) -> str:
+    """Return the longest suffix of `tail` that is a prefix of `needle`."""
+    for start in range(len(tail)):
+        suffix = tail[start:]
+        if needle.startswith(suffix):
+            return suffix
+    return ""
 
 
 def make_server(port: int, upstream: str, gguf_path: str, alias: str) -> ThreadingHTTPServer:

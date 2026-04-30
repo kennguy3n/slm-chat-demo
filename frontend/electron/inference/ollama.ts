@@ -59,7 +59,9 @@ export interface OllamaAdapterOptions {
   // match whatever GGUF is actually loaded (e.g. 'q1_0' for the
   // PrismML Bonsai-8B-Q1_0 build, 'q2_0' for the ARM/Apple-Silicon
   // Ternary-Bonsai-8B-Q2_0 file, 'q4_k_m' for a mainline llama.cpp
-  // build). Defaults to 'q4_k_m' for backwards compatibility.
+  // build). Defaults to 'q1_0' — the demo's pinned Bonsai-8B-Q1_0
+  // artifact. See the comment in `bootstrap.ts` for why the bare
+  // `bonsai-8b` / `q4_k_m` pair is no longer the default.
   quant?: string;
 }
 
