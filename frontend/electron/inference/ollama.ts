@@ -44,17 +44,25 @@ export interface OllamaAdapterOptions {
   baseURL?: string;
   model?: string;
   fetchImpl?: typeof fetch;
+  // Quantisation label reported via status(). This is the value the
+  // DeviceCapabilityPanel surfaces as the active quant; it should
+  // match whatever GGUF is actually loaded (e.g. 'q2_0' for the
+  // PrismML ternary build, 'q4_k_m' for a mainline llama.cpp build).
+  // Defaults to 'q4_k_m' for backwards compatibility.
+  quant?: string;
 }
 
 export class OllamaAdapter implements Adapter, StatusProvider, Loader {
   baseURL: string;
   model: string;
+  quant: string;
   private fetchImpl: typeof fetch;
   private fetchInjected: boolean;
 
   constructor(opts: OllamaAdapterOptions = {}) {
     this.baseURL = (opts.baseURL || DefaultOllamaBaseURL).replace(/\/$/, '');
     this.model = opts.model || 'ternary-bonsai-8b';
+    this.quant = opts.quant || 'q4_k_m';
     this.fetchInjected = Boolean(opts.fetchImpl);
     this.fetchImpl = opts.fetchImpl || ((...a) => fetch(...(a as Parameters<typeof fetch>)));
   }
@@ -298,10 +306,10 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     try {
       res = await this.fetchImpl(`${this.baseURL}/api/ps`, { signal });
     } catch {
-      return { loaded: false, model: this.model, quant: 'q4_k_m', ramUsageMB: 0, sidecar: 'stopped' };
+      return { loaded: false, model: this.model, quant: this.quant, ramUsageMB: 0, sidecar: 'stopped' };
     }
     if (!res.ok) {
-      return { loaded: false, model: this.model, quant: 'q4_k_m', ramUsageMB: 0, sidecar: 'stopped' };
+      return { loaded: false, model: this.model, quant: this.quant, ramUsageMB: 0, sidecar: 'stopped' };
     }
     const ps = (await res.json()) as OllamaPsResponse;
     const models = ps.models ?? [];
@@ -319,12 +327,12 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
       return bare === wanted;
     });
     if (!match) {
-      return { loaded: false, model: this.model, quant: 'q4_k_m', ramUsageMB: 0, sidecar: 'running' };
+      return { loaded: false, model: this.model, quant: this.quant, ramUsageMB: 0, sidecar: 'running' };
     }
     return {
       loaded: true,
       model: match.name || match.model || this.model,
-      quant: 'q4_k_m',
+      quant: this.quant,
       ramUsageMB: Math.floor((match.size ?? 0) / (1024 * 1024)),
       sidecar: 'running',
     };
