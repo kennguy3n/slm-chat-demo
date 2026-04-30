@@ -52,10 +52,14 @@ export function MessageList({
     for (const m of messages) {
       const target = computeTranslationTarget(m.content, pref, partnerLanguage, detect);
       if (!target) continue;
-      const cached = queryClient.getQueryData<TranslateResponse>(
+      const cached = queryClient.getQueryData<TranslateResponse | null>(
         translateQueryKey(m.id, target),
       );
-      if (cached) continue;
+      // `null` is the in-flight sentinel set below; treat it as
+      // already-handled so a re-run of this effect (new message
+      // arrives, prop identity changes) doesn't kick off a duplicate
+      // batch for the same items.
+      if (cached !== undefined) continue;
       items.push({
         messageId: m.id,
         channelId: m.channelId,
