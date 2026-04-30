@@ -149,7 +149,7 @@ frontend/
 └── src/
     ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
     ├── features/
-    │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer, launcherDispatch) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces); Phase 3 adds `launcherDispatch.ts`, the pure helper that maps every B2B Action Launcher path to a `kapps:launcher` CustomEvent the right-rail ThreadPanel listens for
+    │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer, launcherDispatch, translate-utils) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces); Phase 3 adds `launcherDispatch.ts`, the pure helper that maps every B2B Action Launcher path to a `kapps:launcher` CustomEvent the right-rail ThreadPanel listens for. `translate-utils.ts` carries the shared `shouldTranslate` predicate, the `translateQueryKey(messageId, targetLanguage)` react-query key builder, and the `pickTargetLanguage` helper used by both `MessageBubble` (per-message hook) and `MessageList` (batch prefetch)
     │   ├── ai/ (ActionLauncher, AIEmployeeModeBadge, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, activityLog, formatEgressBytes, useEgressSummary) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), ThreadSummaryCard for the B2B thread summary, ApprovalPrefillCard for B2B approval prefill, and ArtifactDraftCard for the B2B PRD / RFC / Proposal / SOP / QBR drafting flow; Phase 2 adds TaskCreatedPill (inline AI badges below messages), MorningDigestPanel (B2C right-rail catch-up), FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard (B2C trip / event planning skill), GuardrailRewriteCard (pre-send PII / tone / unverified-claim review), and MetricsDashboard backed by the new `activityLog` module which records every AI run; PrivacyStrip itself gained an expandable `whyDetails[]` list in Phase 2
     │   ├── memory/ (AIMemoryPage, memoryStore) — Phase 2: local-only IndexedDB-backed second brain (DB `kchat-slm-memory`, store `facts`) with an in-memory fallback for jsdom / SSR; the AI never auto-writes — every fact passes through the AIMemoryPage UI
     │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)  — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation. — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation.
@@ -506,6 +506,7 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:route`             | `route(req)`                              | `InferenceRouter.decide()` (no inference) |
 | `ai:smart-reply`       | `smartReply(req)`                         | `runSmartReply` in `tasks.ts` (`taskType: smart_reply`) |
 | `ai:translate`         | `translate(req)`                          | `runTranslate` (`taskType: translate`) |
+| `ai:translate-batch`   | `translateBatch(req)`                     | `runTranslateBatch` in `tasks.ts` — batch-translates N messages in a single prompt; returns one `TranslateResponse` per input item. Used by `MessageList` to prefetch all visible bubbles in one IPC round-trip instead of fanning out N per-bubble calls. |
 | `ai:extract-tasks`     | `extractTasks(req)`                       | `runExtractTasks` (`taskType: extract_tasks`) |
 | `ai:summarize-thread`  | `summarizeThread(req)`                    | `buildThreadSummary` (on-device Ternary-Bonsai-8B) |
 | `ai:unread-summary`    | `unreadSummary(req)`                      | `buildUnreadSummary` (`taskType: summarize`) |
@@ -540,9 +541,19 @@ The preload script exposes `window.electronAI` to the renderer via
   `{ replies, channelId, sourceMessageId?, model, computeLocation,
   dataEgressBytes }`.
 - `ai:translate` returns both the original and the translated message.
-  Request: `{ messageId, channelId, targetLanguage?, original }`.
-  Response: `{ messageId, channelId, original, translated,
-  targetLanguage, model, computeLocation, dataEgressBytes }`.
+  Request (`TranslateRequest`): `{ messageId, channelId,
+  targetLanguage?, original }`. Response (`TranslateResponse`):
+  `{ messageId, channelId, original, translated, targetLanguage,
+  model, computeLocation, dataEgressBytes }`.
+- `ai:translate-batch` runs N translations in a single prompt and
+  returns one `TranslateResponse` per input item. Request
+  (`TranslateBatchRequest`): `{ items: TranslateRequest[] }`. Response
+  (`TranslateBatchResponse`): `{ items: TranslateResponse[] }`. The
+  renderer (`MessageList`) seeds the per-message react-query cache
+  with a `null` sentinel under `translateQueryKey(messageId,
+  targetLanguage)` while the batch is in flight so the per-bubble
+  hook does not also fire its own `ai:translate` call, then writes
+  each `TranslateResponse` into the cache on success.
 - `ai:extract-tasks` extracts actionable items (task / reminder /
   shopping) from a B2C message + its surrounding context.
 - `ai:summarize-thread` builds the summarize prompt + source list for a

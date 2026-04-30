@@ -322,7 +322,7 @@ go test ./...
 - Realistic seed messages backing the demo flows in PROPOSAL.md section 5
   plus four seeded KApp cards (family task, neighborhood event, vendor
   approval, engineering PRD draft)
-- 489 frontend tests (renderer components + Electron main-process
+- 522 frontend tests (renderer components + Electron main-process
   inference) covering the Phase 2 skills framework, the Phase 3
   KApp lifecycle (`TaskCard`, `ApprovalCard`, `ArtifactCard`,
   `KAppCardRenderer`, `TasksKApp`, `CreateTaskForm`,
@@ -823,7 +823,7 @@ egress tracker described below.
   streams the body via `ai:stream` exactly once, exactly like the
   thread summary flow, into `ArtifactDraftCard`.
 
-## Phase 2 — what's in progress
+## Phase 2 — complete
 
 - **AI task-created pills** — `TaskCreatedPill` renders an inline AI
   badge below the originating message after the user accepts items
@@ -889,10 +889,51 @@ egress tracker described below.
   / egress / time-saved cards plus a per-run drilldown — confirming
   that "all AI ran on-device" with 0 bytes egressed.
 
+## Performance optimizations
+
+Three round-trip-saving optimizations ship with the AI surface area:
+
+- **Batch translation** — `MessageList` collects every translatable
+  message in the active chat and dispatches a single
+  `ai:translate-batch` IPC call (one prompt, N responses) instead of
+  fanning out one IPC per bubble. While the batch is in flight a
+  `null` sentinel is seeded into the react-query cache for each
+  pending key so the per-message hook does not also fire its own
+  request; on success each `TranslateResponse` is written into the
+  cache under `translateQueryKey(messageId, targetLanguage)`. See
+  `frontend/src/features/chat/MessageList.tsx`,
+  `frontend/src/api/aiApi.ts` (`fetchTranslateBatch`), and the
+  Electron-side handler that fans the batch out to the on-device
+  router.
+- **Auto-run morning digest with react-query caching** —
+  `MorningDigestPanel` auto-runs the digest on mount via a
+  `startedRef`-guarded `useEffect` (so React StrictMode's
+  double-invoke does not trigger two runs) and caches the completed
+  digest under `DIGEST_CACHE_KEY` in react-query, so revisits to the
+  Digest tab read from cache instead of re-streaming.
+- **Smart-reply IPC guard with retry window** — `aiApi.ts` exposes
+  `waitForElectronAI(timeoutMs = 400)`, which polls
+  `getElectronAI()` for up to 400 ms before giving up. `fetchSmartReply`
+  (and the batch-translate path) await this guard instead of calling
+  `getElectronAI()` synchronously, closing the preload race window
+  where the renderer mounted before `window.electronAI` was attached.
+
 ## What's deferred to later phases
 
-The architecture documents reference PostgreSQL, NATS JetStream, MinIO/S3,
-Meilisearch, additional local-model sidecars (llama.cpp / llama-server,
-Unsloth Studio), the full policy engine, AI Employees, connectors, and
-the knowledge graph. See [PHASES.md](./PHASES.md) for the full plan and
+The architecture documents still reference a handful of components
+that have not yet shipped in the demo:
+
+- **PostgreSQL** — production persistence layer (the demo currently
+  uses an in-memory store).
+- **NATS JetStream** — durable async messaging fabric.
+- **MinIO / S3** — object storage for artifacts and binary blobs.
+- **Meilisearch** — full-text search index.
+- **llama.cpp / llama-server native adapter** — second on-device model
+  runtime (`LlamaCppAdapter` is currently a stub that throws
+  `not yet implemented`).
+- **Unsloth Studio** — fine-tuning workflow.
+
+Connectors, the knowledge graph, and AI Employees / recipes have
+**all shipped** in Phases 4–5 and are no longer deferred. See
+[PHASES.md](./PHASES.md) for the full plan and
 [PROGRESS.md](./PROGRESS.md) for the current per-task tracker.
