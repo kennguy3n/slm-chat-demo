@@ -24,8 +24,9 @@ the enriched seed data (`backend/internal/store/seed.go`).
 > streamed AI result whose wall-time does not fit a single capture
 > window — those entries remain marked **(pending)** below. The
 > accompanying demo flow is still reproducible by hand using the
-> **How to reproduce** instructions. Live benchmark numbers for this
-> VM class (AMD EPYC 7763, 8 vCPU, 31 GiB RAM, CPU-only) are in
+> **How to reproduce** instructions. Live `Ternary-Bonsai-8B-Q2_0`
+> benchmark numbers for this VM class (AMD EPYC 7763, 8 vCPU,
+> 31 GiB RAM, CPU-only) are in
 > [On-device LLM performance](#on-device-llm-performance) below; see
 > [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
 > host-class expectations.
@@ -51,8 +52,9 @@ the enriched seed data (`backend/internal/store/seed.go`).
 >
 > Pending (need a manual capture pass — these surfaces require a fully
 > completed live AI stream whose wall-time does not fit a single
-> capture window at ~4 tok/s CPU-only generation): `b2c/02`,
-> `b2c/05`, `b2c/07`, `b2c/09`, `b2c/10`, `b2c/11`, `b2b/07`, `b2b/09`,
+> capture window at the sub-1 tok/s rate Q2_0 ternary kernels deliver
+> on x86 CPU today): `b2c/02`, `b2c/05`, `b2c/07`, `b2c/09`,
+> `b2c/10`, `b2c/11`, `b2b/07`, `b2b/09`,
 > `privacy-strip-on-device.png`, `egress-summary-zero.png`.
 
 ## B2C flows
@@ -117,63 +119,65 @@ live model so far).
 
 ## On-device LLM performance
 
-Live numbers, 2026-04-30, against the Ternary-Bonsai-8B weights that
-`./scripts/setup-models.sh` pulls today (via
-`hf.co/prism-ml/Ternary-Bonsai-8B-gguf`), served by the bundled Ollama
-runtime. Host: AMD EPYC 7763, 8 vCPU (no NUMA split, AVX2 + FMA +
-BMI2), 31 GiB RAM, 0 swap, CPU-only (no GPU / Metal / NPU).
+Live numbers, 2026-04-30, against the **PrismML Ternary-Bonsai-8B-Q2_0**
+GGUF served through the PrismML `llama.cpp` fork. Host: AMD EPYC 7763,
+8 vCPU (no NUMA split, AVX2 + FMA + BMI2), 31 GiB RAM, 0 swap,
+CPU-only (no GPU / Metal / NPU).
 
-**What's actually loaded.** Ollama reports `quantization_level: F16`
-for the file under the HF default tag (confirmed via the GGUF
-`general.file_type=1` header and the 16 005 MB on-disk footprint — a
-true 2-bit 8B GGUF would be ~2 GB). Earlier versions of these docs
-called the weights "Q2_0 ternary"; that is correct as an aspirational
-target for the PrismML fork but does **not** describe what
-`./scripts/setup-models.sh` ends up with today. Treat any "Q2_0 tok/s"
-numbers in older doc snapshots as stale.
+**Artifact size.** Ternary-Bonsai-8B-Q2_0 is **~2 GB on disk**
+(2.03 GiB / 2 081 MB GGUF, ~2.1 GB resident at startup before
+KV-cache growth) — this is the canonical CPU-friendly target the
+demo documents. Stock Ollama 0.22.x cannot load the Q2_0 ternary
+tensors (load fails with a SIGSEGV inside the bundled `llama.cpp`);
+the demo runs `llama-server` from
+[`PrismML-Eng/llama.cpp`](https://github.com/PrismML-Eng/llama.cpp)
+(`prism` branch) behind a tiny Ollama-API translator so the Electron
+shell's `OllamaAdapter` still works (full path in
+[How to reproduce → step 4](#how-to-reproduce)).
 
-**Sustained generation rate (warm, single request):** ~**4.2 tok/s**
-across prompt sizes.
+**Sustained generation rate (warm):**
 
-| Task                             | `num_ctx` | `prompt_eval` tok/s | `eval` tok/s |
-| -------------------------------- | --------- | ------------------- | ------------ |
-| classifier / short task          |     512   | 14 – 18             | **4.2**      |
-| default task prompt              |    2048   | 14 – 23             | **4.1 – 4.2**|
-| long-context prompt              |    8192   |  8 – 18             | **3.2 – 4.2**|
-| 256-token sustained (draft)      |    2048   | —                   | **4.11**     |
+| PrismML `llama-bench`, `-t 4`, CPU-only      | tok/s    |
+| -------------------------------------------- | -------- |
+| `pp64`  (prompt processing, 64 input tokens) | **0.51** |
+| `tg32`  (token generation, 32 output tokens) | **0.45** |
 
-**Resident RAM while the model is loaded** (from `GET /api/ps`):
+**Wall-time implications** (extrapolated from `tg32 = 0.45 tok/s`):
 
-| `num_ctx` | resident RAM | vs 2048        |
-| --------- | ------------ | -------------- |
-|     512   | 15 787 MB    | −218 MB        |
-|    2048   | 16 005 MB    | —              |
-|    8192   | 16 875 MB    | +870 MB        |
+| Surface shape                         | tokens produced | wall-time |
+| ------------------------------------- | --------------- | --------- |
+| 3-bullet summary (~50 tokens)         |  ~50            | ~110 s    |
+| EN → ES one-line translation (64-cap) |   64            | ~140 s    |
+| 256-token draft email                 |  256            | ~570 s    |
 
-Context headroom beyond 2048 costs roughly 53 MB per 512 additional
-tokens. The `num_ctx 2048` default in
-`models/Modelfile.bonsai8b` trades ~870 MB of RAM and roughly 2×
-prompt-eval throughput for the same sustained generation rate as
-`num_ctx 8192`.
+The Q2_0 ternary kernels in the PrismML fork are **not yet
+x86-optimised** — the published throughput targets for this quant
+are against ARM / Apple-Silicon SIMD paths. On a CPU-only x86 host
+you should expect Q2_0 generation to land in the **0.3 – 1 tok/s**
+band, well below the
+[`docs/cpu-perf-tuning.md` CPU-fallback floor of 2 tok/s](../docs/cpu-perf-tuning.md#11-minimum-usable-thresholds).
+That is why the streaming demo surfaces (`b2c/02`, `b2c/05`,
+`b2c/07`, `b2c/09`–`11`, `b2b/07`, `b2b/09`,
+`privacy-strip-on-device.png`, `egress-summary-zero.png`) are flagged
+**(pending)** rather than re-captured against the live Q2_0 model on
+this host class — they need GPU / Metal / NPU or a smaller CPU-only
+model (see
+[`docs/cpu-perf-tuning.md` § 10](../docs/cpu-perf-tuning.md#10-model-alternatives-for-cpu-only)).
 
-**Wall-time latency** (generation + prompt eval, warm):
+The `num_ctx 2048` default in `models/Modelfile.bonsai8b` is the
+CPU-friendly choice: attention cost scales linearly with `-c`, so a
+4× context window directly inflates per-token cost without buying
+anything for the 256–1024-token KChat task prompts.
 
-| Surface shape                          | tokens produced | wall-time |
-| -------------------------------------- | --------------- | --------- |
-| 3-bullet summary (`stop` hit)          |  ~50            | ~19 s     |
-| EN → ES one-line translation (64-cap)  |  64             | ~19 s     |
-| 256-token draft email (`think=false`)  | 256             | ~62 s     |
-
-Qwen3 thinking mode burns output tokens inside `<think>…</think>`
-before any user-visible text. For latency-sensitive surfaces either
-set `think=false` on the request or allocate `num_predict ≥ 256`.
-
-**Calibration note.** Older anchor numbers ("~0.3 tok/s") in prior
-passes of this file were measured against a different quant / weaker
-VM class and do NOT describe the current `./scripts/setup-models.sh`
-baseline on this host class. If your box is slower than ~2 tok/s after
-following [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md),
-switch to a smaller model.
+**Calibration note.** Older anchor numbers ("~0.3 tok/s on an 8 GB
+shared 8-core VM") in prior passes of this file were measured
+against the same Q2_0 quant on a much weaker host class. The
+2026-04-30 numbers above (~0.45 tok/s on a dedicated EPYC 7763 8 vCPU
+box) are the same order of magnitude — which confirms the diagnosis
+that the Q2_0 ternary kernels are not yet optimised for x86. If your
+box is slower than ~2 tok/s after following
+[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md), switch to a
+smaller model.
 
 ## How to reproduce
 

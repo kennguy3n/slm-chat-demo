@@ -69,23 +69,21 @@ cd frontend && npm run electron:dev
 
 ## CPU performance
 
-The Ternary-Bonsai-8B weights that `./scripts/setup-models.sh` pulls
-today land on disk at ~16 GB and Ollama reports them as
-`quantization_level: F16` — not Q2_0 as older passes of these docs
-claimed. A 2-bit 8B quant would be ~2 GB; if you need that, see the
-PrismML fork path in
-[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md). The Modelfile
-in this directory defaults to `num_ctx 2048` so CPU-only hosts don't
-pay the 8K-context attention cost per token.
+The canonical CPU target is the **Q2_0 ternary GGUF** —
+`Ternary-Bonsai-8B-Q2_0.gguf`, **~2 GB on disk** (2.03 GiB), ~2.1 GB
+resident at startup before KV-cache growth. The Modelfile in this
+directory defaults to `num_ctx 2048` so CPU-only hosts don't pay the
+8K-context attention cost per token.
 
 **Measured rates (2026-04-30, AMD EPYC 7763 8 vCPU, 31 GiB RAM,
-CPU-only, default HF tag / F16):** sustained generation ~**4.2 tok/s**,
-prompt eval 14 – 23 tok/s at `num_ctx=2048`. Full table in
+CPU-only, PrismML fork `llama-bench`, `-t 4`):** prompt processing
+`pp64` ~**0.51 tok/s**, token generation `tg32` ~**0.45 tok/s**. Full
+context in
 [`demo/README.md` → On-device LLM performance](../demo/README.md#on-device-llm-performance).
-That clears the tuning guide's CPU-fallback floor (2 tok/s) but falls
-short of the short-assistant floor (5 tok/s) — streamed-text surfaces
-like morning-digest and smart-reply still need a smaller model or a
-GPU / Metal / NPU path.
+That is **below** the tuning guide's CPU-fallback floor (2 tok/s) —
+the Q2_0 ternary kernels in the PrismML fork are not yet
+x86-optimised, so any streamed-text surface needs ARM with the
+ternary kernels enabled, Apple Silicon (Metal), or a GPU / NPU path.
 
 For CPU-only deployments, prefer a smaller model. Good candidates
 (see [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
@@ -103,7 +101,7 @@ MODEL_NAME=qwen2.5-1.5b MODEL_QUANT=q4_k_m npm run electron:dev
 ```
 
 Reserve the 8B model for hosts with GPU, Apple Silicon (Metal), or an
-NPU — it is not a reasonable default on CPU-only boxes. See
+NPU — it is not a reasonable default on x86 CPU-only boxes. See
 [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the full
 diagnostic checklist (CPU feature probing, thread-count sweeps,
 context reduction, `--mlock` / `--no-mmap`, swap monitoring, KV-cache
