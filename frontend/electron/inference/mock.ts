@@ -47,12 +47,31 @@ export class MockAdapter implements Adapter {
 function mockOutputFor(req: InferenceRequest): string {
   switch (req.taskType) {
     case 'summarize':
-      // Morning Catch-up digest (PROPOSAL 5.1). References the enriched
-      // seed content (Family group: field-trip form, Lily's piano
-      // recital, parent-teacher night, Grandma's birthday; Community:
-      // block party + garage sale + lost pet Momo; Vendor thread:
-      // Acme Logs decision) so the demo feels populated rather than
-      // generic.
+      // Two flavours of canned summary depending on what the prompt
+      // looks like:
+      //  - Bilingual chat summary (the new B2C demo) — detected by
+      //    matching the Vietnamese phrase "Việt Nam" or the Vietnamese
+      //    diacritic "phở" in the prompt body. Returns an
+      //    English-language conversation summary that calls out the
+      //    decisions, action items, and that the chat spans EN ↔ VI.
+      //  - Default Morning Catch-up digest (PROPOSAL 5.1) referencing
+      //    the enriched family / community / vendor seed content so the
+      //    digest card feels populated.
+      if (mockIsBilingualSummary(req.prompt ?? '')) {
+        return [
+          'Bilingual conversation summary — English ↔ Vietnamese, summarised on-device:',
+          '• Plan: Alice and Minh confirmed Saturday lunch at the new',
+          '  Vietnamese restaurant downtown, meeting at 12 noon.',
+          '• Order: Minh will book a table for two and pre-order phở bò,',
+          '  gỏi cuốn (fresh spring rolls), Vietnamese iced coffee, and',
+          '  chè ba màu for dessert; mild spice level for Alice.',
+          '• Action items: Minh to make the reservation; Alice to bring',
+          '  an umbrella (rain in the forecast).',
+          '• Tone: friendly, looking forward to it. Conversation ran across',
+          '  two languages — Alice in English, Minh in Vietnamese — with',
+          '  every bubble translated on-device.',
+        ].join('\n');
+      }
       return [
         'On-device summary — 4 threads with activity since last check:',
         '• Family group: field-trip form due Friday (sunscreen too),',
@@ -145,34 +164,83 @@ function mockOutputFor(req: InferenceRequest): string {
 // Exported for tests.
 export const SEEDED_TRANSLATIONS: Record<string, Record<string, string>> = {
   // ---- Alice ↔ Minh (English ↔ Vietnamese) ---------------------------
-  'chào alice, tối mai bạn rảnh đi ăn phở không?': {
-    en: 'Hi Alice, are you free to grab phở tomorrow night?',
-  },
-  "hi minh! i'd love to — 7pm at the lê văn sỹ place?": {
-    vi: 'Chào Minh! Mình đi được — 7 giờ ở quán Lê Văn Sỹ nhé?',
-  },
-  'ok, mình đặt bàn cho hai người. bạn còn muốn gỏi cuốn như lần trước không?': {
-    en: "Ok, I'll book a table for two. Do you still want spring rolls like last time?",
-  },
-  'yes please — extra peanut sauce if they have it.': {
-    vi: 'Có nhé — thêm nước chấm đậu phộng nếu quán còn.',
-  },
-  'nhân tiện: team mình đang đánh giá một mô hình 8b chạy trên máy. bạn đã thử bonsai-8b chưa?':
-    {
-      en:
-        "By the way: my team is evaluating an 8B on-device model. Have you tried bonsai-8b yet?",
-    },
-  "we're running it in this chat demo actually — latency under 300 ms on my laptop, quality is surprisingly good for summarisation and translation.":
+  // Each English line gets a Vietnamese translation; each Vietnamese
+  // line gets an English translation. Keeps the bilingual demo
+  // working even when Ollama isn't running.
+  'hey minh! are you free this saturday? i was thinking we could check out that new vietnamese restaurant downtown.':
     {
       vi:
-        "Bọn mình đang chạy nó ngay trong chat demo này — độ trễ dưới 300 ms trên laptop của mình, chất lượng tóm tắt và dịch khá tốt.",
+        'Chào Minh! Thứ Bảy này bạn rảnh không? Mình đang nghĩ tụi mình thử nhà hàng Việt Nam mới mở ở trung tâm.',
     },
-  'tuyệt! gửi mình link repo được không? mình muốn thử trên máy linux.': {
-    en: 'Awesome! Can you send me the repo link? I want to try it on my Linux box.',
+  'chào alice! thứ bảy này mình rảnh. nhà hàng nào vậy? mình nghe nói có một quán phở mới mở ở trung tâm.':
+    {
+      en:
+        "Hi Alice! I'm free this Saturday. Which restaurant? I heard there's a new pho place that just opened downtown.",
+    },
+  "yes! that's the one. i heard their pho is amazing. want to meet around noon?":
+    {
+      vi:
+        'Đúng quán đó luôn! Mình nghe nói phở ở đó rất ngon. Hẹn nhau khoảng buổi trưa nhé?',
+    },
+  'trưa được nha! mình sẽ đặt bàn trước. bạn có ăn được cay không?': {
+    en:
+      "Noon works! I'll book a table in advance. Can you handle spicy food?",
   },
-  "sure — i'll dm you after dinner. see you at 7!": {
-    vi: 'Ok luôn — tối ăn xong mình nhắn. Hẹn gặp lúc 7 giờ!',
+  'i can handle a little spice but not too much 😄 can you order for us since you know vietnamese food better?':
+    {
+      vi:
+        'Mình ăn cay được chút thôi, không quá cay nha 😄 Bạn gọi giúp tụi mình được không, vì bạn rành đồ Việt hơn?',
+    },
+  'được rồi, mình sẽ gọi món cho. mình sẽ chọn phở bò và gỏi cuốn. bạn muốn uống gì?':
+    {
+      en:
+        "Okay, I'll order for us. I'll pick beef pho and fresh spring rolls. What would you like to drink?",
+    },
+  "iced vietnamese coffee sounds perfect! i've been wanting to try the real thing.":
+    {
+      vi:
+        'Cà phê sữa đá Việt Nam nghe tuyệt vời! Mình muốn thử bản chính gốc lâu rồi.',
+    },
+  'cà phê sữa đá là lựa chọn tuyệt vời! mình cũng sẽ gọi thêm chè cho tráng miệng.':
+    {
+      en:
+        "Iced milk coffee is a great choice! I'll also order some chè for dessert.",
+    },
+  "what's chè? i don't think i've tried that before.": {
+    vi: 'Chè là gì vậy? Hình như mình chưa thử bao giờ.',
   },
+  'chè là món tráng miệng truyền thống của việt nam, có nhiều loại lắm. mình sẽ chọn chè ba màu cho bạn thử - rất ngon!':
+    {
+      en:
+        "Chè is a traditional Vietnamese dessert — there are many kinds. I'll pick chè ba màu (three-colour) for you to try — it's really good!",
+    },
+  'that sounds amazing! i love trying new desserts. should i bring anything?': {
+    vi:
+      'Nghe ngon quá! Mình rất thích thử món tráng miệng mới. Mình có cần mang theo gì không?',
+  },
+  'không cần đâu, chỉ cần mang theo sự háo hức thôi! 😊 gặp bạn lúc 12 giờ trưa thứ bảy nhé.':
+    {
+      en:
+        "No need, just bring your appetite! 😊 See you at 12 noon on Saturday.",
+    },
+  "perfect! see you saturday at noon. can't wait! 🎉": {
+    vi: 'Tuyệt vời! Hẹn gặp trưa thứ Bảy. Mình háo hức quá! 🎉',
+  },
+  'hẹn gặp bạn! mình chắc chắn bạn sẽ thích đồ ăn việt nam. à, nhớ mang theo ô phòng khi trời mưa nhé.':
+    {
+      en:
+        "See you then! I'm sure you'll love Vietnamese food. Oh, remember to bring an umbrella in case it rains.",
+    },
+  'good call on the umbrella — the forecast does show some rain. thanks for the heads up!':
+    {
+      vi:
+        'Ý kiến hay đó — dự báo có mưa thật. Cảm ơn bạn đã nhắc!',
+    },
+  'không có gì! thời tiết mùa này hay thay đổi lắm. thôi mình đi đặt bàn trước nhé. tạm biệt!':
+    {
+      en:
+        "No problem! The weather changes a lot this season. I'll go book the table now. Bye!",
+    },
 
   // ---- Alice ↔ Bob (Spanish snippet) --------------------------------
   '¿nos vemos a las siete en el restaurante de siempre?': {
@@ -182,6 +250,25 @@ export const SEEDED_TRANSLATIONS: Record<string, Record<string, string>> = {
     es: '¡Sí! 7 de la tarde confirmado — Carol también se apunta, nos vemos allí.',
   },
 };
+
+// mockIsBilingualSummary inspects a summarize prompt and returns true
+// when it carries the bilingual marker `buildUnreadSummary` writes
+// (Vietnamese / English bilingual chat) or contains enough Vietnamese
+// diacritic content to be a clear bilingual conversation summary.
+// Exported for tests.
+export function mockIsBilingualSummary(prompt: string): boolean {
+  if (!prompt) return false;
+  // Explicit marker the bilingual prompt writes ("Vietnamese ↔
+  // English bilingual chat" or similar) — phrase order may vary.
+  const lower = prompt.toLowerCase();
+  if (lower.includes('bilingual chat') || lower.includes('bilingual conversation')) {
+    return true;
+  }
+  // Heuristic: a Vietnamese diacritic + at least one Vietnamese word
+  // strongly correlates with the Alice ↔ Minh demo channel.
+  const viDiacritic = /[ăâđêôơưỳ]/i;
+  return viDiacritic.test(prompt) && /phở|chè|cà phê/.test(prompt);
+}
 
 function extractSource(prompt: string): string {
   // runTranslate wraps the text as `...\n\nMessage: <source>`. If that

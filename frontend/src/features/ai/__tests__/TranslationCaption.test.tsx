@@ -129,4 +129,69 @@ describe('TranslationCaption', () => {
     const original = await screen.findByTestId('translation-original');
     expect(original).toHaveTextContent('Field trip form due Friday (local)');
   });
+
+  it('emphasises the translated panel when the target is the viewer language', async () => {
+    vi.mocked(fetchTranslate).mockResolvedValueOnce(sampleVi);
+    renderWithProviders(
+      <TranslationCaption
+        messageId="msg_minh_2"
+        targetLanguage="en"
+        preferredLanguage="en"
+      />,
+    );
+    await waitFor(() => screen.getByTestId('translation-body'));
+    const card = screen.getByTestId('translation-caption');
+    // Translation lands in the viewer's language → translated panel
+    // is the primary surface, original drops to secondary.
+    expect(card.dataset.emphasis).toBe('translated');
+    const translatedPanel = card.querySelector('.translation-card__panel--translated');
+    const originalPanel = card.querySelector('.translation-card__panel--original');
+    expect(translatedPanel?.className).toMatch(/translation-card__panel--primary/);
+    expect(originalPanel?.className).toMatch(/translation-card__panel--secondary/);
+  });
+
+  it('emphasises the original panel when the target is the partner language', async () => {
+    const outgoing = {
+      ...sample,
+      messageId: 'msg_alice_to_minh',
+      original: 'See you Saturday at noon!',
+      translated: 'Hẹn gặp trưa thứ Bảy!',
+      targetLanguage: 'vi',
+    };
+    vi.mocked(fetchTranslate).mockResolvedValueOnce(outgoing);
+    renderWithProviders(
+      <TranslationCaption
+        messageId="msg_alice_to_minh"
+        targetLanguage="vi"
+        preferredLanguage="en"
+      />,
+    );
+    await waitFor(() => screen.getByTestId('translation-body'));
+    const card = screen.getByTestId('translation-caption');
+    expect(card.dataset.emphasis).toBe('original');
+    const originalPanel = card.querySelector('.translation-card__panel--original');
+    const translatedPanel = card.querySelector('.translation-card__panel--translated');
+    expect(originalPanel?.className).toMatch(/translation-card__panel--primary/);
+    expect(translatedPanel?.className).toMatch(/translation-card__panel--secondary/);
+  });
+
+  it('renders language flag labels for Vietnamese ↔ English bubbles', async () => {
+    vi.mocked(fetchTranslate).mockResolvedValueOnce(sampleVi);
+    renderWithProviders(
+      <TranslationCaption
+        messageId="msg_minh_2"
+        targetLanguage="en"
+        preferredLanguage="en"
+      />,
+    );
+    await waitFor(() => screen.getByTestId('translation-body'));
+    const card = screen.getByTestId('translation-caption');
+    // The translated-side label always reflects the target language
+    // (English flag + name).
+    expect(card.textContent).toMatch(/English/);
+    expect(card.textContent).toMatch(/\u{1F1FA}\u{1F1F8}/u);
+    // The original-side label stays as "Original" when the source
+    // language is not implied by the props (incoming bubble).
+    expect(card.textContent).toMatch(/Original/);
+  });
 });

@@ -161,18 +161,23 @@ different *use*), then B2C-specific AI, then B2B-specific AI.
 
 ### 3.2 B2C AI functionalities
 
+The B2C surface is rebuilt as an LLM-first **bilingual chat demo**:
+Alice (English) and Minh (Vietnamese) chat in their native language
+and every bubble is translated on-device. The right rail collapses
+to three tabs that all exercise either the on-device LLM or
+on-device storage; the prior second-brain surfaces (family
+checklist / shopping nudge / community event / trip planner) are
+preserved as components but no longer mounted.
+
 | Feature                  | Description                                                                                           | Local model role                                           |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Morning catch-up         | "N things need attention" digest across personal, family, community chats since last active.         | On-device (Bonsai-8B) summarizes per thread.       |
+| Inline bilingual translation | Two-panel translation card on every chat bubble — original on top, translation below, with per-language flag labels (🇺🇸 / 🇻🇳). The panel in the viewer's preferred language is the primary one; the partner-language panel is muted. | On-device per-message `translate` call, batched into a single IPC round-trip per visible bubble. |
+| Bilingual conversation summary | Right-rail "Summary" tab. Summarises the active bilingual chat in the viewer's language, calling out topics, action items, and decisions, and noting that the conversation spans two languages. | On-device (Bonsai-8B) summarises the visible message tail with a bilingual-aware prompt. |
 | Smart reply              | 2–3 contextual reply suggestions inline in the composer.                                              | On-device generates candidates.                            |
-| Inline translation       | Messages in a non-preferred language render with a "Translated" caption and a tap-to-see-original.    | On-device translates, including long passages.             |
 | Task extraction          | Detects actionable items in incoming messages ("submit form", "bring X") and offers task cards.      | On-device parses; user confirms before any task is created. |
-| Family coordination      | Aggregates family-group signals (events, drop-offs, shopping) into a single upcoming view.            | On-device; dedupes across multiple family threads.          |
-| Shopping nudge           | Extracts shopping items from chat and proposes additions to the shared list.                         | On-device extraction; zero egress.                          |
-| Community event card     | Generates an event card with date, location, and RSVP from a chat message.                           | On-device parsing, including ambiguous dates/locations.     |
-| Guardrails               | Blocks risky auto-send; every suggested reply, task, or RSVP requires human confirmation.            | On-device classifier; no server call.                      |
-| AI Memory / insights     | Remembers personal preferences and patterns locally ("Mom's birthday", "kids' school calendar").     | Stored on-device; on-device retrieval when composing.       |
-| Metrics dashboard        | User-facing view of AI runs, bytes egressed, models used, and time saved.                             | On-device summary of the user's own local logs.             |
+| Guardrails               | Blocks risky auto-send; every suggested reply, task, or translation requires human confirmation.    | On-device classifier; no server call.                      |
+| AI Memory / insights     | Remembers personal preferences and patterns locally. Right-rail "Memory" tab. The model never auto-writes — users add / edit / remove facts. | Stored on-device (IndexedDB); on-device retrieval when composing. |
+| Metrics dashboard        | Right-rail "Stats" tab — user-facing view of translation runs, tokens, latency, bytes egressed, models used. | On-device summary of the user's own local activity log.   |
 
 ### 3.3 B2B AI functionalities
 
@@ -273,31 +278,47 @@ allowed to surface.
 
 Four end-to-end flows are shipped in the demo to prove the thesis.
 
-### 5.1 B2C "Morning catch-up"
+### 5.1 B2C "Bilingual conversation summary"
 
-1. User opens the B2C context.
-2. A banner reads **"6 things need attention"**.
-3. User taps **Catch me up**.
-4. The scheduler picks the **on-device Bonsai-8B** adapter.
-5. The digest renders inline: 2 deadlines, 1 shopping item, 1 RSVP, 1
-   reply needed — each with a back-link to the originating message.
-6. The privacy strip shows: **on-device**, model **bonsai-8b**, **0 bytes
-   egress**.
-7. User accepts actions individually (or in bulk). Each accepted action
-   creates a task card, an RSVP card, or a shopping entry.
+1. User opens the B2C context. The bilingual DM
+   `ch_dm_alice_minh` (Alice 🇺🇸 ↔ Minh 🇻🇳) is auto-selected on
+   first mount.
+2. The right rail's **Summary** tab is already loading. While the
+   stream completes, the privacy strip on the panel shows
+   **on-device**, **bonsai-8b**, **0 B egress**.
+3. The summary renders in the viewer's preferred language
+   (English): plan + lunch reservation, restaurant order,
+   per-side action items (Minh books the table; Alice brings an
+   umbrella), and a brief note that the chat ran across two
+   languages.
+4. Each line links back to the originating message in the chat.
+5. The same panel re-uses its cached result on subsequent
+   right-rail tab switches — no re-inference until the user
+   refreshes.
 
-### 5.2 B2C "Family task extraction"
+### 5.2 B2C "Cross-language chat with real-time translation"
 
-1. Mom sends: *"Field trip form due Friday, please sign. Also we need
-   sunscreen."*
-2. An inline AI badge appears: **"3 items extracted"**.
-3. User taps the badge; a card surfaces three proposed actions:
-   - Submit the field trip form.
-   - Add **sunscreen** to the shopping list.
-   - Set a **Friday** reminder.
-4. User taps **Accept all**.
-5. Task cards render inline in the same thread, each linked back to Mom's
-   original message. No data leaves the device (strip shows on-device, 0 B).
+1. Minh sends a Vietnamese message: *"Chào Alice! Thứ Bảy này
+   mình rảnh. Nhà hàng nào vậy? Mình nghe nói có một quán phở mới
+   mở ở trung tâm."*
+2. Alice's bubble auto-renders a two-panel translation card:
+   original Vietnamese on top, English translation below
+   (*"Hi Alice! I'm free this Saturday. Which restaurant?
+   I heard a new phở place opened downtown."*). The English
+   panel is the primary surface; the Vietnamese panel is muted
+   and labeled 🇻🇳 Vietnamese; English is labeled 🇺🇸 English.
+3. The privacy strip on the card shows **on-device**,
+   **bonsai-8b**, **0 B egress** with the source-message pin.
+4. Alice replies in English (*"Yes! That's the one. I heard
+   their pho is amazing. Want to meet around noon?"*); the
+   bubble renders the same two-panel card, but with the
+   emphasis flipped — English (her own language) is now the
+   primary panel and Vietnamese (the partner language) is
+   secondary, so Minh sees the translation prominently from
+   his side.
+5. `MessageList` batches every visible bubble into a single
+   `ai:translate-batch` IPC call, so the whole conversation
+   renders translation cards in one round-trip.
 
 ### 5.3 B2B "Vendor approval"
 

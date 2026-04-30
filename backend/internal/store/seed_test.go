@@ -45,14 +45,13 @@ func TestSeededChannelsHaveEnoughMessages(t *testing.T) {
 				total += len(m.ListThreadMessages(msg.ID)) - 1
 			}
 		}
-		// The bilingual VI↔EN DM keeps a tight 4-message
-		// back-and-forth so the real SLM can finish translating
-		// every bubble in under ~3 minutes on CPU. Every other
-		// seeded channel still carries the 5-message minimum the
+		// The bilingual VI↔EN DM is now the headline B2C demo and
+		// carries a 16-message conversation arc. Every other seeded
+		// channel still carries the 5-message minimum the
 		// PROPOSAL.md §5 demo flows depend on.
 		minMessages := 5
 		if id == "ch_dm_alice_minh" {
-			minMessages = 4
+			minMessages = 15
 		}
 		if total < minMessages {
 			t.Errorf("channel %q: expected at least %d total messages (top + threaded), got %d", id, minMessages, total)
@@ -123,22 +122,52 @@ func TestB2CChannelsCoverDemoFlows(t *testing.T) {
 		t.Errorf("ch_dm_alice_bob missing the Spanish line used by the translation demo")
 	}
 
-	// English ↔ Vietnamese translation demo has its own channel. Needs
-	// enough back-and-forth to demonstrate the SLM handling both
-	// directions across several turns.
+	// English ↔ Vietnamese translation demo has its own channel and
+	// is now the headline B2C demo. Needs enough back-and-forth to
+	// demonstrate the SLM handling both directions across many turns,
+	// alternating senders so every bubble exercises a translation in
+	// the partner's language.
 	vi := m.ListChannelMessages("ch_dm_alice_minh")
-	if len(vi) < 4 {
-		t.Fatalf("expected at least 4 messages in ch_dm_alice_minh, got %d", len(vi))
+	if len(vi) < 15 {
+		t.Fatalf("expected at least 15 messages in ch_dm_alice_minh, got %d", len(vi))
 	}
 	viJoined := strings.Join(contents(vi), "\n")
 	// At least one distinctively Vietnamese phrase (diacritics) and at
 	// least one distinctively English phrase so the Translate affordance
 	// has meaningful work on both sides.
-	if !strings.Contains(viJoined, "phở") && !strings.Contains(viJoined, "người") {
+	if !strings.Contains(viJoined, "phở") && !strings.Contains(viJoined, "Việt Nam") {
 		t.Errorf("ch_dm_alice_minh missing a Vietnamese line with diacritics")
 	}
-	if !strings.Contains(viJoined, "Sounds") && !strings.Contains(viJoined, "I'd love") && !strings.Contains(viJoined, "see you") {
+	if !strings.Contains(viJoined, "Saturday") && !strings.Contains(viJoined, "umbrella") {
 		t.Errorf("ch_dm_alice_minh missing a distinctively English line")
+	}
+
+	// Senders must alternate so the translate batch always has
+	// material going in both directions; we check for a minimum
+	// number of each sender rather than strict alternation, which is
+	// a tighter regression test against accidentally seeding a single
+	// participant.
+	var fromAlice, fromMinh int
+	for _, msg := range vi {
+		switch msg.SenderID {
+		case "user_alice":
+			fromAlice++
+		case "user_minh":
+			fromMinh++
+		}
+	}
+	if fromAlice < 5 || fromMinh < 5 {
+		t.Errorf("ch_dm_alice_minh expected balanced participants (got alice=%d, minh=%d)", fromAlice, fromMinh)
+	}
+
+	// PartnerLanguage on the channel itself is what flips the
+	// MessageList batch translation into bilingual mode.
+	ch, ok := m.GetChannel("ch_dm_alice_minh")
+	if !ok {
+		t.Fatal("expected ch_dm_alice_minh channel to be seeded")
+	}
+	if ch.PartnerLanguage != "vi" {
+		t.Errorf("expected ch_dm_alice_minh.PartnerLanguage = \"vi\", got %q", ch.PartnerLanguage)
 	}
 }
 
