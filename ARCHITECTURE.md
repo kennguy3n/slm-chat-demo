@@ -31,7 +31,7 @@ Electron App
 │   └── Privacy / policy engine
 │       ↓ (HTTP to local daemon)
 └── Ollama / llama.cpp (local sidecar)
-    └── Bonsai-8B GGUF (hf.co/prism-ml/Bonsai-8B-gguf)
+    └── Bonsai-8B-Q1_0 GGUF (hf.co/prism-ml/Bonsai-8B-gguf)
 
 Go Data API (optional, localhost:8080)
 ├── Chat / thread / message data
@@ -72,16 +72,47 @@ Meilisearch land in later phases.
 | 6 | `ModelStatusBadge` | Active model (local / server), loaded state, battery. |
 | 7 | `KAppCardRenderer` | Renders Task / Approval / Form / Artifact / Sheet / Base cards. |
 | 8 | `ArtifactWorkspace` | PRD / RFC / proposal editor with citations and versions. |
-| 9 | `AIEmployeePanel` | B2B AI employee profile, queue, and channel assignments. Hosts `QueueView` (Phase 4) beneath an inline budget editor (Phase 4 close — "Edit budget" button, optimistic `PATCH /api/ai-employees/{id}/budget` save with rollback on error) and gates completed recipe runs through `RecipeOutputGate` (human Accept / Edit / Discard before any KApp write). |
+| 9 | `AIEmployeePanel` | B2B AI Employee profile, queue, and channel assignments. |
 | 10 | `DeviceCapabilityPanel` | RAM, WebGPU support, sidecar status, currently-loaded model. |
-| 11 | `SourcePicker` | Three-tab picker (Channels / Threads / Files) that lets B2B users scope which surfaces an AI Employee may read before running a knowledge intent. Selections surface as removable chips; Confirm / Cancel fire callbacks on the parent. Files tab now lists real channel-attached connector files (Phase 5). Wired into `ActionLauncher` for the Create / Analyze / Plan intents and into `ArtifactDraftCard` via `pickedSources`. |
-| 12 | `OutputReview` | Human review gate: renders AI-generated content with Accept / Edit / Discard controls before any KApp write. Supports `allowEdit` for creation flows vs. read-only confirmation for status transitions. |
-| 13 | `ConnectorPanel` | Phase 5 — B2B right-rail "Connectors" tab that lists workspace connectors, shows per-channel attach status, exposes per-row file counts, and toggles attach / detach via `connectorApi`. Enforces the channel-scoped privacy boundary so only files from connectors attached to the active channel can be picked. |
-| 14 | `PermissionPreview` | Phase 5 — "AI will read from…" sheet rendered between SourcePicker confirm and `onAction` dispatch (and as an in-card gate inside `ArtifactDraftCard` when `pickedSources` includes file selections). One row per channel / thread / file plus a `0 bytes will leave this device` egress badge and Confirm / Cancel actions. |
-| 15 | `CitationChip` / `CitationRenderer` | Phase 5 — inline citation rendering. `CitationRenderer` parses `[source:id]` markers in streamed AI output, renders chips numbered in citation order (repeated cites reuse the same index), and emits a "Sources (N)" footer with full attribution. `CitationChip` exposes per-chip hover tooltip and click-through to `#message-{id}` or the connector URL. Wired into `ThreadSummaryCard`, `ArtifactDraftCard`, `ApprovalPrefillCard`, and `RecipeOutputGate`. |
-| 16 | `KnowledgeGraphPanel` | Phase 5 — B2B right-rail "Knowledge" tab. Renders five collapsible sections (Decisions, Owners, Risks, Requirements, Deadlines), each listing extracted `KnowledgeEntity` cards with title, description snippet, source-message link (`#message-{sourceMessageId}`), confidence badge, optional actor pills (owners) and due-date chip (deadlines). The `Extract` button calls `POST /api/channels/{channelId}/knowledge/extract` and refreshes the list. Empty state: "No entities extracted yet. Click Extract to scan this channel." |
-| 17 | `EgressSummaryPanel` | Phase 6 — renders total egress bytes (prominent "0 B" zero-state), per-channel and per-model breakdowns, a recent-activity timeline, and a Reset button. Reads from the `EgressTracker` singleton via `useEgressSummary` hook and `egress:summary` IPC. The TopBar "Egress" badge also reads from this hook. |
-| 18 | `PolicyAdminPanel` | Phase 6 — renders the per-workspace AI compute policy in the new B2B right-rail "Policy" tab. Backed by `policyApi` (`fetchWorkspacePolicy` / `updateWorkspacePolicy`) hitting `GET / PATCH /api/workspaces/{id}/policy`. Surfaces toggles for the master `allowServerCompute` switch, `requireRedaction`, `maxEgressBytesPerDay`, and per-`TaskType` allow / deny checkboxes. The Save button PATCHes the policy and is disabled until the form is dirty. |
+| 11 | `SourcePicker` | Three-tab picker (Channels / Threads / Files) that scopes which surfaces an AI Employee may read. |
+| 12 | `OutputReview` | Human review gate that renders AI-generated content with Accept / Edit / Discard controls before any KApp write. |
+| 13 | `ConnectorPanel` | B2B right-rail "Connectors" tab listing workspace connectors and per-channel attach status. |
+| 14 | `PermissionPreview` | "AI will read from…" sheet rendered between `SourcePicker` confirm and dispatch with a `0 bytes will leave this device` badge. |
+| 15 | `CitationChip` / `CitationRenderer` | Inline citation rendering: parses `[source:id]` markers and emits numbered chips plus a "Sources (N)" footer. |
+| 16 | `KnowledgeGraphPanel` | B2B right-rail "Knowledge" tab with five collapsible sections (Decisions, Owners, Risks, Requirements, Deadlines). |
+| 17 | `EgressSummaryPanel` | Total egress bytes, per-channel / per-model breakdowns, recent timeline, Reset. |
+| 18 | `PolicyAdminPanel` | B2B right-rail "Policy" tab driving `GET / PATCH /api/workspaces/{id}/policy`. |
+
+#### Module notes
+
+- **`AIEmployeePanel`** hosts `QueueView` (pending recipe runs)
+  beneath an inline budget editor that PATCHes
+  `/api/ai-employees/{id}/budget` optimistically and rolls back on
+  error. Completed recipe runs flow through `RecipeOutputGate` (a
+  thin wrapper around `OutputReview`) so a human Accept / Edit /
+  Discard always precedes any KApp write.
+- **`SourcePicker`** surfaces selections as removable chips with
+  Confirm / Cancel callbacks. The Files tab lists channel-attached
+  connector files; it is wired into `ActionLauncher` for Create /
+  Analyze / Plan intents and into `ArtifactDraftCard` via
+  `pickedSources`.
+- **`OutputReview`** supports an `allowEdit` flag so creation flows
+  can edit before persisting and status transitions stay read-only.
+- **`ConnectorPanel`** enforces the channel-scoped privacy boundary:
+  only files from connectors attached to the active channel become
+  pickable.
+- **`KnowledgeGraphPanel`** renders each `KnowledgeEntity` with a
+  title, description, source-message link
+  (`#message-{sourceMessageId}`), confidence badge, optional actor
+  pills (owners) and due-date chip (deadlines). `Extract` calls
+  `POST /api/channels/{channelId}/knowledge/extract` and refreshes
+  the list.
+- **`EgressSummaryPanel`** reads from the `EgressTracker` singleton
+  (`egress:summary` IPC); the TopBar "Egress" badge reads from the
+  same `useEgressSummary` hook so both stay in sync.
+- **`PolicyAdminPanel`** PATCHes only on dirty state and exposes
+  toggles for `allowServerCompute`, `requireRedaction`,
+  `maxEgressBytesPerDay`, and per-`TaskType` allow / deny lists.
 
 ### 2.2 Frontend stack
 
@@ -130,46 +161,76 @@ frontend/
 │       ├── secondBrain.ts            (Phase 2: family checklist, shopping nudges, RSVP extraction)
 │       ├── skill-framework.ts        (declarative SkillDefinition + runSkill executor + INSUFFICIENT refusal contract)
 │       ├── search-service.ts         (SearchService interface + MockSearchService for trip planner)
-│       ├── confidential-server.ts  (Phase 6: ConfidentialServerAdapter; NDJSON streaming to CONFIDENTIAL_SERVER_URL)
-│       ├── redaction.ts            (Phase 6: RedactionEngine — tokenize/redact/detokenize PII before server egress)
-│       ├── egress-tracker.ts       (Phase 6: EgressTracker singleton — records server-routed inference for the privacy UI)
-│       ├── skills/
-│       │   ├── trip-planner.ts       (Phase 2: B2C trip / event planning skill)
-│       │   └── guardrail-rewrite.ts  (Phase 2: PII / tone / unverified-claim review + rewrite)
-│       ├── recipes/                  (Phase 4: AI-Employee-scoped wrappers around existing task helpers)
-│       │   ├── registry.ts           (RecipeDefinition + RECIPE_REGISTRY + register / get / list)
-│       │   ├── summarize.ts          (wraps buildThreadSummary; preferredTier: local)
-│       │   ├── extract-tasks.ts      (wraps runKAppsExtractTasks; source provenance + empty-thread refusal)
-│       │   ├── draft-prd.ts          (wraps buildDraftArtifact with artifactType='PRD'; local)
-│       │   ├── draft-proposal.ts     (wraps buildDraftArtifact with artifactType='Proposal'; local)
-│       │   ├── create-qbr.ts         (wraps buildDraftArtifact with artifactType='QBR'; local)
-│       │   ├── prefill-approval.ts   (wraps runPrefillApproval; flattens vendor/amount/risk/justification; local)
-│       │   └── index.ts              (barrel — side-effect registers all 6 canonical recipes)
-│       └── bootstrap.ts              (pings Ollama; chooses real vs. mock adapter set; instantiates SearchService)
+│       ├── confidential-server.ts    (Phase 6 — ConfidentialServerAdapter)
+│       ├── redaction.ts              (Phase 6 — RedactionEngine)
+│       ├── egress-tracker.ts         (Phase 6 — EgressTracker singleton)
+│       ├── skills/                   (Phase 2 — trip-planner, guardrail-rewrite)
+│       ├── recipes/                  (Phase 4 — AI-Employee-scoped task wrappers)
+│       │   ├── registry.ts
+│       │   ├── summarize.ts
+│       │   ├── extract-tasks.ts
+│       │   ├── draft-prd.ts
+│       │   ├── draft-proposal.ts
+│       │   ├── create-qbr.ts
+│       │   ├── prefill-approval.ts
+│       │   └── index.ts              (barrel — registers all 6 canonical recipes)
+│       └── bootstrap.ts              (pings Ollama; wires real vs. mock adapter set)
 └── src/
-    ├── app/ (AppShell.tsx, B2CLayout.tsx, B2BLayout.tsx, TopBar.tsx, MobileTabBar.tsx, useMediaQuery.ts) — Phase 0
+    ├── app/                          (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar)
     ├── features/
-    │   ├── chat/ (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer, launcherDispatch, translate-utils) — Phase 0 + Phase 1 (ThreadPanel hosts the B2B thread summary + B2B task extraction surfaces); Phase 3 adds `launcherDispatch.ts`, the pure helper that maps every B2B Action Launcher path to a `kapps:launcher` CustomEvent the right-rail ThreadPanel listens for. `translate-utils.ts` carries the shared `shouldTranslate` predicate, the `translateQueryKey(messageId, targetLanguage)` react-query key builder, and the `pickTargetLanguage` helper used by both `MessageBubble` (per-message hook) and `MessageList` (batch prefetch)
-    │   ├── ai/ (ActionLauncher, AIEmployeeModeBadge, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, activityLog, formatEgressBytes, useEgressSummary) — Phase 0 ships ActionLauncher + PrivacyStrip; Phase 1 adds DeviceCapabilityPanel (module #10), DigestCard for the unread-summary flow, SmartReplyBar (B2C reply chips), TranslationCaption (per-message translation toggle), TaskExtractionCard (reused for B2C + B2B), ThreadSummaryCard for the B2B thread summary, ApprovalPrefillCard for B2B approval prefill, and ArtifactDraftCard for the B2B PRD / RFC / Proposal / SOP / QBR drafting flow; Phase 2 adds TaskCreatedPill (inline AI badges below messages), MorningDigestPanel (B2C right-rail catch-up), FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard (B2C trip / event planning skill), GuardrailRewriteCard (pre-send PII / tone / unverified-claim review), and MetricsDashboard backed by the new `activityLog` module which records every AI run; PrivacyStrip itself gained an expandable `whyDetails[]` list in Phase 2
-    │   ├── memory/ (AIMemoryPage, memoryStore) — Phase 2: local-only IndexedDB-backed second brain (DB `kchat-slm-memory`, store `facts`) with an in-memory fallback for jsdom / SSR; the AI never auto-writes — every fact passes through the AIMemoryPage UI
-    │   ├── kapps/ (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)  — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation. — Phase 0 ships the read-only renderers; Phase 3 adds an `onAction`/`mode` API on `KAppCardRenderer`, status transitions + inline edit on `TaskCard`, approve/reject/comment with confirmation pane and decision-log timeline on `ApprovalCard`, `View` + version history on `ArtifactCard`, the `TasksKApp` (filter / sort / counts) + `CreateTaskForm` for the Tasks lifecycle, the `CreateApprovalForm` submit flow, the `FormCard` AI-prefilled intake surface, the `AuditLogPanel` per-object timeline (Phase 3), and the `OutputReview` human-confirmation gate (module #12) gating artifact publish + AI-generated KApp creation.
-    │   ├── artifacts/ (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections) — Phase 3 right-rail viewer for full artifacts: section split, inline source pins, version history, line-by-line diff, status transitions.
-    │   ├── ai-employees/ (AIEmployeeList, AIEmployeePanel, QueueView, RecipeOutputGate, recipeCatalog) — Phase 4 (B2B sidebar cards + right-rail profile panel with inline channel picker, inline budget editor, recipe list, `QueueView` pending-AI-tasks panel, and the `RecipeOutputGate` human-approval surface that wraps `OutputReview` for completed runs; `recipeCatalog.ts` is the renderer-side display map for recipe ids)
-    │   └── knowledge/ (SourcePicker, ConnectorPanel, PermissionPreview, CitationChip, CitationRenderer, KnowledgeGraphPanel) — Phase 5 (three-tab picker with chip list, B2B Connectors right-rail panel for per-channel attach / detach, egress-aware permission preview, inline citation rendering with stable indices + Sources footer, and the workspace knowledge-graph panel mounted on the B2B right-rail "Knowledge" tab — five collapsible sections for decisions / owners / risks / requirements / deadlines extracted from channel messages)
-    ├── stores/ (chatStore, aiStore, workspaceStore, kappsStore — Phase 3 task/approval CRUD with optimistic merge)
-    ├── api/ (client, aiApi, chatApi, kappsApi, workspaceApi — Phase 3 navigation, streamAI, aiEmployeeApi — Phase 4, recipeRunApi — Phase 4, electronBridge)
-    ├── types/ (chat, ai, kapps, workspace, aiEmployee, knowledge, electron.d.ts)
+    │   ├── chat/                     (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer, launcherDispatch, translate-utils)
+    │   ├── ai/                       (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, AIEmployeeModeBadge, activityLog, useEgressSummary, formatEgressBytes)
+    │   ├── memory/                   (AIMemoryPage, memoryStore — Phase 2)
+    │   ├── kapps/                    (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)
+    │   ├── artifacts/                (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections — Phase 3)
+    │   ├── ai-employees/             (AIEmployeeList, AIEmployeePanel, QueueView, RecipeOutputGate, recipeCatalog — Phase 4)
+    │   └── knowledge/                (SourcePicker, ConnectorPanel, PermissionPreview, CitationChip, CitationRenderer, KnowledgeGraphPanel — Phase 5)
+    ├── stores/                       (chatStore, aiStore, workspaceStore, kappsStore)
+    ├── api/                          (client, aiApi, chatApi, kappsApi, workspaceApi, streamAI, aiEmployeeApi, recipeRunApi, electronBridge)
+    ├── types/                        (chat, ai, kapps, workspace, aiEmployee, knowledge, electron.d.ts)
     ├── router.tsx
     ├── styles.css
     └── main.tsx
 ```
 
-Phase 0 ships the `electron/` shell (main + preload + IPC + TS
-inference port), the `app/` shell (with the mobile tab bar), the
-`features/chat/` chat surface, the `features/ai/` Privacy Strip +
-Action Launcher, and the `features/kapps/` card system. Feature
-directories tagged Phase 1+/3+/4/5 contain placeholder modules that
-get fleshed out in the phases noted above.
+**Cross-tree responsibilities.** Phase 0 ships the `electron/` shell
+(main + preload + IPC + TS inference port), the `app/` shell,
+`features/chat/`, `features/ai/` (Privacy Strip + Action Launcher),
+and `features/kapps/`. Feature directories tagged for later phases
+contain placeholders that get fleshed out per the phase notes below.
+
+`features/chat/translate-utils.ts` carries the shared
+`shouldTranslate` predicate, the `translateQueryKey(messageId,
+targetLanguage)` react-query key builder, and `pickTargetLanguage` —
+used by both `MessageBubble` (per-message hook) and `MessageList`
+(batch prefetch). `features/chat/launcherDispatch.ts` maps every B2B
+Action Launcher path to a `kapps:launcher` CustomEvent the right-rail
+`ThreadPanel` listens for.
+
+`features/ai/PrivacyStrip` gained an expandable `whyDetails[]` list
+in Phase 2 and a "Redaction" row in Phase 6 (rendered only for
+confidential-server outputs). `features/ai/activityLog` records
+`{ skillId, model, tier, itemsProduced, egressBytes, latencyMs }`
+for every successful AI call; `MetricsDashboard` subscribes to it.
+
+`features/memory/memoryStore.ts` opens IndexedDB
+(`kchat-slm-memory` / `facts`) with an in-memory fallback for jsdom
+/ SSR. The AI never auto-writes — every fact passes through the
+`AIMemoryPage` UI.
+
+`features/kapps/KAppCardRenderer` exposes an `onAction` callback
+union and a `mode` prop; Phase 3 adds status transitions + inline
+edit on `TaskCard`, approve / reject / comment with a confirmation
+pane and decision-log timeline on `ApprovalCard`, `View` + version
+history on `ArtifactCard`, and the `OutputReview` human-confirmation
+gate (module #12).
+
+`features/ai-employees/AIEmployeePanel` hosts an inline channel
+picker, an inline budget editor, the recipe list, the `QueueView`
+pending-AI-tasks panel, and the `RecipeOutputGate` human-approval
+surface. `recipeCatalog.ts` is the renderer-side display map for
+recipe ids; the executor lives in the Electron main process and the
+renderer never imports the registry directly.
 
 Every API helper under `src/api/` checks for `window.electronAI` first
 (via the `electronBridge.ts` helper); when absent (e.g. `npm run dev`,
@@ -315,6 +376,30 @@ to human-readable name + description strings so the
 the Electron registry. The executor lives in the main
 process; the renderer never imports the registry directly.
 
+### 2.6 Performance optimizations
+
+Three renderer-side optimizations cut redundant inference traffic on
+the IPC bridge and keep AI surfaces responsive on slow CPU hosts.
+
+- **Batched translation prefetch.** `MessageList` collects every
+  visible message that needs translation (`shouldTranslate`) and
+  fires a single `ai:translate-batch` IPC call. The handler runs N
+  translations through one prompt and returns one `TranslateResponse`
+  per item. While the batch is in flight the list seeds a `null`
+  sentinel under `translateQueryKey(messageId, targetLanguage)` so
+  per-message hooks in `MessageBubble` do not also fire their own
+  `ai:translate` requests; on success the list writes each
+  `TranslateResponse` into the cache.
+- **Auto-run morning digest.** `MorningDigestPanel` runs the digest
+  once on mount (via a `startedRef`-guarded `useEffect`) and caches
+  the completed result under `DIGEST_CACHE_KEY` in react-query, so
+  re-mounting the panel never restarts inference.
+- **Smart-reply IPC guard.** `frontend/src/api/aiApi.ts` exposes
+  `waitForElectronAI(timeoutMs = 400)`; `fetchSmartReply` awaits it
+  rather than calling `getElectronAI()` synchronously, closing the
+  preload-race window where the first smart-reply call could fire
+  before `window.electronAI` was attached.
+
 ---
 
 ## 3. Go backend services
@@ -335,14 +420,48 @@ are the data services that persist Phase-0+ state and stream events.
 | 4 | `chat-service` | Messages, threads, reactions, attachments. |
 | 5 | `kapps-service` | Tasks, approvals, forms, base rows, sheet metadata. |
 | 6 | `artifact-service` | Docs / PRDs / RFCs / proposals, versions, citations. |
-| 7 | `retrieval-service` | Local + source retrieval, citations, chunking. Phase 5 ships `services.RetrievalService` with per-channel keyword indexing (`IndexChannel` chunks all channel + thread messages and connector file excerpts) and term-overlap scoring (`Search`); channel-scoped so no cross-channel leakage. |
-| 8 | `connector-service` | Drive / OneDrive / GitHub mock connectors with channel-scoped attachment. Phase 5 ships `services.ConnectorService` with `List` / `Get` / `ListFiles` / `ListFilesByChannel` / `AttachToChannel` / `DetachFromChannel`; one seeded Google Drive connector (`conn_gdrive_acme`) attached to `ch_vendor_management`. `AttachToChannel`'s idempotency check runs **inside** the `UpdateConnector` callback under the store's write lock so concurrent attaches with the same channelId can't double-append. |
-| 8a | `knowledge-service` | Phase 5 — workspace knowledge graph. `services.KnowledgeService.ExtractEntities` scans every message in a channel via `store.ListAllChannelMessages` and emits five kinds of `KnowledgeEntity` (decision / owner / risk / requirement / deadline) using keyword + regex heuristics; each entity references its `sourceMessageId` for thread attribution. `List(channelId, kind)` returns filtered entities and `Get(id)` returns a single one. Re-extraction is idempotent (existing entities for the channel are dropped before each run via `ClearKnowledgeEntitiesForChannel`). |
+| 7 | `retrieval-service` | Per-channel keyword indexing and term-overlap search; channel-scoped so no cross-channel leakage. |
+| 8 | `connector-service` | Drive / OneDrive / GitHub mock connectors with channel-scoped attachment. |
+| 8a | `knowledge-service` | Workspace knowledge graph (decision / owner / risk / requirement / deadline) extracted from channel messages. |
 | 9 | `event-service` | NATS JetStream event publication and subscriptions. |
-| 10 | `audit-service` | Immutable append-only event log for all KApp mutations (task, approval, artifact, form lifecycle events). In-memory store (Phase 0); persisted in later phases. Phase 6 adds a JSON / CSV export endpoint (`GET /api/audit/export?format=…`). |
-| 11 | `policy-service` | Phase 6 — per-workspace AI compute policy. `services.PolicyService.Get(workspaceID)` and `Update(workspaceID, patch)` wrap the in-memory `WorkspacePolicy` (allow-server-compute master switch, server-allowed / server-denied `TaskType` lists, max daily egress bytes, require-redaction flag). `Update` stamps `UpdatedAt` / `UpdatedBy` from the request. Default for `ws_acme`: `AllowServerCompute: false`, `RequireRedaction: true`. |
-| 12 | `encryption-service` | Phase 6 — per-tenant AES-256-GCM key management. `services.EncryptionKeyService.GenerateKey(workspaceID)` mints a fresh `TenantEncryptionKey` (32-byte random material kept in-memory), `GetActiveKey(workspaceID)` returns the most-recent active one, `RotateKey(workspaceID)` demotes the current active key to inactive and generates a successor, `ListKeys(workspaceID)` returns history. `EncryptStub(workspaceID, plaintext)` logs `would encrypt with key X` — real envelope encryption is deferred to the PostgreSQL phase. |
-| 13 | `tenant-storage-service` | Phase 6 — per-tenant storage configuration model. `services.TenantStorageService.Get(workspaceID)` / `Update(workspaceID, patch)` wraps `TenantStorageConfig { DatabaseRegion, StorageBucket, Dedicated, EncryptionKeyID }`. Physical isolation is deferred to the PostgreSQL / S3 phase; this ships the model, service, and HTTP surface. |
+| 10 | `audit-service` | Immutable append-only event log for all KApp mutations; Phase 6 adds JSON / CSV export. |
+| 11 | `policy-service` | Per-workspace AI compute policy backing the renderer's `PolicyAdminPanel`. |
+| 12 | `encryption-service` | Per-tenant AES-256-GCM key management; physical encryption integration deferred to PostgreSQL phase. |
+| 13 | `tenant-storage-service` | Per-tenant storage configuration (region, bucket, dedicated flag, encryption-key id). |
+
+#### Service notes
+
+- **`retrieval-service`** ships `services.RetrievalService` with
+  `IndexChannel` (chunks every channel + thread message and
+  connector file excerpt) and `Search` (whitespace tokenize +
+  stopword filter + term-overlap score). User-scoped ACL filtering
+  runs through `ConnectorService.CheckFileAccess` so a connector
+  file with no entry for the requesting user produces zero hits.
+- **`connector-service`** seeds `conn_gdrive_acme` on
+  `ch_vendor_management` and `conn_onedrive_acme` on
+  `ch_engineering`. `AttachToChannel`'s idempotency check runs
+  inside the `UpdateConnector` callback under the store write lock
+  so concurrent attaches with the same `channelId` cannot
+  double-append.
+- **`knowledge-service`**'s `ExtractEntities` scans a channel via
+  `store.ListAllChannelMessages` and emits `KnowledgeEntity`
+  records with `sourceMessageId` for thread attribution. Re-runs
+  are idempotent — `ClearKnowledgeEntitiesForChannel` drops prior
+  entities before re-emission.
+- **`policy-service`** wraps the in-memory `WorkspacePolicy`
+  (`AllowServerCompute`, `ServerAllowedTasks`, `ServerDeniedTasks`,
+  `MaxEgressBytesPerDay`, `RequireRedaction`); `Update` stamps
+  `UpdatedAt` / `UpdatedBy`. Default for `ws_acme`:
+  `AllowServerCompute: false`, `RequireRedaction: true`.
+- **`encryption-service`** exposes `GenerateKey`, `GetActiveKey`,
+  `RotateKey` (demotes current to inactive and generates a
+  successor), `ListKeys`. Keys are 32-byte random AES-256-GCM
+  material kept in-memory; `EncryptStub` logs `would encrypt with
+  key X` until real envelope encryption lands.
+- **`tenant-storage-service`**'s `Get` / `Update` wrap
+  `TenantStorageConfig { DatabaseRegion, StorageBucket, Dedicated,
+  EncryptionKeyID }`; physical isolation is deferred to the
+  PostgreSQL / S3 phase.
 
 ### 3.2 Directory structure
 
@@ -591,25 +710,26 @@ Electron Main Process (Node.js / TypeScript)
    └── MockAdapter       (frontend/electron/inference/mock.ts)
    ↓  HTTP (localhost:11434)
 Ollama / llama.cpp (local sidecar)
-   └── Bonsai-8B GGUF (hf.co/prism-ml/Bonsai-8B-gguf)
+   └── Bonsai-8B-Q1_0 GGUF (hf.co/prism-ml/Bonsai-8B-gguf)
 ```
 
-Phase 1 implements this diagram with `OllamaAdapter` (TypeScript)
-talking to a local Ollama daemon at `OLLAMA_BASE_URL` (default
-`http://localhost:11434`). The Electron main process boots the
-`InferenceRouter` in `bootstrap.ts`, which pings Ollama with a 500 ms
-timeout; if reachable it instantiates **a single `OllamaAdapter`** bound
-to `MODEL_NAME` (default `bonsai-8b`). The default name is an
-*alias*: the repo ships a single `models/Modelfile.bonsai8b` that wraps
-the upstream Bonsai-8B GGUF model published by prism-ml to
-HuggingFace
-([`hf.co/prism-ml/Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Bonsai-8B-gguf))
-with the demo's preferred temperature / top_p / context length / system
-prompt. `scripts/setup-models.sh` automates the pull + alias creation.
-When the daemon is unreachable the adapter falls back to `MockAdapter`.
-The `model:status` IPC channel reports `model` / `loaded` /
-`ramUsageMB` so the renderer's `DeviceCapabilityPanel` can display the
-on-device status.
+The `InferenceRouter` boots in `bootstrap.ts`, which pings Ollama at
+`OLLAMA_BASE_URL` (default `http://localhost:11434`) with a 500 ms
+timeout. When reachable it instantiates **a single `OllamaAdapter`**
+bound to `MODEL_NAME` (default `bonsai-8b`). The default name is an
+*alias*: `models/Modelfile.bonsai8b` wraps the upstream Bonsai-8B
+GGUF (Q1_0 file `Bonsai-8B-Q1_0.gguf` from
+[`hf.co/prism-ml/Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Bonsai-8B-gguf))
+with the demo's preferred temperature / top_p / context length /
+system prompt. `scripts/setup-models.sh` automates the pull + alias
+creation. When the daemon is unreachable the adapter falls back to
+`MockAdapter`. `model:status` reports `model` / `loaded` /
+`ramUsageMB` so `DeviceCapabilityPanel` can render the on-device
+status. ARM / Apple Silicon hosts can swap the alias to the Q2_0
+file from
+[`hf.co/prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf)
+by setting `MODEL_QUANT=q2_0` — see
+[`docs/cpu-perf-tuning.md`](./docs/cpu-perf-tuning.md).
 
 The router only distinguishes two destinations: `local` (the on-device
 Bonsai-8B adapter) and `server` (the Phase 6 confidential
@@ -716,11 +836,16 @@ Java SDK.
 
 ## 5. AI policy engine
 
-The AI policy engine runs on every AI call and decides which model to use, where
-to run it, what to redact, and which sources are allowed. It is invoked by
-`POST /api/ai/route` and inlined ahead of `/api/ai/run` and `/api/ai/stream`.
+The AI policy engine runs on every AI call and decides which model to
+use, where to run it, what to redact, and which sources are allowed.
+It runs in the Electron main process — the renderer reaches it via
+the `ai:route` IPC channel (returns the decision without executing
+inference) and indirectly through `ai:run` / `ai:stream` (which
+inline the policy decision before dispatch). The Go side does not
+proxy AI traffic; it only persists the per-workspace `WorkspacePolicy`
+behind `GET / PATCH /api/workspaces/{id}/policy`.
 
-Phase 6 grounds this in a **per-workspace `WorkspacePolicy`** persisted
+The policy is grounded in a **per-workspace `WorkspacePolicy`** persisted
 on the Go side (`backend/internal/models/policy.go`,
 `services.PolicyService`). The policy carries:
 
