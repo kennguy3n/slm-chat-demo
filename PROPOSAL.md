@@ -404,7 +404,7 @@ leaves the device.
   - On-device route backed by `prism-ml/Bonsai-1.7B-gguf` (alias
     `bonsai-1.7b`, single GGUF that runs on x86, ARM, and Apple
     Silicon). The Electron bootstrap probes `llama-server` from the
-    PrismML `llama.cpp` fork first (default `http://localhost:8080`,
+    PrismML `llama.cpp` fork first (default `http://localhost:11400`,
     override via `LLAMACPP_BASE_URL`) and falls back to an Ollama
     daemon when llama-server is unreachable. Operators can override
     `MODEL_NAME` to point at a different pulled alias without

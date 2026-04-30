@@ -81,9 +81,10 @@ The Electron main process probes its on-device runtimes in priority
 order when it boots:
 
 1. **`llama-server`** from the PrismML `llama.cpp` fork on
-   `http://localhost:8080` (override with `LLAMACPP_BASE_URL`). This
-   is the recommended runtime — it speaks the Bonsai GGUF format
-   natively and supports streaming via SSE.
+   `http://localhost:11400` (override with `LLAMACPP_BASE_URL`).
+   This is the recommended runtime — it speaks the Bonsai GGUF
+   format natively and supports streaming via SSE. The :11400
+   default avoids a collision with the Go data API on :8080.
 2. **Ollama** on `http://localhost:11434` (override with
    `OLLAMA_BASE_URL`). The bootstrap creates an `OllamaAdapter`
    bound to `MODEL_NAME` (default `bonsai-1.7b`).
@@ -103,7 +104,7 @@ cmake -B build && cmake --build build --config Release -t llama-server
 
 curl -L -o Bonsai-1.7B.gguf \
   https://huggingface.co/prism-ml/Bonsai-1.7B-gguf/resolve/main/Bonsai-1.7B.gguf
-./build/bin/llama-server -m Bonsai-1.7B.gguf -c 2048 --port 8080
+./build/bin/llama-server -m Bonsai-1.7B.gguf -c 2048 --port 11400
 
 # in another terminal
 cd slm-chat-demo/frontend && npm run electron:dev

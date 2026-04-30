@@ -30,7 +30,7 @@ Electron App
 │   ├── Model lifecycle (load / unload / status)
 │   └── Privacy / policy engine
 │       ↓ (HTTP to local sidecar)
-├── llama-server (PrismML llama.cpp fork, default :8080) — preferred
+├── llama-server (PrismML llama.cpp fork, default :11400) — preferred
 └── Ollama daemon            (default :11434, fallback)
     └── Bonsai-1.7B GGUF (hf.co/prism-ml/Bonsai-1.7B-gguf)
 
@@ -722,7 +722,7 @@ Electron Main Process (Node.js / TypeScript)
    ├── OllamaAdapter     (frontend/electron/inference/ollama.ts)
    └── MockAdapter       (frontend/electron/inference/mock.ts)
    ↓  HTTP
-   ├── llama-server (PrismML llama.cpp, default :8080)  — preferred
+   ├── llama-server (PrismML llama.cpp, default :11400) — preferred
    └── Ollama       (default :11434)                    — fallback
         └── Bonsai-1.7B GGUF (hf.co/prism-ml/Bonsai-1.7B-gguf)
 ```
@@ -731,7 +731,8 @@ The `InferenceRouter` boots in `bootstrap.ts`, which probes the two
 on-device runtimes in priority order:
 
 1. **`LlamaCppAdapter`** — issues a 1.5 s `GET /health` to
-   `LLAMACPP_BASE_URL` (default `http://localhost:8080`). The
+   `LLAMACPP_BASE_URL` (default `http://localhost:11400`, chosen
+   to avoid colliding with the Go data API on :8080). The
    PrismML `llama.cpp` fork's `llama-server` speaks the Bonsai
    GGUF format natively, supports SSE streaming through
    `POST /completion`, and exposes `/props` for live model-path

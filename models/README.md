@@ -10,7 +10,7 @@ inference routes through this alias when running against Ollama.
 > redesign the demo prefers the PrismML `llama-server` from
 > [`kennguy3n/llama.cpp`](https://github.com/kennguy3n/llama.cpp)
 > (branch `prism`). The bootstrap probes `LLAMACPP_BASE_URL`
-> (default `http://localhost:8080`) first and falls back to Ollama
+> (default `http://localhost:11400`) first and falls back to Ollama
 > only when llama-server is not reachable. The Modelfile in this
 > directory is the Ollama-fallback path.
 
@@ -73,7 +73,7 @@ on-device runtime:
 ```bash
 # In kennguy3n/llama.cpp (branch: prism):
 cmake -B build && cmake --build build --config Release -t llama-server
-./build/bin/llama-server -m /path/to/Bonsai-1.7B.gguf -c 1024 --port 8080
+./build/bin/llama-server -m /path/to/Bonsai-1.7B.gguf -c 1024 --port 11400
 
 # Then in slm-chat-demo:
 cd frontend && npm run electron:dev

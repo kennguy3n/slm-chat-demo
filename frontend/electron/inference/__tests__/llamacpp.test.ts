@@ -30,9 +30,9 @@ describe('LlamaCppAdapter', () => {
     expect(new LlamaCppAdapter().name()).toBe('llama.cpp');
   });
 
-  it('defaults the base URL to localhost:8080 and the model to bonsai-1.7b', () => {
+  it('defaults the base URL to localhost:11400 and the model to bonsai-1.7b', () => {
     const adapter = new LlamaCppAdapter();
-    expect(adapter.baseURL).toBe('http://localhost:8080');
+    expect(adapter.baseURL).toBe('http://localhost:11400');
     expect(adapter.model).toBe('bonsai-1.7b');
   });
 
@@ -102,7 +102,7 @@ describe('LlamaCppAdapter', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls;
     const [url, init] = calls[0]! as [string, RequestInit];
-    expect(url).toBe('http://localhost:8080/completion');
+    expect(url).toBe('http://localhost:11400/completion');
     expect(init.method).toBe('POST');
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(body.prompt).toBe('reply');

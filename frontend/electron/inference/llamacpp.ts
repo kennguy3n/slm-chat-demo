@@ -21,7 +21,11 @@ import type {
   StreamChunk,
 } from './adapter.js';
 
-export const DefaultLlamaCppBaseURL = 'http://localhost:8080';
+// llama-server defaults to :11400 in this demo to avoid colliding
+// with the Go data API on :8080 (see backend/cmd/server/main.go and
+// frontend/vite.config.ts). Override with LLAMACPP_BASE_URL when
+// running llama-server on a non-default port.
+export const DefaultLlamaCppBaseURL = 'http://localhost:11400';
 
 // Default token budget for `/completion`. -1 means "unlimited" in the
 // llama-server API; we cap explicitly at 512 to keep CPU-only hosts

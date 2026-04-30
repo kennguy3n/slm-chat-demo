@@ -222,11 +222,11 @@ the same follow-up.
 
    ./build/bin/llama-server \
      -m ~/Bonsai-1.7B.gguf \
-     -c 2048 --host 127.0.0.1 --port 8080
+     -c 2048 --host 127.0.0.1 --port 11400
 
    # In another shell:
    cd slm-chat-demo/frontend
-   LLAMACPP_BASE_URL=http://127.0.0.1:8080 npm run electron:dev
+   LLAMACPP_BASE_URL=http://127.0.0.1:11400 npm run electron:dev
    ```
 
 4. **Alternative — Ollama**: the Electron bootstrap falls back to

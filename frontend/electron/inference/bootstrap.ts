@@ -2,7 +2,9 @@
 // environment. Tries the on-device runtimes in priority order:
 //
 //   1. `llama-server` from the PrismML llama.cpp fork
-//      (`LLAMACPP_BASE_URL`, default http://localhost:8080).
+//      (`LLAMACPP_BASE_URL`, default http://localhost:11400). The
+//      :11400 default avoids a collision with the Go data API on
+//      :8080.
 //   2. Ollama daemon (`OLLAMA_BASE_URL`, default localhost:11434).
 //   3. MockAdapter for offline demo.
 //

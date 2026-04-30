@@ -10,7 +10,7 @@ Electron `OllamaAdapter`, because stock Ollama could not load Q1_0
 weights. The demo now defaults to **Bonsai-1.7B** and prefers the
 new `LlamaCppAdapter`, which talks directly to PrismML
 `llama-server` over `POST /completion` (SSE). The bootstrap probes
-`llama-server` on `LLAMACPP_BASE_URL` (default `http://localhost:8080`)
+`llama-server` on `LLAMACPP_BASE_URL` (default `http://localhost:11400`)
 first and only falls back to Ollama when llama-server is
 unreachable, so most users no longer need this script.
 

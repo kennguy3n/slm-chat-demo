@@ -19,7 +19,8 @@ The Electron bootstrap (`frontend/electron/inference/bootstrap.ts`)
 probes two on-device runtimes in priority order:
 
 1. **PrismML `llama-server`** (preferred). Default base URL
-   `http://localhost:8080`, override via `LLAMACPP_BASE_URL`. Talks
+   `http://localhost:11400` (chosen to avoid a collision with the
+   Go data API on :8080), override via `LLAMACPP_BASE_URL`. Talks
    the Bonsai GGUF format natively, exposes SSE streaming through
    `POST /completion`, and reports the loaded model path through
    `GET /props`.
@@ -107,13 +108,13 @@ curl -L -o ~/Bonsai-1.7B.gguf \
 
 ./build/bin/llama-server \
   -m ~/Bonsai-1.7B.gguf \
-  -c 2048 --host 127.0.0.1 --port 8080
+  -c 2048 --host 127.0.0.1 --port 11400
 ```
 
 Point the Electron shell at it via `LLAMACPP_BASE_URL`:
 
 ```bash
-LLAMACPP_BASE_URL=http://127.0.0.1:8080 npm run electron:dev
+LLAMACPP_BASE_URL=http://127.0.0.1:11400 npm run electron:dev
 ```
 
 `llama-server` exposes:
