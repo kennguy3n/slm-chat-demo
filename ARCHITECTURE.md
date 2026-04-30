@@ -31,7 +31,7 @@ Electron App
 │   └── Privacy / policy engine
 │       ↓ (HTTP to local daemon)
 └── Ollama / llama.cpp (local sidecar)
-    └── Bonsai-8B GGUF (hf.co/prism-ml/Ternary-Bonsai-8B-gguf)
+    └── Bonsai-8B GGUF (hf.co/prism-ml/Bonsai-8B-gguf)
 
 Go Data API (optional, localhost:8080)
 ├── Chat / thread / message data
@@ -591,7 +591,7 @@ Electron Main Process (Node.js / TypeScript)
    └── MockAdapter       (frontend/electron/inference/mock.ts)
    ↓  HTTP (localhost:11434)
 Ollama / llama.cpp (local sidecar)
-   └── Bonsai-8B GGUF (hf.co/prism-ml/Ternary-Bonsai-8B-gguf)
+   └── Bonsai-8B GGUF (hf.co/prism-ml/Bonsai-8B-gguf)
 ```
 
 Phase 1 implements this diagram with `OllamaAdapter` (TypeScript)
@@ -603,7 +603,7 @@ to `MODEL_NAME` (default `bonsai-8b`). The default name is an
 *alias*: the repo ships a single `models/Modelfile.bonsai8b` that wraps
 the upstream Bonsai-8B GGUF model published by prism-ml to
 HuggingFace
-([`hf.co/prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf))
+([`hf.co/prism-ml/Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Bonsai-8B-gguf))
 with the demo's preferred temperature / top_p / context length / system
 prompt. `scripts/setup-models.sh` automates the pull + alias creation.
 When the daemon is unreachable the adapter falls back to `MockAdapter`.

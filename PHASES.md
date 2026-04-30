@@ -29,7 +29,7 @@ Each phase has a goal, a list of deliverables, and explicit exit criteria. The i
 
 ## Phase 1 — Local LLM MVP
 
-**Goal:** Prove efficient local AI with Bonsai-8B (prism-ml/Ternary-Bonsai-8B-gguf) as the single on-device model.
+**Goal:** Prove efficient local AI with Bonsai-8B (prism-ml/Bonsai-8B-gguf) as the single on-device model.
 
 **Deliverables:**
 

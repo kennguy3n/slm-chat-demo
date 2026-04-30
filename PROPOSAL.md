@@ -96,7 +96,7 @@ workspace policy allow it.
 
 | Tier      | Model                                      | Devices                                                   | Workloads                                                              |
 | --------- | ------------------------------------------ | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| On-device | `prism-ml/Ternary-Bonsai-8B-gguf`          | Laptops, desktops, and high-end phones                    | Every non-server workload — a single 8B ternary-weight model handles summaries, drafts, reasoning, and task extraction. |
+| On-device | `prism-ml/Bonsai-8B-gguf` (Q1_0; Q2_0 from `prism-ml/Ternary-Bonsai-8B-gguf` on ARM / Apple Silicon) | Laptops, desktops, and high-end phones                    | Every non-server workload — a single 8B model handles summaries, drafts, reasoning, and task extraction. |
 | Server    | Confidential server runtime (Phase 6)      | Explicit workspace policy only                            | Corpora larger than local context or workspace-approved heavy runs.    |
 
 The demo assumes every KChat user has enough local compute to run the
@@ -356,7 +356,9 @@ leaves the device.
   - PRD draft workspace (Brief Builder + Artifact v1).
   - AI Employee queue (mocked execution, real UI and governance).
 - **Local AI**
-  - On-device route backed by `prism-ml/Ternary-Bonsai-8B-gguf` (alias `bonsai-8b`);
+  - On-device route backed by `prism-ml/Bonsai-8B-gguf` (alias `bonsai-8b`,
+    Q1_0 default on x86; ARM / Apple Silicon callers can switch to
+    `prism-ml/Ternary-Bonsai-8B-gguf` Q2_0 via `MODEL_QUANT=q2_0`);
     operators can override `MODEL_NAME` to point at a different pulled
     alias without touching any code.
   - Streaming output in the chat surface.
