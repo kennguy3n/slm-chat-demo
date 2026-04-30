@@ -268,6 +268,41 @@ interface ElectronAIBridge {
   guardrailCheck(req: {
     input: { text: string; channelId?: string };
   }): Promise<GuardrailSkillResult>;
+  // Phase 7 — LLM-driven knowledge extraction. The renderer hands
+  // up the channel's messages, the main process runs Bonsai-8B via
+  // the InferenceRouter and returns entities mapped to the existing
+  // KnowledgeEntity shape (so the panel can drop them straight into
+  // its state without an adapter layer).
+  extractKnowledge(req: {
+    channelId: string;
+    messages: Array<{
+      id: string;
+      channelId: string;
+      threadId?: string;
+      senderId: string;
+      content: string;
+      createdAt?: string;
+    }>;
+  }): Promise<{
+    channelId: string;
+    entities: Array<{
+      id: string;
+      channelId: string;
+      threadId: string;
+      sourceMessageId: string;
+      kind: 'decision' | 'owner' | 'risk' | 'requirement' | 'deadline';
+      title: string;
+      description: string;
+      actors: string[];
+      dueDate?: string;
+      status: 'open';
+      createdAt: string;
+      confidence: number;
+      source: 'ollama' | 'mock';
+    }>;
+    model: string;
+    source: 'ollama' | 'mock';
+  }>;
   // Phase 4 — generic AI-Employee recipe runner. The renderer
   // supplies the AI Employee's allowed recipe ids so the main process
   // can refuse recipes the employee is not authorised for. Output

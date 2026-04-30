@@ -20,6 +20,7 @@ changelog. The phase scope itself is defined in
 | Phase 4: AI Employees and recipe engine | Complete | 100% |
 | Phase 5: Connectors and knowledge graph | Complete | 100% |
 | Phase 6: Confidential server mode | In progress | ~85% |
+| Phase 7: B2B real-LLM redesign | Complete | 100% |
 
 ---
 
@@ -154,10 +155,29 @@ changelog. The phase scope itself is defined in
 
 ---
 
+## Phase 7 — B2B real-LLM redesign
+
+Strips the seed-driven mock scaffolding for B2B AI surfaces and routes
+every flow through the on-device Bonsai-8B-Q1_0 model via the
+`OllamaAdapter`. The `MockAdapter` now emits generic `[MOCK]`-labelled
+placeholders so it's obvious in the UI when the real LLM isn't running.
+
+- [x] Strip canned B2B outputs from `MockAdapter` — `prefill_approval`, `draft_artifact`, the B2B half of `extract_tasks` / `summarize` reduced to generic `[MOCK]`-labelled placeholders; `msg_fam_*` / `msg_vend_*` references removed.
+- [x] Bonsai-8B prompt library (`frontend/electron/inference/prompts/`) — one module per task type (`summarize`, `extract-tasks`, `prefill-approval`, `draft-artifact`, `extract-knowledge`) exporting `buildPrompt(input)` + `parseOutput(output)`. System instructions kept under ~200 tokens; explicit `<owner> | <title> | <due>` / `<field>: <value>` shapes; `INSUFFICIENT: <reason>` refusal contract.
+- [x] Wired every B2B `tasks.ts` helper through the prompt library — `buildThreadSummary`, `runKAppsExtractTasks`, `runPrefillApproval`, `buildDraftArtifact`. Parsers (`parseKAppsExtractedTasks`, `parsePrefilledApprovalFields`) delegate to the library with legacy fallback parsing for backward compatibility.
+- [x] Enriched B2B seed data (`backend/internal/store/seed.go`) — `vendor-management` thread now 12 messages with explicit pricing, risk, compliance, and decision content; new `ch_product_launch` channel with a 11-message cross-functional launch thread (marketing / engineering / sales); `#general` standup updates added.
+- [x] LLM-driven knowledge extraction — `frontend/electron/inference/skills/extract-knowledge.ts` skill, new IPC channel `ai:extract-knowledge`, `window.electronAI.extractKnowledge`; renderer's `extractKnowledge` API tries the LLM bridge first and falls back to the legacy regex extractor at `POST /api/channels/{id}/knowledge/extract`.
+- [x] Tests — prompt library unit tests (`prompts/__tests__/prompts.test.ts`, 20 cases), `runExtractKnowledge` skill tests (`skills/__tests__/extract-knowledge.test.ts`, 5 cases), updated `tasks.test.ts` (33 cases) and `mock.test.ts` (11 cases) to use a `StubAdapter` that decouples assertions from the canned mock outputs. Edge cases covered: extra whitespace, mixed bullet markers, missing fields, `INSUFFICIENT` refusal, `[MOCK]` prefix tolerance.
+- [x] Optional live-LLM tests — pre-existing `OLLAMA_INTEGRATION=1` integration suite (`__tests__/ollama-integration.test.ts`) covers the prompt library by running through `OllamaAdapter` against a local Bonsai-8B; left in place as the opt-in B2B integration path.
+- [ ] Phase 6 capture against real Bonsai-8B — pending (requires Ollama loaded with `bonsai-8b-q1_0`; the demo capture script needs a separate run before screenshots can be refreshed).
+
+---
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
+| 2026-04-30 | Phase 7 — B2B real-LLM redesign. Stripped seed-coupled `MockAdapter` outputs (no more `msg_fam_*` / `msg_vend_*` IDs, generic `[MOCK]` placeholders). Added the `frontend/electron/inference/prompts/` library tuned for Bonsai-8B-Q1_0 (≤200-token system instructions, structured `\|`-delimited / `key: value` outputs, `INSUFFICIENT: <reason>` refusal contract). Wired every B2B task helper through the library. Added LLM-driven knowledge extraction (`ai:extract-knowledge` IPC + `runExtractKnowledge` skill) with the regex extractor as the fallback. Enriched B2B seed data to 12 vendor-management messages and added a new `ch_product_launch` cross-functional thread. Test suites pass: 559 frontend + Go handlers / services / store. |
 | 2026-04-30 | **B2C ground-zero redesign.** Stripped the mock-heavy second-brain surfaces (family checklist, shopping nudges, event RSVP, trip planner) from `B2CLayout` and rebuilt B2C around an LLM-first bilingual chat demo (English ↔ Vietnamese). `ch_dm_alice_minh` now seeds a 16-message Alice/Minh conversation with proper diacritics and is auto-selected on B2C mount. `TranslationCaption` gained per-panel language flags (🇺🇸/🇻🇳) and context-aware emphasis (the panel in the viewer's language is primary). The right rail collapsed to three tabs — **Summary / Memory / Stats** — and the Summary panel now drives a real bilingual `summarize` call over the visible chat with the on-device adapter. `MockAdapter.mockTranslate` got hand-curated VI↔EN seeds for every new bubble; `MockAdapter` summarize now branches on a bilingual prompt marker. Phase 2 status updated below to reflect the redesign. |
 | 2026-04-30 | Demo screenshot capture pass: refreshed all 27 screenshots (12 B2C, 12 B2B, 3 standalone) via Playwright over Electron CDP against the live Vite + Go stack. `demo/README.md` pending markers reset to captured. |
 | 2026-04-30 | Post-PR-#44 documentation audit: confirmed `scripts/setup-models.sh`, `models/Modelfile.bonsai8b`, `frontend/electron/inference/mock.ts`, and `docs/cpu-perf-tuning.md` already match the canonical-quant rename. README and ARCHITECTURE re-verified; both test suites green. |

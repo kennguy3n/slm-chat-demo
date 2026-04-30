@@ -78,6 +78,15 @@ describe('chatApi', () => {
     expect(msgs[0].id).toBe('m1');
   });
 
+  it('fetchChannelMessages adds ?includeReplies=true when requested', async () => {
+    fetchSpy.mockResolvedValueOnce(jsonResponse({ messages: [] }));
+    await fetchChannelMessages('c1', { includeReplies: true });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/chats/c1/messages?includeReplies=true',
+      expect.any(Object),
+    );
+  });
+
   it('fetchThreadMessages calls the threads endpoint', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse({ messages: [] }));
     await fetchThreadMessages('t1');

@@ -118,6 +118,19 @@ func Seed(m *Memory) {
 			Context:     models.ContextB2B,
 			MemberIDs:   []string{"user_alice", "user_dave", "user_eve"},
 		},
+		{
+			// New cross-functional launch channel added during the
+			// B2B real-LLM redesign so Bonsai-8B has a multi-topic
+			// thread (marketing / eng / sales) to demonstrate
+			// summarisation and task extraction over a richer chat.
+			ID:          "ch_product_launch",
+			WorkspaceID: acme.ID,
+			DomainID:    "dom_eng",
+			Name:        "product-launch",
+			Kind:        models.ChannelChannel,
+			Context:     models.ContextB2B,
+			MemberIDs:   []string{"user_alice", "user_dave", "user_eve"},
+		},
 	}
 	for _, c := range channels {
 		m.PutChannel(c)
@@ -470,19 +483,21 @@ func seedMessages(m *Memory, base time.Time) {
 	addMsg(m, "msg_comm_9", "ch_neighborhood", "", "user_alice", "count me in for setup", base.Add(-35*time.Minute))
 
 	// B2B — vendor-management thread. Drives the approval-prefill demo
-	// (PROPOSAL 5.3). The enriched tail carries pricing breakdown, risk
-	// assessment, and an explicit decision statement so the
-	// `prefill_approval` MockAdapter output has concrete source
-	// material to point at.
-	addMsg(m, "msg_vend_root", "ch_vendor_management", "msg_vend_root", "user_dave", "Need to lock vendor pricing for the Q3 logging contract — three bids on the table.", base.Add(-50*time.Minute))
-	addMsg(m, "msg_vend_r1", "ch_vendor_management", "msg_vend_root", "user_eve", "what are the bids and risk notes?", base.Add(-48*time.Minute))
-	addMsg(m, "msg_vend_r2", "ch_vendor_management", "msg_vend_root", "user_dave", "Acme Logs $42k/yr, BetterLog $51k/yr, CloudTrace $39k/yr. CloudTrace failed our SOC 2 review last quarter.", base.Add(-45*time.Minute))
-	addMsg(m, "msg_vend_r3", "ch_vendor_management", "msg_vend_root", "user_eve", "skip CloudTrace then. lean Acme; need pricing breakdown + termination terms before I approve.", base.Add(-43*time.Minute))
-	addMsg(m, "msg_vend_r4", "ch_vendor_management", "msg_vend_root", "user_dave", "pulling that now — pending decision in this thread.", base.Add(-42*time.Minute))
-	addMsg(m, "msg_vend_r5", "ch_vendor_management", "msg_vend_root", "user_dave", "Pricing breakdown — Acme Logs: $42k/yr base, $3/GB overage past 5TB, 30-day termination. BetterLog: $51k/yr base, $2/GB overage past 3TB, 90-day termination.", base.Add(-40*time.Minute))
-	addMsg(m, "msg_vend_r6", "ch_vendor_management", "msg_vend_root", "user_dave", "Risk notes — Acme Logs: SOC 2 Type II (April 2026), GDPR DPA in place, 99.95% uptime SLA. BetterLog: SOC 2 Type I only, no published uptime SLA.", base.Add(-38*time.Minute))
-	addMsg(m, "msg_vend_r7", "ch_vendor_management", "msg_vend_root", "user_eve", "Decision: go with Acme Logs at $42,000/yr. Justification: lowest cost, stronger SOC 2 posture, shorter termination window. I'll approve once the request is filed.", base.Add(-35*time.Minute))
-	addMsg(m, "msg_vend_r8", "ch_vendor_management", "msg_vend_root", "user_dave", "filing the approval now — source thread is this one.", base.Add(-33*time.Minute))
+	// (PROPOSAL 5.3). The B2B real-LLM redesign expanded this thread to
+	// 12 messages so Bonsai-8B has enough pricing, risk, compliance, and
+	// decision content to populate the approval card autonomously.
+	addMsg(m, "msg_vend_root", "ch_vendor_management", "msg_vend_root", "user_dave", "Need to lock vendor pricing for the Q3 logging contract — three bids on the table and Finance wants the decision by next Tuesday.", base.Add(-50*time.Minute))
+	addMsg(m, "msg_vend_r1", "ch_vendor_management", "msg_vend_root", "user_eve", "What are the bids, and where do they sit on SOC 2 and GDPR?", base.Add(-48*time.Minute))
+	addMsg(m, "msg_vend_r2", "ch_vendor_management", "msg_vend_root", "user_dave", "Acme Logs $42k/yr, BetterLog $51k/yr, CloudTrace $39k/yr. CloudTrace failed our SOC 2 review last quarter so I'd skip them.", base.Add(-45*time.Minute))
+	addMsg(m, "msg_vend_r3", "ch_vendor_management", "msg_vend_root", "user_eve", "Agreed, skip CloudTrace. Lean Acme — but I need a pricing breakdown and termination terms before I approve.", base.Add(-43*time.Minute))
+	addMsg(m, "msg_vend_r4", "ch_vendor_management", "msg_vend_root", "user_dave", "Pulling the data room link now. Will post pricing + risk + compliance separately so it's easy to cite.", base.Add(-42*time.Minute))
+	addMsg(m, "msg_vend_r5", "ch_vendor_management", "msg_vend_root", "user_dave", "Pricing — Acme Logs: $42,000/yr base, $3/GB overage past 5TB, 30-day termination. BetterLog: $51,000/yr base, $2/GB overage past 3TB, 90-day termination.", base.Add(-40*time.Minute))
+	addMsg(m, "msg_vend_r6", "ch_vendor_management", "msg_vend_root", "user_dave", "Risk — Acme Logs: SOC 2 Type II (April 2026), GDPR DPA in place, 99.95% uptime SLA, single-region (us-east-1). BetterLog: SOC 2 Type I only, no published uptime SLA, multi-region but no DPA on file.", base.Add(-38*time.Minute))
+	addMsg(m, "msg_vend_r7", "ch_vendor_management", "msg_vend_root", "user_dave", "Compliance — Acme published their pen-test report from January and the InfoSec team signed off last week. BetterLog hasn't shared theirs yet.", base.Add(-37*time.Minute))
+	addMsg(m, "msg_vend_r8", "ch_vendor_management", "msg_vend_root", "user_alice", "Adding context: Procurement flagged that BetterLog's 90-day termination clause is a non-starter for our quarterly budget cycle.", base.Add(-36*time.Minute))
+	addMsg(m, "msg_vend_r9", "ch_vendor_management", "msg_vend_root", "user_eve", "Decision: go with Acme Logs at $42,000/yr. Justification: lowest cost, strongest SOC 2 posture, shortest termination window. Risk: medium — single-region.", base.Add(-35*time.Minute))
+	addMsg(m, "msg_vend_r10", "ch_vendor_management", "msg_vend_root", "user_dave", "Filing the approval now — source thread is this one. Will assign Procurement as reviewer and CC Finance.", base.Add(-33*time.Minute))
+	addMsg(m, "msg_vend_r11", "ch_vendor_management", "msg_vend_root", "user_alice", "Once it's approved I'll kick off the data-residency mitigation: ask Acme for an us-west-2 replica and put the request in the Q4 plan.", base.Add(-31*time.Minute))
 
 	// B2B — engineering — inline-translation thread (PRD draft demo,
 	// PROPOSAL 5.4). Unchanged from Phase 0 so the existing Phase-0
@@ -516,6 +531,29 @@ func seedMessages(m *Memory, base time.Time) {
 	addMsg(m, "msg_gen_okr_r1", "ch_general", "msg_gen_okr_root", "user_dave", "(1) I'll own the doc-site refresh.", base.Add(-13*time.Minute))
 	addMsg(m, "msg_gen_okr_r2", "ch_general", "msg_gen_okr_root", "user_eve", "(2) mine — I have the CI profile already.", base.Add(-12*time.Minute))
 	addMsg(m, "msg_gen_okr_r3", "ch_general", "msg_gen_okr_root", "user_alice", "(3) I'll take customer pilot outreach. action: tracking board up by Monday.", base.Add(-11*time.Minute))
+
+	// B2B — #general standup-style updates (added during the B2B
+	// redesign so summarise / extract-tasks have multi-owner content
+	// with explicit deadlines).
+	addMsg(m, "msg_gen_stand_root", "ch_general", "msg_gen_stand_root", "user_alice", "Tuesday standup — status updates by team. I'll start: shipping the inline-translation PR by Wednesday EOD; CI is green and I'm waiting on a design review from Eve.", base.Add(-9*time.Minute))
+	addMsg(m, "msg_gen_stand_r1", "ch_general", "msg_gen_stand_root", "user_dave", "Platform: vendor approval routing landed in staging. Need someone from Procurement to validate by Friday before we promote to prod.", base.Add(-8*time.Minute))
+	addMsg(m, "msg_gen_stand_r2", "ch_general", "msg_gen_stand_root", "user_eve", "Design review for translation card scheduled for Wednesday 10am — Alice please post the latest mocks before then.", base.Add(-7*time.Minute))
+	addMsg(m, "msg_gen_stand_r3", "ch_general", "msg_gen_stand_root", "user_alice", "Will do, posting tonight. Also reminder: company holiday Friday — no standup.", base.Add(-6*time.Minute))
+
+	// B2B — product-launch thread. Cross-functional discussion
+	// (marketing / engineering / sales) so Bonsai-8B can demonstrate
+	// multi-topic summarisation and multi-owner task extraction.
+	addMsg(m, "msg_pl_root", "ch_product_launch", "msg_pl_root", "user_alice", "Kicking off the v2.0 launch planning. Target ship date: June 14. Three workstreams need owners — marketing, engineering hardening, and sales enablement.", base.Add(-25*time.Minute))
+	addMsg(m, "msg_pl_r1", "ch_product_launch", "msg_pl_root", "user_eve", "Marketing — I'll own the launch blog, press kit, and the customer email blast. Draft blog by June 7, press kit by June 10. Need a hero quote from Alice.", base.Add(-23*time.Minute))
+	addMsg(m, "msg_pl_r2", "ch_product_launch", "msg_pl_root", "user_dave", "Engineering hardening — taking that. Plan: feature-freeze June 7, regression burn-down June 8–11, soak-test on staging June 11–13, prod cut June 14 morning.", base.Add(-21*time.Minute))
+	addMsg(m, "msg_pl_r3", "ch_product_launch", "msg_pl_root", "user_alice", "Sales enablement — I'll handle. Deliverables: pitch deck refresh, two demo recordings (vendor approval + PRD draft), pricing one-pager. Done by June 10 so AEs have a week to ramp.", base.Add(-19*time.Minute))
+	addMsg(m, "msg_pl_r4", "ch_product_launch", "msg_pl_root", "user_eve", "Risk: our largest design partner asked for a private beta on June 12. If we slip prod cut by even a day we'll miss their window.", base.Add(-17*time.Minute))
+	addMsg(m, "msg_pl_r5", "ch_product_launch", "msg_pl_root", "user_dave", "Mitigation: I'll keep a 24-hour buffer on the engineering side and we ship the design partner an internal build June 11 if staging soak looks clean.", base.Add(-15*time.Minute))
+	addMsg(m, "msg_pl_r6", "ch_product_launch", "msg_pl_root", "user_alice", "Compliance check — the new approval flow needs a re-attestation from Legal before it ships. I'll loop in Legal Monday and ask for a one-week turn.", base.Add(-13*time.Minute))
+	addMsg(m, "msg_pl_r7", "ch_product_launch", "msg_pl_root", "user_eve", "Pricing — proposal: bump enterprise tier from $24/user/month to $28 and add the on-device LLM as a feature highlight. Need Finance sign-off by June 5.", base.Add(-11*time.Minute))
+	addMsg(m, "msg_pl_r8", "ch_product_launch", "msg_pl_root", "user_dave", "Action items captured: Eve drafts blog (June 7), Eve drafts press kit (June 10), Dave runs feature freeze June 7, Alice owns sales deliverables (June 10), Alice loops Legal Monday, Eve syncs Finance on pricing by June 5.", base.Add(-9*time.Minute))
+	addMsg(m, "msg_pl_r9", "ch_product_launch", "msg_pl_root", "user_alice", "Decision: we ship June 14 unless Legal re-attestation slips. If it slips we move to June 21 and notify the design partner.", base.Add(-7*time.Minute))
+	addMsg(m, "msg_pl_r10", "ch_product_launch", "msg_pl_root", "user_eve", "Confirmed. I'll set the public ship-date as June 14 in the press kit and draft a contingency note for the design partner.", base.Add(-5*time.Minute))
 }
 
 // seedCards loads four sample KApp cards covering each card kind so the

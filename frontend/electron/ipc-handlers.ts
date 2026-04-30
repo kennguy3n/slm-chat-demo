@@ -27,6 +27,10 @@ import {
   runShoppingNudges,
 } from './inference/secondBrain.js';
 import {
+  runExtractKnowledge,
+  type ExtractKnowledgeRequest,
+} from './inference/skills/extract-knowledge.js';
+import {
   runTripPlanner,
   type RunTripPlannerArgs,
 } from './inference/skills/trip-planner.js';
@@ -203,6 +207,18 @@ export function registerIPCHandlers(): void {
     const { router } = await getStack();
     return runGuardrailRewrite(router, req);
   });
+
+  // Phase 7 — LLM-driven knowledge extraction. Replaces the regex
+  // heuristic in backend/internal/services/knowledge.go for the
+  // demo path; the regex stays in place as a fallback when Ollama
+  // isn't reachable.
+  ipcMain.handle(
+    'ai:extract-knowledge',
+    async (_e, req: ExtractKnowledgeRequest) => {
+      const { router } = await getStack();
+      return runExtractKnowledge(router, req);
+    },
+  );
 
   // Phase 4 — generic AI-Employee recipe runner. All recipes share
   // this channel; the renderer identifies which one to run by id and

@@ -1,8 +1,13 @@
-// MockAdapter — TypeScript port of `backend/internal/inference/mock.go`.
+// MockAdapter — deterministic stand-in for the on-device LLM, used
+// **only in tests and as a last-resort fallback when Ollama is
+// unreachable**. Every B2B demo flow now routes through the real
+// `OllamaAdapter` whenever the daemon is up, and the canned outputs
+// here are intentionally generic + clearly labelled `[MOCK] …` so it
+// is obvious from the privacy strip and any captured artefact when
+// the real model wasn't running.
 //
-// Returns canned responses keyed by TaskType so the rest of the AI
-// surface can be wired end-to-end without a real local model. Always
-// reports OnDevice + zero egress.
+// The B2C translation seed table is preserved because the
+// translation tests assert on specific bidirectional pairs.
 
 import type {
   Adapter,
@@ -47,16 +52,16 @@ export class MockAdapter implements Adapter {
 function mockOutputFor(req: InferenceRequest): string {
   switch (req.taskType) {
     case 'summarize':
-      // Two flavours of canned summary depending on what the prompt
-      // looks like:
-      //  - Bilingual chat summary (the new B2C demo) — detected by
-      //    matching the Vietnamese phrase "Việt Nam" or the Vietnamese
-      //    diacritic "phở" in the prompt body. Returns an
-      //    English-language conversation summary that calls out the
-      //    decisions, action items, and that the chat spans EN ↔ VI.
-      //  - Default Morning Catch-up digest (PROPOSAL 5.1) referencing
-      //    the enriched family / community / vendor seed content so the
-      //    digest card feels populated.
+      // Two layers:
+      //  1. Bilingual chat summary (B2C bilingual demo) — detected via
+      //     `mockIsBilingualSummary` on the prompt body. Returns a
+      //     hand-curated EN summary that calls out decisions, action
+      //     items, and that the chat spans EN ↔ VI.
+      //  2. Generic [MOCK] placeholder — the Phase 7 B2B redesign
+      //     stripped seed-coupled summaries here so it's obvious in
+      //     screenshots / privacy strips when the real LLM didn't run.
+      //     Bullets are shaped like the prompt library's expected
+      //     output so parsers in tests stay happy.
       if (mockIsBilingualSummary(req.prompt ?? '')) {
         return [
           'Bilingual conversation summary — English ↔ Vietnamese, summarised on-device:',
@@ -73,93 +78,67 @@ function mockOutputFor(req: InferenceRequest): string {
         ].join('\n');
       }
       return [
-        'On-device summary — 4 threads with activity since last check:',
-        '• Family group: field-trip form due Friday (sunscreen too),',
-        '  Lily\'s piano recital Saturday 2pm, parent-teacher night',
-        '  Thursday 6pm, Grandma\'s birthday next Tuesday.',
-        '• Neighborhood: block-party Saturday (you\'re bringing drinks),',
-        '  garage sale May 17, lost-pet notice (orange tabby "Momo"),',
-        '  volunteer request for Saturday setup.',
-        '• Vendor management: decision on the Q3 logging contract —',
-        '  Acme Logs at $42k/yr, ready to approve.',
-        '• #general: Q2 OKR owners assigned; Friday is a company holiday.',
+        '- [MOCK] Decision: routing summary placeholder produced by MockAdapter.',
+        '- [MOCK] Open question: real Bonsai-8B output replaces this when Ollama is reachable.',
+        '- [MOCK] Owner: alice (placeholder).',
+        '- [MOCK] Deadline: this week (placeholder).',
       ].join('\n');
     case 'translate':
-      // For the demo we hand-seed plausible translations of the
-      // enriched DM/family seed lines so the TranslationCard shows
-      // real bidirectional language content (Vietnamese ↔ English,
-      // Spanish ↔ English, Japanese ↔ English). Anything else falls
-      // back to a clearly-labelled mock line. `runTranslate` parses
-      // the full prompt envelope ("Translate ... Message: <source>")
-      // so we scan for the original text at the end of the prompt.
       return mockTranslate(req.prompt ?? '');
     case 'extract_tasks':
-      // Demo flow 5.2 — task extraction from the Family group. Each
-      // line appends `[source:msg_id,...]` provenance markers using the
-      // same no-space convention as `CitationRenderer` so a future
-      // citation surface can wire source pins. `parseExtractedTasks`
-      // strips the markers from the rendered title.
+      // Generic mock task list — pipe-delimited so the KApps parser
+      // accepts it, plain B2C-style fallback also kept for the
+      // legacy `parseExtractedTasks` parser.
       return [
-        '- Submit field-trip form (due Friday) [source:msg_fam_1]',
-        '- Add sunscreen to shopping list [source:msg_fam_1]',
-        '- Buy flowers for Lily\'s piano recital Saturday [source:msg_fam_5]',
-        '- Grocery run: milk, eggs, bread, apples, pasta, marinara [source:msg_fam_7,msg_fam_8]',
-        '- Parent-teacher night Thursday 6pm at Oakridge Elementary [source:msg_fam_9]',
-        '- Pick up birthday card + potted plant for Grandma (due next Tuesday) [source:msg_fam_11,msg_fam_12]',
+        '- [MOCK] task | Review the thread above | ',
+        '- [MOCK] reminder | Confirm decision with the owner | ',
       ].join('\n');
     case 'smart_reply':
-      // Return 2-3 short candidate replies on separate lines. `tasks.ts:parseSmartReplies`
-      // splits on newlines, strips leading bullets / numbered prefixes /
-      // "suggested reply:" labels, and caps at 3 suggestions.
       return [
-        'Sounds good — I\'ll handle the form tonight and grab sunscreen on the way home.',
-        'Thanks for the reminder! I\'ll pick up sunscreen and sign the form after dinner.',
-        'Can do — I\'ll swing by the store on my way back and knock both out tonight.',
+        '[MOCK] Sounds good — will follow up shortly.',
+        '[MOCK] Thanks for the update!',
+        '[MOCK] Let me check and get back to you.',
       ].join('\n');
     case 'prefill_approval':
-      // Demo flow 5.3 — approval prefill from the enriched vendor
-      // thread. Fields match `msg_vend_r5` (pricing breakdown),
-      // `msg_vend_r6` (SOC 2 / GDPR risk notes), and `msg_vend_r7`
-      // (explicit decision line).
+      // Generic placeholder fields — no references to seed data
+      // anymore. Real Bonsai-8B fills these from whatever thread the
+      // caller passes through.
       return [
-        'vendor: Acme Logs',
-        'amount: $42,000 / yr',
-        'justification: Lowest-cost SOC 2 Type II-cleared bidder with 30-day termination and 99.95% uptime SLA; BetterLog was $51k with 90-day termination, CloudTrace failed SOC 2.',
-        'risk: medium',
+        '[MOCK] vendor: <vendor name from thread>',
+        '[MOCK] amount: <currency amount>',
+        '[MOCK] justification: <one-sentence reason>',
+        '[MOCK] risk: low',
       ].join('\n');
     case 'prefill_form':
       return [
-        'vendor: Acme Logs',
-        'amount: $42,000',
-        'compliance: SOC 2',
-        'justification: Logging vendor selection — see vendor-management thread (msg_vend_root).',
-        'requester: alice',
+        '[MOCK] vendor: <vendor>',
+        '[MOCK] amount: <amount>',
+        '[MOCK] compliance: <standard>',
       ].join('\n');
     case 'draft_artifact':
       return [
-        '# Inline translation PRD (draft v1)',
+        '# [MOCK] artifact draft',
         '',
         '## Goal',
-        'Per-message translation rendered under the bubble; original always one tap away.',
+        '[MOCK] Real Bonsai-8B output replaces this body when Ollama is reachable.',
         '',
         '## Requirements',
-        '- Locale auto-detect',
-        '- On-device only',
-        '- Fall back to original on low confidence',
+        '- [MOCK] requirement 1',
+        '- [MOCK] requirement 2',
         '',
-        '## Success metric',
-        '% messages translated successfully without user toggling back. Target > 90% for top 5 locales.',
+        '## Risks',
+        '- [MOCK] risk placeholder',
       ].join('\n');
     default:
-      return 'Mock adapter has no canned output for this task type.';
+      return '[MOCK] no canned output for this task type.';
   }
 }
 
-// Hand-seeded bidirectional translations used by the demo. Keys are
-// the original source text as it appears in `seed.go`, values are the
-// plausible translated outputs per target language. The mock adapter
-// matches loosely (trimmed + lowercased) so small whitespace or
-// punctuation drift in the prompt doesn't break the lookup.
+// Hand-seeded bidirectional translations used by the B2C translation
+// tests. Keys are the source text (lowercased + trimmed); values map
+// the target language to the translated string. The mock adapter
+// matches loosely so small whitespace or punctuation drift in the
+// prompt doesn't break the lookup.
 //
 // Exported for tests.
 export const SEEDED_TRANSLATIONS: Record<string, Record<string, string>> = {

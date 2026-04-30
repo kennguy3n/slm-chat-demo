@@ -58,23 +58,38 @@ the **Personal** workspace.
 
 ## B2B flows
 
-Source workspace: **Acme Corp** (`ws_acme`) with two domains —
-`Engineering` (`ch_general`, `ch_engineering`) and `Finance`
-(`ch_vendor_management`).
+Source workspace: **Acme Corp** (`ws_acme`) with three domains —
+`Engineering` (`ch_general`, `ch_engineering`, `ch_product_launch`)
+and `Finance` (`ch_vendor_management`).
+
+> **Phase 7 redesign — real-LLM B2B.** Every B2B AI surface now
+> runs against the on-device **Bonsai-8B-Q1_0** model via the
+> Phase 7 prompt library
+> (`frontend/electron/inference/prompts/`). The screenshots in
+> this section are intended to be re-captured against a running
+> Ollama daemon; when captured against `MockAdapter` (no Ollama)
+> the panels render obvious `[MOCK]`-prefixed placeholders rather
+> than the seed-coupled canned text the previous capture pass
+> used. The §5.3 vendor-management thread has been enriched to 12
+> messages with explicit pricing, SOC 2 compliance, single-region
+> risk, and a final decision so the LLM has enough context to
+> ground each approval field. A new `#product-launch` thread
+> (multi-topic cross-functional discussion) was added for §5.4
+> demonstrations.
 
 | # | File | PROPOSAL §5 flow | Privacy strip | What it shows |
 |---|------|------------------|---------------|---------------|
 | 1 | [`b2b/01-workspace-navigation.png`](./b2b/01-workspace-navigation.png) | §4 shell | — | B2B layout with the workspace → domain → channel hierarchy in the left sidebar. |
 | 2 | [`b2b/02-thread-summary.png`](./b2b/02-thread-summary.png) | §5.3 — summarize | on-device | `ThreadSummaryCard` with source citations anchored to the vendor-management thread. |
 | 3 | [`b2b/03-action-launcher.png`](./b2b/03-action-launcher.png) | §5.3 — launcher | — | Action Launcher open with the Create / Analyze / Plan / Approve four-intent grid. |
-| 4 | [`b2b/04-approval-prefill.png`](./b2b/04-approval-prefill.png) | §5.3 — approval prefill | on-device | `ApprovalPrefillCard` with vendor / amount / risk / justification prefilled from the enriched thread (`msg_vend_r5`–`r7`). |
+| 4 | [`b2b/04-approval-prefill.png`](./b2b/04-approval-prefill.png) | §5.3 — approval prefill | on-device | `ApprovalPrefillCard` with `vendor` / `amount` / `risk` / `justification` prefilled by Bonsai-8B from the enriched 12-message vendor thread (Phase 7 `prefill-approval.ts` prompt). |
 | 5 | [`b2b/05-approval-card-pending.png`](./b2b/05-approval-card-pending.png) | §5.3 — approval lifecycle | on-device | `ApprovalCard` after submission, in the **Pending** state awaiting Eve's decision. |
 | 6 | [`b2b/06-artifact-draft.png`](./b2b/06-artifact-draft.png) | §5.4 — PRD draft | on-device | `ArtifactDraftCard` streaming a PRD draft with source pins back into `msg_eng_root`. |
 | 7 | [`b2b/07-artifact-workspace.png`](./b2b/07-artifact-workspace.png) | §5.4 — artifact editor | on-device | `ArtifactWorkspace` showing sections, version history, and diff view. |
 | 8 | [`b2b/08-ai-employee-panel.png`](./b2b/08-ai-employee-panel.png) | §5.4 — AI Employee | on-device | `AIEmployeePanel` showing Kara Ops AI with her budget, queued recipes, and recent runs. |
 | 9 | [`b2b/09-recipe-output-gate.png`](./b2b/09-recipe-output-gate.png) | §5 — output gate | on-device | `RecipeOutputGate` presenting the mandatory Accept / Edit / Discard review before a recipe writes into a KApp. |
 | 10 | [`b2b/10-connector-panel.png`](./b2b/10-connector-panel.png) | §5.4 — connector | on-device | `ConnectorPanel` showing the seeded Google Drive connector attached to `ch_vendor_management`. |
-| 11 | [`b2b/11-knowledge-graph.png`](./b2b/11-knowledge-graph.png) | §5 — knowledge | on-device | `KnowledgeGraphPanel` (right-rail "Knowledge" tab) on `#vendor-management` after pressing **Extract**: 2 decisions ("pulling that now — pending decision…", "go with Acme Logs at $42,000/yr…"), 2 risks, 1 requirement, 0 owners — each with `source` link back to the originating message and a confidence badge. |
+| 11 | [`b2b/11-knowledge-graph.png`](./b2b/11-knowledge-graph.png) | §5 — knowledge | on-device | `KnowledgeGraphPanel` (right-rail "Knowledge" tab) on `#vendor-management` after pressing **Extract**. Phase 7 routes this through `runExtractKnowledge` (LLM-driven, `ai:extract-knowledge` IPC) so each card is an entity Bonsai-8B identified — `decision` / `owner` / `risk` / `requirement` / `deadline` — with a best-effort source-message link and a confidence badge. The legacy regex extractor (`POST /api/channels/{id}/knowledge/extract`) is kept as the offline fallback. |
 | 12 | [`b2b/12-policy-admin.png`](./b2b/12-policy-admin.png) | §6 — policy | on-device | `PolicyAdminPanel` showing per-workspace AI compute rules (server compute denied, egress budget, redaction required). |
 
 ## On-device LLM demonstration
@@ -211,15 +226,21 @@ the same follow-up.
    npm run electron:dev
    ```
 
-3. **Optional — wire a real local model**:
+3. **Wire a real local model — required for B2B captures**:
 
    ```bash
    ./scripts/setup-models.sh                # pulls bonsai-8b via Ollama
+   ollama serve &                            # leave running in another shell
+   export OLLAMA_BASE_URL=http://localhost:11434
    ```
 
-   Without Ollama, the bootstrap falls back to `MockAdapter`; the
-   pre-2026-04-30 screenshots below were produced against the mock so
-   the outputs are deterministic.
+   Phase 7 redesigned every B2B AI surface to route through the
+   on-device Bonsai-8B-Q1_0 model. Without Ollama the bootstrap
+   falls back to `MockAdapter` and every B2B panel renders an
+   obvious `[MOCK]`-prefixed placeholder — fine for B2C captures
+   and tests, but the B2B screenshots in this directory are meant
+   to show real LLM output. Recapture them under a live daemon
+   when refreshing the demo set.
 
 4. **Optional — wire the live `Bonsai-8B-Q1_0.gguf` GGUF (Prism
    quant)**: the Q1_0 quant is **not** in mainline `llama.cpp` and

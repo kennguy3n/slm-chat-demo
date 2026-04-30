@@ -29,6 +29,16 @@ func (c *Chat) ChannelMessages(channelID string) []models.Message {
 	return c.store.ListChannelMessages(channelID)
 }
 
+// AllChannelMessages returns every message in a channel, including
+// thread replies, sorted by CreatedAt. Used by the Phase 7 LLM
+// bridges (knowledge extraction, summarisation) where the model
+// needs the full thread context — top-level messages alone don't
+// carry the enriched seed content (decisions, owners, deadlines)
+// that lives inside threads.
+func (c *Chat) AllChannelMessages(channelID string) []models.Message {
+	return c.store.ListAllChannelMessages(channelID)
+}
+
 // ThreadMessages returns the root + replies for a thread.
 func (c *Chat) ThreadMessages(threadID string) []models.Message {
 	return c.store.ListThreadMessages(threadID)

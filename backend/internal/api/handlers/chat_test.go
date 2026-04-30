@@ -134,6 +134,47 @@ func TestChatMessagesReturnsSeededFamilyMessages(t *testing.T) {
 	}
 }
 
+func TestChannelMessagesIncludeRepliesFlattensThreadContent(t *testing.T) {
+	h := newTestServer()
+	// Without the flag the vendor channel returns only top-level
+	// messages — none of the in-thread reply IDs (msg_vend_r1…).
+	rec := doGet(t, h, "/api/chats/ch_vendor_management/messages", "user_alice")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var top struct {
+		Messages []models.Message `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &top)
+	for _, m := range top.Messages {
+		if m.ID == "msg_vend_r1" {
+			t.Fatalf("expected reply IDs to be excluded from top-level listing")
+		}
+	}
+	// With the flag set, replies (msg_vend_r1, …) are included.
+	rec = doGet(t, h, "/api/chats/ch_vendor_management/messages?includeReplies=true", "user_alice")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var all struct {
+		Messages []models.Message `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &all)
+	if len(all.Messages) <= len(top.Messages) {
+		t.Fatalf("expected includeReplies=true to surface more messages, got %d ≤ %d", len(all.Messages), len(top.Messages))
+	}
+	foundReply := false
+	for _, m := range all.Messages {
+		if m.ID == "msg_vend_r1" {
+			foundReply = true
+			break
+		}
+	}
+	if !foundReply {
+		t.Errorf("expected msg_vend_r1 (a thread reply) to appear in includeReplies=true result")
+	}
+}
+
 func TestThreadMessagesIncludesRootAndReplies(t *testing.T) {
 	h := newTestServer()
 	rec := doGet(t, h, "/api/threads/msg_vend_root/messages", "user_alice")
@@ -210,8 +251,11 @@ func TestWorkspacesAndChannels(t *testing.T) {
 		Channels []models.Channel `json:"channels"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-	if len(body.Channels) != 3 {
-		t.Errorf("expected 3 acme channels, got %d", len(body.Channels))
+	// 4 = general, engineering, vendor-management, product-launch
+	// (the last added during the B2B real-LLM redesign so Bonsai-8B
+	// has a multi-topic thread to summarise).
+	if len(body.Channels) != 4 {
+		t.Errorf("expected 4 acme channels, got %d", len(body.Channels))
 	}
 
 	rec = doGet(t, h, "/api/workspaces/ws_missing/channels", "user_alice")

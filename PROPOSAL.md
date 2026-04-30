@@ -322,12 +322,21 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
 
 ### 5.3 B2B "Vendor approval"
 
-1. User opens `#vendor-management` in the workspace.
-2. An existing thread describes a vendor issue with pricing and risk notes.
-3. User opens the Action Launcher and picks **Request Approval**.
-4. The **on-device Bonsai-8B** prefills the approval card: **vendor**, **amount**,
-   **justification**, **risk**, and **sources** (linked thread messages
-   and one connector doc).
+1. User opens `#vendor-management` in the workspace. The seeded
+   thread contains 12 messages with explicit pricing, SOC 2
+   compliance notes, single-region risk, and a final decision —
+   enough natural-language context for an 8B model to ground each
+   approval field.
+2. User opens the Action Launcher and picks **Request Approval**.
+3. The **on-device Bonsai-8B-Q1_0** model receives a Phase 7
+   prompt-library prompt (`prefill-approval.ts`) asking for
+   `vendor: …`, `amount: …`, `justification: …`, `risk: …` lines.
+   The parser tolerates extra whitespace, alternative bullet
+   markers, optional `cost` / `price` aliases for amount, and
+   captures unknown keys (e.g. `contract length`, `termination`)
+   into an `extra` map.
+4. The approval card prefills with the parsed fields plus the
+   source-message ids the parser identified.
 5. User reviews, edits one field, and submits.
 6. An approval card appears in the thread with status **Pending**.
 7. The named approver opens the card and clicks **Approve**.
@@ -337,16 +346,29 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
 ### 5.4 B2B "Draft PRD with Nina PM AI"
 
 1. User opens the Action Launcher and picks **Create → PRD**.
-2. The **Brief Builder** opens: user selects the source thread, a linked
-   Drive folder, a PRD template, and a tone.
-3. The scheduler picks **on-device Bonsai-8B** (policy allows server, but local is
-   sufficient for this corpus).
-4. Nina PM streams the draft: 5 sections, inline citations to thread
-   messages and Drive files, a confidence score per section, and a list
-   of missing information.
+2. The **Brief Builder** opens: user selects the source thread (e.g.
+   the seeded `engineering` inline-translation discussion or the
+   new `product-launch` cross-functional thread), a linked Drive
+   folder, a PRD template, and a tone.
+3. The scheduler picks **on-device Bonsai-8B-Q1_0** (policy allows
+   server, but local is sufficient for this corpus).
+4. Nina PM streams the draft using the Phase 7 `draft-artifact.ts`
+   prompt template (artifact-type-aware: PRD / RFC / Proposal /
+   SOP / QBR; section-aware: requirements / risks / scope etc.).
+   Output is 5 sections of Markdown with inline citations to thread
+   messages and Drive files, a confidence score per section, and a
+   list of missing information.
 5. User edits two sections and clicks **Publish**.
 6. Publishing creates **Artifact v1** and posts a card back in the
    channel with a link to the artifact and the full source list.
+
+> All four B2B flows above route through the real on-device LLM
+> via `OllamaAdapter` when Ollama is reachable. The `MockAdapter`
+> still satisfies the contract for unit tests but emits clearly
+> `[MOCK]`-labelled placeholders so the demo path is unambiguous.
+> The Phase 7 prompt library
+> ([`frontend/electron/inference/prompts/`](./frontend/electron/inference/prompts/))
+> centralises every B2B prompt template and parser.
 
 ---
 

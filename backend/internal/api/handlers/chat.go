@@ -35,10 +35,21 @@ func (h *Chat) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"chats": chats})
 }
 
-// Messages returns the top-level messages for a chat.
+// Messages returns the messages for a chat. By default this is
+// just the top-level messages so the chat surface can render a
+// flat timeline. Pass `?includeReplies=true` to get every message
+// in the channel, including thread replies, flattened into one
+// CreatedAt-sorted slice — the Phase 7 LLM bridges use this so
+// the model sees the enriched in-thread seed content (decisions,
+// owners, deadlines) and not just the thread roots.
 func (h *Chat) Messages(w http.ResponseWriter, r *http.Request) {
 	chatID := chi.URLParam(r, "chatId")
-	msgs := h.chat.ChannelMessages(chatID)
+	var msgs []models.Message
+	if r.URL.Query().Get("includeReplies") == "true" {
+		msgs = h.chat.AllChannelMessages(chatID)
+	} else {
+		msgs = h.chat.ChannelMessages(chatID)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
 }
 
