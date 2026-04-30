@@ -44,6 +44,7 @@ import {
   parseExtractTasksOutput,
   parsePrefillApprovalOutput,
 } from './prompts/index.js';
+import { PROMPT_THREAD_CAP } from './prompts/shared.js';
 
 // truncateForPrompt caps a string at `max` runes (not bytes) so multi-
 // byte characters (emoji, CJK) are never split mid-codepoint.
@@ -298,7 +299,12 @@ export function classifyType(hint: string): ExtractedTask['type'] {
 
 // ---------- B2B thread summary ----------
 
-const THREAD_SUMMARY_MAX_MESSAGES = 30;
+// Outer caps mirror PROMPT_THREAD_CAP so the messages we slice here
+// are exactly the messages `formatThread` (used by every prompt
+// builder below) renders into the prompt. Without this alignment
+// the `sources` arrays would surface messages the model never saw,
+// breaking source-back-link attribution and the privacy strip.
+const THREAD_SUMMARY_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 export function buildThreadSummary(
   router: InferenceRouter,
@@ -351,7 +357,7 @@ export function buildThreadSummary(
 
 // ---------- B2B KApps extract tasks ----------
 
-const KAPPS_EXTRACT_MAX_MESSAGES = 30;
+const KAPPS_EXTRACT_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 export async function runKAppsExtractTasks(
   adapter: Adapter,
@@ -468,7 +474,7 @@ export function matchSourceMessage(
 
 // ---------- B2B prefill approval ----------
 
-const PREFILL_APPROVAL_MAX_MESSAGES = 30;
+const PREFILL_APPROVAL_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 const APPROVAL_TEMPLATE_TITLES: Record<ApprovalTemplate, string> = {
   vendor: 'Vendor approval',
@@ -598,7 +604,7 @@ function collectApprovalSources(
 
 // ---------- B2B draft artifact section ----------
 
-const DRAFT_ARTIFACT_MAX_MESSAGES = 30;
+const DRAFT_ARTIFACT_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 const ARTIFACT_TYPE_HINT: Record<ArtifactKind, string> = {
   PRD: 'product requirements doc with goal, requirements, success metrics, risks',
@@ -788,7 +794,7 @@ export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResp
 // fields one per line ("<field>: <value>"), parses the output back
 // into a Record<string, string>, and surfaces source provenance.
 
-const PREFILL_FORM_MAX_MESSAGES = 30;
+const PREFILL_FORM_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 export async function runPrefillForm(
   router: InferenceRouter,

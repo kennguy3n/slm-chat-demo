@@ -25,8 +25,12 @@ import type {
 import type { InferenceRouter } from './router.js';
 import { truncateForPrompt } from './tasks.js';
 import { INSUFFICIENT_RULE, detectInsufficient } from './skill-framework.js';
+import { PROMPT_THREAD_CAP } from './prompts/shared.js';
 
-const SECOND_BRAIN_MAX_MESSAGES = 30;
+// Second-Brain helpers don't use the prompts/ library yet, but the
+// outer cap is kept in lock-step with PROMPT_THREAD_CAP so the
+// 1024-token window stays inside budget across every B2C surface.
+const SECOND_BRAIN_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 // ---------- family checklist ----------
 
