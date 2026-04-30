@@ -13,9 +13,9 @@ const sample: ThreadSummaryResponse = {
   ],
   threadId: 'msg_eng_root',
   channelId: 'ch_engineering',
-  model: 'ternary-bonsai-8b',
+  model: 'bonsai-8b',
   tier: 'local',
-  reason: 'short thread (4 messages); on-device Ternary-Bonsai-8B is sufficient',
+  reason: 'short thread (4 messages); on-device Bonsai-8B is sufficient',
   messageCount: 4,
   computeLocation: 'on_device',
   dataEgressBytes: 0,
@@ -26,7 +26,7 @@ describe('ThreadSummaryCard', () => {
     renderWithProviders(
       <ThreadSummaryCard summary={sample} streamingText="Alice is drafting a PRD." />,
     );
-    expect(screen.getByTestId('thread-summary-model')).toHaveTextContent('ternary-bonsai-8b');
+    expect(screen.getByTestId('thread-summary-model')).toHaveTextContent('bonsai-8b');
     expect(screen.getByTestId('thread-summary-tier')).toHaveTextContent('LOCAL');
   });
 

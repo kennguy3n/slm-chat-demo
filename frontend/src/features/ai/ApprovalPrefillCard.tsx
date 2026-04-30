@@ -37,7 +37,7 @@ const FIELD_LABEL: Record<keyof PrefilledApprovalFields, string> = {
 // ApprovalPrefillCard renders the prefilled fields the inference router
 // extracted from a B2B thread (PROPOSAL.md §5.4 "Approve"). The user
 // reviews, edits inline, then clicks Accept to create the real Approval
-// KApp card. PrivacyStrip below shows on-device / Ternary-Bonsai-8B /
+// KApp card. PrivacyStrip below shows on-device / Bonsai-8B /
 // 0 bytes egress plus per-source provenance.
 export function ApprovalPrefillCard({
   prefill,

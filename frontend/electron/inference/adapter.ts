@@ -71,7 +71,7 @@ export interface ModelStatus {
 
 // Tier distinguishes on-device inference from the (optional, policy-
 // gated) confidential-server tier. The demo ships a single on-device
-// model (Ternary-Bonsai-8B) so there is no local-tier subdivision —
+// model (Bonsai-8B) so there is no local-tier subdivision —
 // anything not explicitly server-bound runs locally.
 export type Tier = 'local' | 'server';
 

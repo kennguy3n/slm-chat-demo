@@ -3,11 +3,13 @@
 // reach Ollama, prefer it when reachable, fall back to the mock adapter
 // so the app always boots.
 //
-// The demo ships a single on-device model (Ternary-Bonsai-8B) via
+// The demo ships a single on-device model (Bonsai-8B-Q1_0 by default;
+// Ternary-Bonsai-8B-Q2_0 on ARM/Apple Silicon — see
+// docs/cpu-perf-tuning.md for the per-arch quant choice) via
 // Ollama. One OllamaAdapter is instantiated when the daemon is
 // reachable; otherwise the router falls back to MockAdapter so the UI
 // remains usable offline. The configured alias is read from
-// `MODEL_NAME` (default `ternary-bonsai-8b`) and surfaced in
+// `MODEL_NAME` (default `bonsai-8b`) and surfaced in
 // `model:status` for the DeviceCapabilityPanel.
 
 import type { Loader, StatusProvider } from './adapter.js';
@@ -48,15 +50,17 @@ export interface BootstrapOptions {
   pingServer?: (signal?: AbortSignal) => Promise<void>;
 }
 
-const DefaultModel = 'ternary-bonsai-8b';
+const DefaultModel = 'bonsai-8b';
 const DefaultServerModel = 'confidential-large';
-// The demo ships the Ternary-Bonsai-8B-Q2_0 GGUF (PrismML ternary
-// quant). Callers can override via the MODEL_QUANT env var when
-// running a different quantisation — e.g. MODEL_QUANT=q4_k_m for the
-// mainline llama.cpp Q4_K_M build. The value is surfaced verbatim by
-// the DeviceCapabilityPanel so it should match what llama.cpp /
-// Ollama actually loaded.
-const DefaultQuant = 'q2_0';
+// The demo ships the Bonsai-8B-Q1_0 GGUF (PrismML 1-bit quant; the
+// fork has an x86 SIMD kernel for Q1_0, unlike Q2_0 which is
+// ARM-only). Callers can override via the MODEL_QUANT env var when
+// running a different quantisation — e.g. MODEL_QUANT=q2_0 for the
+// ARM/Apple-Silicon-optimised Ternary-Bonsai-8B-Q2_0 file, or
+// MODEL_QUANT=q4_k_m for a mainline llama.cpp build. The value is
+// surfaced verbatim by the DeviceCapabilityPanel so it should match
+// what llama.cpp / Ollama actually loaded.
+const DefaultQuant = 'q1_0';
 
 export async function bootstrapInference(
   optsOrFetch?: BootstrapOptions | typeof fetch,

@@ -30,9 +30,9 @@ describe('OllamaAdapter.run', () => {
   it('streams /api/generate and concatenates the response', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       ndjsonStream([
-        JSON.stringify({ model: 'ternary-bonsai-8b', response: 'hello ', done: false }),
-        JSON.stringify({ model: 'ternary-bonsai-8b', response: 'world', done: false }),
-        JSON.stringify({ model: 'ternary-bonsai-8b', response: '', done: true, eval_count: 2 }),
+        JSON.stringify({ model: 'bonsai-8b', response: 'hello ', done: false }),
+        JSON.stringify({ model: 'bonsai-8b', response: 'world', done: false }),
+        JSON.stringify({ model: 'bonsai-8b', response: '', done: true, eval_count: 2 }),
       ]),
     );
     const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
@@ -43,7 +43,7 @@ describe('OllamaAdapter.run', () => {
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toContain('/api/generate');
     const body = JSON.parse((init as RequestInit).body as string);
-    expect(body).toMatchObject({ model: 'ternary-bonsai-8b', prompt: 'hi', stream: true });
+    expect(body).toMatchObject({ model: 'bonsai-8b', prompt: 'hi', stream: true });
 
     expect(resp.output).toBe('hello world');
     expect(resp.tokensUsed).toBe(2);
@@ -112,49 +112,49 @@ describe('OllamaAdapter.status', () => {
 
   it('reports loaded=true when /api/ps returns a model', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
+      jsonResponse({ models: [{ name: 'bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
     );
     const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
     const s = await ad.status();
     expect(s.loaded).toBe(true);
-    expect(s.model).toBe('ternary-bonsai-8b');
+    expect(s.model).toBe('bonsai-8b');
     expect(s.ramUsageMB).toBeGreaterThan(0);
   });
 
   it('reports loaded=false when /api/ps lists only an unrelated model (adapter is configured with a different model)', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
+      jsonResponse({ models: [{ name: 'bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
     );
     const ad = new OllamaAdapter({
-      model: 'ternary-bonsai-8b-alt',
+      model: 'bonsai-8b-alt',
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     const s = await ad.status();
     expect(s.loaded).toBe(false);
-    expect(s.model).toBe('ternary-bonsai-8b-alt');
+    expect(s.model).toBe('bonsai-8b-alt');
     expect(s.ramUsageMB).toBe(0);
   });
 
-  it('matches even when the adapter is configured with a tagged model name (e.g. MODEL_NAME=ternary-bonsai-8b:q4_k_m)', async () => {
+  it('matches even when the adapter is configured with a tagged model name (e.g. MODEL_NAME=bonsai-8b:q4_k_m)', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
+      jsonResponse({ models: [{ name: 'bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
     );
     const ad = new OllamaAdapter({
-      model: 'ternary-bonsai-8b:q4_k_m',
+      model: 'bonsai-8b:q4_k_m',
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     const s = await ad.status();
     expect(s.loaded).toBe(true);
-    expect(s.model).toBe('ternary-bonsai-8b');
+    expect(s.model).toBe('bonsai-8b');
   });
 
   it('returns the configured quant label in every status() path (loaded, not-loaded, daemon-refused)', async () => {
     // Loaded path — quant comes from the constructor option, not hardcoded.
     const okFetch = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
+      jsonResponse({ models: [{ name: 'bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
     );
     const loaded = await new OllamaAdapter({
-      model: 'ternary-bonsai-8b',
+      model: 'bonsai-8b',
       quant: 'q2_0',
       fetchImpl: okFetch as unknown as typeof fetch,
     }).status();
@@ -164,7 +164,7 @@ describe('OllamaAdapter.status', () => {
     // Not-loaded (daemon running but model missing) path.
     const emptyFetch = vi.fn().mockResolvedValue(jsonResponse({ models: [] }));
     const notLoaded = await new OllamaAdapter({
-      model: 'ternary-bonsai-8b',
+      model: 'bonsai-8b',
       quant: 'q2_0',
       fetchImpl: emptyFetch as unknown as typeof fetch,
     }).status();
@@ -175,7 +175,7 @@ describe('OllamaAdapter.status', () => {
     // Daemon-refused path.
     const refusedFetch = vi.fn().mockResolvedValue(new Response('', { status: 500 }));
     const refused = await new OllamaAdapter({
-      model: 'ternary-bonsai-8b',
+      model: 'bonsai-8b',
       quant: 'q2_0',
       fetchImpl: refusedFetch as unknown as typeof fetch,
     }).status();
@@ -186,7 +186,7 @@ describe('OllamaAdapter.status', () => {
 
   it('defaults quant to q4_k_m when the constructor option is omitted (back-compat)', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
+      jsonResponse({ models: [{ name: 'bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
     );
     const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
     const s = await ad.status();
@@ -197,18 +197,18 @@ describe('OllamaAdapter.status', () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({
         models: [
-          { name: 'ternary-bonsai-8b-alt:latest', size: 1 * 1024 * 1024 * 1024 },
-          { name: 'ternary-bonsai-8b:q4_k_m', size: 5 * 1024 * 1024 * 1024 },
+          { name: 'bonsai-8b-alt:latest', size: 1 * 1024 * 1024 * 1024 },
+          { name: 'bonsai-8b:q4_k_m', size: 5 * 1024 * 1024 * 1024 },
         ],
       }),
     );
     const ad = new OllamaAdapter({
-      model: 'ternary-bonsai-8b',
+      model: 'bonsai-8b',
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     const s = await ad.status();
     expect(s.loaded).toBe(true);
-    expect(s.model).toBe('ternary-bonsai-8b:q4_k_m');
+    expect(s.model).toBe('bonsai-8b:q4_k_m');
     expect(s.ramUsageMB).toBeGreaterThanOrEqual(5000);
   });
 });

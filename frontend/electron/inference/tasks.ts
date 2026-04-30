@@ -312,9 +312,9 @@ export function buildThreadSummary(
     };
   });
 
-  let model = 'ternary-bonsai-8b';
+  let model = 'bonsai-8b';
   let tier: ThreadSummaryResponse['tier'] = 'local';
-  let reason = 'Thread summary routed to on-device Ternary-Bonsai-8B.';
+  let reason = 'Thread summary routed to on-device Bonsai-8B.';
   const decision = router.decide({ taskType: 'summarize', prompt });
   if (decision.allow) {
     model = decision.model;
@@ -496,7 +496,7 @@ export async function runPrefillApproval(
   const sourceMessageIds = collectApprovalSources(fields, limited);
 
   const tier: Tier = decision.tier ?? 'local';
-  const reason = decision.reason || `Routed prefill_approval to ${tier === 'server' ? 'confidential server' : 'on-device Ternary-Bonsai-8B'}.`;
+  const reason = decision.reason || `Routed prefill_approval to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-8B'}.`;
 
   return {
     threadId: req.threadId,
@@ -620,8 +620,8 @@ export function buildDraftArtifact(
   // still wins when the confidential-server tier is wired in and the
   // dispatcher asks for it explicitly.
   let tier: Tier = 'local';
-  let model = 'ternary-bonsai-8b';
-  let reason = `Drafting a ${req.artifactType} routed to on-device Ternary-Bonsai-8B.`;
+  let model = 'bonsai-8b';
+  let reason = `Drafting a ${req.artifactType} routed to on-device Bonsai-8B.`;
 
   const decision = router.decide({
     taskType: 'draft_artifact',
@@ -681,7 +681,7 @@ export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResp
   }
   return {
     prompt,
-    model: 'ternary-bonsai-8b',
+    model: 'bonsai-8b',
     sources,
     computeLocation: 'on_device',
     dataEgressBytes: 0,
@@ -726,7 +726,7 @@ export async function runPrefillForm(
   const parsed = parseFormFields(resp.output, fields);
   const sourceMessageIds = collectFormSources(parsed, limited);
   const tier: Tier = decision.tier ?? 'local';
-  const reason = decision.reason || `Routed prefill_form to ${tier === 'server' ? 'confidential server' : 'on-device Ternary-Bonsai-8B'}.`;
+  const reason = decision.reason || `Routed prefill_form to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-8B'}.`;
 
   return {
     threadId: req.threadId,

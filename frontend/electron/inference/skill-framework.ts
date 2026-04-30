@@ -1,6 +1,6 @@
 // AI Skills Framework — the structured contract every skill in the
 // Electron main-process inference layer follows. SLMs
-// (Ternary-Bonsai-8B) have limited world knowledge and a non-trivial
+// (Bonsai-8B) have limited world knowledge and a non-trivial
 // hallucination rate,
 // so every skill is built around four load-bearing rules:
 //
@@ -447,7 +447,7 @@ export async function runSkill<I, O>(
     confidence: parsed.confidence ?? 1,
     privacy: {
       computeLocation: 'on_device',
-      modelName: model || 'ternary-bonsai-8b',
+      modelName: model || 'bonsai-8b',
       tier,
       reason: routeReason || `Routed ${def.id} to ${tier.toUpperCase()}.`,
       dataEgressBytes: 0,

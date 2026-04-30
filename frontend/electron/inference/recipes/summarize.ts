@@ -11,7 +11,7 @@ export const summarizeRecipe: RecipeDefinition = {
   id: 'summarize',
   name: 'Summarize thread',
   description:
-    'Condense a thread into decisions, open questions, owners, and deadlines on the on-device Ternary-Bonsai-8B model.',
+    'Condense a thread into decisions, open questions, owners, and deadlines on the on-device Bonsai-8B model.',
   taskType: 'summarize',
   preferredTier: 'local',
   async execute(

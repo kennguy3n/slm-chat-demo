@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 # KChat SLM Demo — model setup.
 #
-# Pulls the Ternary-Bonsai-8B GGUF base model from HuggingFace (via
-# Ollama's `hf.co/<user>/<repo>` shorthand) and creates a local alias
-# that matches the app's default (`ternary-bonsai-8b`). Honours
-# `MODEL_NAME` so the alias can be renamed if you want the bootstrap
-# to pick a different name.
+# Downloads the Bonsai-8B-Q1_0 GGUF (~1.16 GB) from HuggingFace and
+# creates a local alias that matches the app's default (`bonsai-8b`).
+# Honours `MODEL_NAME` so the alias can be renamed if you want the
+# bootstrap to pick a different name.
+#
+# Q1_0 is PrismML's 1-bit quant — the PrismML llama.cpp fork ships a
+# real x86 SIMD kernel for it (AVX2/FMA), so on commodity x86 hosts
+# this is the fastest CPU artifact. The Ternary-Bonsai-8B-Q2_0 file
+# is the ARM/Apple-Silicon path — see docs/cpu-perf-tuning.md for the
+# kernel-coverage details and per-arch benchmarks.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-MODEL_ALIAS="${MODEL_NAME:-ternary-bonsai-8b}"
+MODEL_ALIAS="${MODEL_NAME:-bonsai-8b}"
 
 echo "=== KChat SLM Demo — Model Setup ==="
 echo ""
@@ -34,13 +39,16 @@ fi
 MODELFILE="$REPO_ROOT/models/Modelfile.bonsai8b"
 MODELS_DIR="$REPO_ROOT/models"
 
-# Canonical CPU artifact — Q2_0 ternary GGUF (~2 GB on disk).
-# Ollama's `hf.co/<user>/<repo>:<quant>` shorthand rejects `Q2_0`
-# (returns "not a valid quantization scheme"), so we download the
-# file directly and reference it from the Modelfile via a local
-# `FROM ./Ternary-Bonsai-8B-Q2_0.gguf` path.
-Q2_FILENAME="Ternary-Bonsai-8B-Q2_0.gguf"
-Q2_URL="https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/resolve/main/${Q2_FILENAME}"
+# Canonical x86 CPU artifact — Bonsai-8B-Q1_0 GGUF (~1.16 GB on disk).
+# This is a PrismML custom 1-bit quant; the fork has a real x86 SIMD
+# kernel for Q1_0 (see ggml/src/ggml-cpu/arch/x86/quants.c), so on
+# AMD/Intel CPUs with AVX2+FMA it lands at ~11 tok/s on 8 vCPU vs
+# the ~0.45 tok/s scalar-fallback that Q2_0 produces on the same box.
+# Ollama's `hf.co/<user>/<repo>:<quant>` shorthand doesn't recognise
+# `Q1_0` either, so we download the file directly and reference it
+# from the Modelfile via a local `FROM ./Bonsai-8B-Q1_0.gguf` path.
+Q1_FILENAME="Bonsai-8B-Q1_0.gguf"
+Q1_URL="https://huggingface.co/prism-ml/Bonsai-8B-gguf/resolve/main/${Q1_FILENAME}"
 
 # Extract the FROM tag from the Modelfile so this script stays in sync
 # automatically when the Modelfile is updated.
@@ -53,7 +61,7 @@ fi
 
 # If the Modelfile points at a local GGUF file, ensure it exists in
 # `$MODELS_DIR` before handing off to `ollama create`. For the
-# canonical Q2_0 artifact we download it from HuggingFace if missing.
+# canonical Q1_0 artifact we download it from HuggingFace if missing.
 if [[ "$base" == .* || "$base" == /* ]]; then
   # Resolve the local path relative to the Modelfile directory (the
   # same way `ollama create` does).
@@ -67,8 +75,8 @@ if [[ "$base" == .* || "$base" == /* ]]; then
 
   if [[ -f "$local_path" ]]; then
     echo "1/2  Base GGUF already present: $local_path (skipping download)"
-  elif [[ "$base_filename" == "$Q2_FILENAME" ]]; then
-    echo "1/2  Downloading base GGUF: $Q2_FILENAME (~2 GB) from HuggingFace"
+  elif [[ "$base_filename" == "$Q1_FILENAME" ]]; then
+    echo "1/2  Downloading base GGUF: $Q1_FILENAME (~1.16 GB) from HuggingFace"
     mkdir -p "$(dirname "$local_path")"
     # Download to a temp file and atomically rename on success so an
     # interrupted run never leaves a partial GGUF that the next
@@ -77,13 +85,13 @@ if [[ "$base" == .* || "$base" == /* ]]; then
     cleanup_tmp() { rm -f "$tmp_path"; }
     trap cleanup_tmp EXIT INT TERM
     if command -v curl >/dev/null 2>&1; then
-      curl -fL --retry 3 --retry-delay 2 -o "$tmp_path" "$Q2_URL"
+      curl -fL --retry 3 --retry-delay 2 -o "$tmp_path" "$Q1_URL"
     elif command -v wget >/dev/null 2>&1; then
-      wget --tries=3 -O "$tmp_path" "$Q2_URL"
+      wget --tries=3 -O "$tmp_path" "$Q1_URL"
     else
-      echo "ERROR: neither 'curl' nor 'wget' is installed; cannot download $Q2_FILENAME" >&2
+      echo "ERROR: neither 'curl' nor 'wget' is installed; cannot download $Q1_FILENAME" >&2
       echo "Install one of them, or download manually:" >&2
-      echo "  $Q2_URL -> $local_path" >&2
+      echo "  $Q1_URL -> $local_path" >&2
       exit 1
     fi
     mv "$tmp_path" "$local_path"
@@ -105,13 +113,14 @@ ollama create "$MODEL_ALIAS" -f "$MODELFILE"
 
 echo ""
 echo "Done! Verify with: ollama list"
-echo "You should see '$MODEL_ALIAS' (~2 GB if the Q2_0 GGUF was used)."
+echo "You should see '$MODEL_ALIAS' (~1.16 GB if the Q1_0 GGUF was used)."
 echo ""
-echo "NOTE: stock Ollama 0.22.x can create the alias from a Q2_0 GGUF"
-echo "      but cannot RUN inference against it (the bundled llama.cpp"
-echo "      SIGSEGVs while loading ternary tensors). The CPU-only demo"
-echo "      path uses the PrismML llama.cpp fork behind an Ollama-API"
-echo "      shim — see demo/README.md step 4 and docs/cpu-perf-tuning.md."
+echo "NOTE: stock Ollama 0.22.x can create the alias from a PrismML"
+echo "      Q1_0 GGUF but cannot RUN inference against it (the bundled"
+echo "      llama.cpp does not implement the Q1_0 tensor type). The"
+echo "      CPU-only demo path uses the PrismML llama.cpp fork behind"
+echo "      an Ollama-API shim — see demo/README.md step 4 and"
+echo "      docs/cpu-perf-tuning.md."
 echo ""
 echo "Start the app:"
 echo "  cd frontend && npm run electron:dev"

@@ -31,7 +31,7 @@ Electron App
 │   └── Privacy / policy engine
 │       ↓ (HTTP to local daemon)
 └── Ollama / llama.cpp (local sidecar)
-    └── Ternary-Bonsai-8B GGUF (hf.co/prism-ml/Ternary-Bonsai-8B-gguf)
+    └── Bonsai-8B GGUF (hf.co/prism-ml/Ternary-Bonsai-8B-gguf)
 
 Go Data API (optional, localhost:8080)
 ├── Chat / thread / message data
@@ -508,7 +508,7 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:translate`         | `translate(req)`                          | `runTranslate` (`taskType: translate`) |
 | `ai:translate-batch`   | `translateBatch(req)`                     | `runTranslateBatch` in `tasks.ts` — batch-translates N messages in a single prompt; returns one `TranslateResponse` per input item. Used by `MessageList` to prefetch all visible bubbles in one IPC round-trip instead of fanning out N per-bubble calls. |
 | `ai:extract-tasks`     | `extractTasks(req)`                       | `runExtractTasks` (`taskType: extract_tasks`) |
-| `ai:summarize-thread`  | `summarizeThread(req)`                    | `buildThreadSummary` (on-device Ternary-Bonsai-8B) |
+| `ai:summarize-thread`  | `summarizeThread(req)`                    | `buildThreadSummary` (on-device Bonsai-8B) |
 | `ai:unread-summary`    | `unreadSummary(req)`                      | `buildUnreadSummary` (`taskType: summarize`) |
 | `ai:kapps-extract`     | `extractKAppTasks(req)`                   | `runKAppsExtractTasks` (B2B thread → tasks with provenance) |
 | `ai:prefill-approval`  | `prefillApproval(req)`                    | `runPrefillApproval` (B2B thread → vendor / amount / risk / justification fields) |
@@ -591,7 +591,7 @@ Electron Main Process (Node.js / TypeScript)
    └── MockAdapter       (frontend/electron/inference/mock.ts)
    ↓  HTTP (localhost:11434)
 Ollama / llama.cpp (local sidecar)
-   └── Ternary-Bonsai-8B GGUF (hf.co/prism-ml/Ternary-Bonsai-8B-gguf)
+   └── Bonsai-8B GGUF (hf.co/prism-ml/Ternary-Bonsai-8B-gguf)
 ```
 
 Phase 1 implements this diagram with `OllamaAdapter` (TypeScript)
@@ -599,9 +599,9 @@ talking to a local Ollama daemon at `OLLAMA_BASE_URL` (default
 `http://localhost:11434`). The Electron main process boots the
 `InferenceRouter` in `bootstrap.ts`, which pings Ollama with a 500 ms
 timeout; if reachable it instantiates **a single `OllamaAdapter`** bound
-to `MODEL_NAME` (default `ternary-bonsai-8b`). The default name is an
+to `MODEL_NAME` (default `bonsai-8b`). The default name is an
 *alias*: the repo ships a single `models/Modelfile.bonsai8b` that wraps
-the upstream Ternary-Bonsai-8B GGUF model published by prism-ml to
+the upstream Bonsai-8B GGUF model published by prism-ml to
 HuggingFace
 ([`hf.co/prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf))
 with the demo's preferred temperature / top_p / context length / system
@@ -612,7 +612,7 @@ The `model:status` IPC channel reports `model` / `loaded` /
 on-device status.
 
 The router only distinguishes two destinations: `local` (the on-device
-Ternary-Bonsai-8B adapter) and `server` (the Phase 6 confidential
+Bonsai-8B adapter) and `server` (the Phase 6 confidential
 server tier, gated on explicit policy). Every non-server request goes
 to the single local adapter. The router records its decision (model,
 tier, reason) and exposes it via `window.electronAI.route()` so the
@@ -667,7 +667,7 @@ sub-section behind that flag.
 
 ### 4.2 Browser-local path (future)
 
-WebGPU inference where supported. Ternary-Bonsai-8B's GGUF format is
+WebGPU inference where supported. Bonsai-8B's GGUF format is
 already browser-shippable via llama.cpp's WebGPU backend, so running it
 directly in the page is a capability target. It is not a main demo
 dependency — the sidecar path stays primary because availability and performance
@@ -681,7 +681,7 @@ are too uneven across browsers and devices today.
   backend; on-device inference via a bundled llama.cpp build.
 - **Phase 3** — Android AICore / ML Kit GenAI Prompt API for direct on-device
   inference with no sidecar, using the system-managed model. The same
-  two-tier routing contract carries over — Ternary-Bonsai-8B stays the
+  two-tier routing contract carries over — Bonsai-8B stays the
   default model for both slots until a dedicated mobile-class model is
   available.
 
@@ -761,7 +761,7 @@ to the server tier per workspace.
   },
   "source_sensitivity": "public | internal | confidential | restricted",
   "allowed_compute": ["on_device", "confidential_server", "shared_server"],
-  "preferred_model": "ternary-bonsai-8b | server-large"
+  "preferred_model": "bonsai-8b | server-large"
 }
 ```
 
@@ -770,7 +770,7 @@ to the server tier per workspace.
 ```json
 {
   "decision": "allow | deny | downgrade",
-  "model": "ternary-bonsai-8b | server-large",
+  "model": "bonsai-8b | server-large",
   "quant": "q4_k_m | q5_k_m | q8_0 | fp16",
   "redaction_required": true,
   "data_egress_bytes": 0,

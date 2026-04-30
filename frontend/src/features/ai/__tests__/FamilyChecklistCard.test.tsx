@@ -15,9 +15,9 @@ const fakeResp: FamilyChecklistResponse = {
     { title: 'Pack shin guards', sourceMessageId: 'm2' },
   ],
   sourceMessageIds: ['m1', 'm2'],
-  model: 'ternary-bonsai-8b',
+  model: 'bonsai-8b',
   tier: 'local',
-  reason: 'Routed family checklist to on-device Ternary-Bonsai-8B.',
+  reason: 'Routed family checklist to on-device Bonsai-8B.',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
 };
@@ -49,7 +49,7 @@ describe('FamilyChecklistCard', () => {
     );
     expect(screen.getByText('Bring water bottles')).toBeInTheDocument();
     expect(screen.getByText('Pack shin guards')).toBeInTheDocument();
-    expect(screen.getByText('Routed family checklist to on-device Ternary-Bonsai-8B.')).toBeInTheDocument();
+    expect(screen.getByText('Routed family checklist to on-device Bonsai-8B.')).toBeInTheDocument();
     expect(aiApi.fetchFamilyChecklist).toHaveBeenCalledWith({
       channelId: 'ch_family',
       eventHint: 'Soccer practice tomorrow',

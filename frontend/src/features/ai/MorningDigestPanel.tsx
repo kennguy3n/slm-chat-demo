@@ -146,7 +146,7 @@ export function MorningDigestPanel() {
             digest={
               digest ?? {
                 prompt: '',
-                model: 'ternary-bonsai-8b',
+                model: 'bonsai-8b',
                 sources: [],
                 computeLocation: 'on_device',
                 dataEgressBytes: 0,

@@ -3,7 +3,7 @@
 // scheduler rule:
 //
 //   1. on-device by default — every request runs through the local
-//      Ternary-Bonsai-8B adapter.
+//      Bonsai-8B adapter.
 //   2. explicit `tier: 'server'` (or a model hint mentioning
 //      "confidential") targets the confidential-server tier, gated on
 //      workspace policy AND adapter availability. When the gate fails,
@@ -77,7 +77,7 @@ export class InferenceRouter implements Adapter {
     this.fallback = fallback;
     this.policyAllowsServer = opts.policyAllowsServer ?? false;
     this.defaultServerModel = opts.defaultServerModel ?? 'confidential-large';
-    this.defaultModel = opts.defaultModel ?? 'ternary-bonsai-8b';
+    this.defaultModel = opts.defaultModel ?? 'bonsai-8b';
     this.redaction = opts.redactionEngine ?? new RedactionEngine();
     this.redactionPolicy = opts.redactionPolicy ?? DefaultRedactionPolicy;
     this.egressTracker = opts.egressTracker ?? globalEgressTracker;
@@ -142,7 +142,7 @@ export class InferenceRouter implements Adapter {
     }
 
     // Local path. The demo ships a single on-device model
-    // (Ternary-Bonsai-8B) so there is no tier preference — every
+    // (Bonsai-8B) so there is no tier preference — every
     // non-server request runs through the local adapter, falling back
     // to the MockAdapter when Ollama is unreachable.
     const adapter = this.local ?? this.fallback;

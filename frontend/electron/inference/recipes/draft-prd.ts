@@ -1,7 +1,7 @@
 // draft_prd recipe — wraps buildDraftArtifact from tasks.ts with
 // artifactType 'PRD'. The underlying helper builds the prompt + source
 // list deterministically so the renderer can stream the actual body
-// over `ai:stream`, running on the on-device Ternary-Bonsai-8B model.
+// over `ai:stream`, running on the on-device Bonsai-8B model.
 
 import { buildDraftArtifact } from '../tasks.js';
 import type { RecipeContext, RecipeDefinition, RecipeResult } from './registry.js';
