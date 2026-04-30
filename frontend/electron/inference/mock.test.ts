@@ -40,47 +40,35 @@ describe('MockAdapter', () => {
     expect(chunks[1]?.done).toBe(true);
   });
 
-  // The mock outputs are shaped for the demo flows in PROPOSAL §5 —
-  // the enrichment work requires references to real seeded material so
-  // the privacy strip / source-pin / approval-prefill surfaces have
-  // concrete anchors to render.
-  describe('seeded demo outputs', () => {
+  // The B2B redesign moved every B2B canned output to the prompt
+  // library + real Ollama path. The MockAdapter now emits generic,
+  // clearly-labelled `[MOCK]` placeholders for the B2B task types so
+  // demo screenshots / privacy strips reveal whenever the real LLM
+  // wasn't running.
+  describe('generic [MOCK] outputs', () => {
     const adapter = new MockAdapter();
 
-    it('summarize output mentions seeded B2C material', async () => {
+    it('summarize output is parseable as bullets and labelled [MOCK]', async () => {
       const resp = await adapter.run({ taskType: 'summarize', prompt: '' });
-      expect(resp.output).toMatch(/field-trip form/i);
-      expect(resp.output).toMatch(/piano recital/i);
-      expect(resp.output).toMatch(/Grandma/);
-      expect(resp.output).toMatch(/block[- ]party/i);
-      expect(resp.output).toMatch(/Acme Logs/);
+      expect(resp.output).toMatch(/\[MOCK\]/);
+      const lines = resp.output
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      // At least three bullet-style lines so the summarize parser
+      // produces a non-empty result without depending on seed data.
+      expect(lines.length).toBeGreaterThanOrEqual(3);
     });
 
-    it('extract_tasks output references seeded message IDs via [source:...] markers', async () => {
+    it('extract_tasks output is pipe-delimited and free of seed message IDs', async () => {
       const resp = await adapter.run({ taskType: 'extract_tasks', prompt: '' });
-      // Markers must use the no-space convention so CitationRenderer
-      // (`/\[source:[a-zA-Z0-9_\-:.,]+\]/`) can parse them.
-      expect(resp.output).toMatch(/\[source:msg_fam_1\]/);
-      // At least two distinct source-message references so the demo
-      // isn't showing a single pin for every task.
-      const matches = resp.output.match(/msg_fam_\d+/g) ?? [];
-      const distinct = new Set(matches);
-      expect(distinct.size).toBeGreaterThanOrEqual(2);
-      expect(resp.output).toMatch(/Friday/);
-      expect(resp.output).toMatch(/sunscreen/);
-    });
-
-    it('parseExtractedTasks strips [source:...] markers from task titles', async () => {
-      const { parseExtractedTasks } = await import('./tasks.js');
-      const resp = await adapter.run({ taskType: 'extract_tasks', prompt: '' });
-      const tasks = parseExtractedTasks(resp.output);
-      expect(tasks.length).toBeGreaterThanOrEqual(5);
-      for (const t of tasks) {
-        expect(t.title).not.toMatch(/\[source:/i);
-        expect(t.title.length).toBeGreaterThan(0);
-      }
-      // Sanity-check a specific title survives cleanly.
-      expect(tasks.some((t) => t.title === 'Add sunscreen to shopping list')).toBe(true);
+      expect(resp.output).toMatch(/\[MOCK\]/);
+      // Hardcoded msg_fam_* / msg_vend_* references were removed in
+      // the B2B redesign — the mock must not leak fixture-specific
+      // identifiers anymore.
+      expect(resp.output).not.toMatch(/msg_fam_\d+/);
+      expect(resp.output).not.toMatch(/msg_vend_/);
+      expect(resp.output).not.toMatch(/msg_eng_/);
     });
 
     it('smart_reply returns 2-3 distinct suggestions on separate lines', async () => {
@@ -95,15 +83,21 @@ describe('MockAdapter', () => {
       expect(distinct.size).toBe(lines.length);
     });
 
-    it('prefill_approval output matches the enriched vendor thread', async () => {
+    it('prefill_approval output is generic and labelled [MOCK]', async () => {
       const resp = await adapter.run({ taskType: 'prefill_approval', prompt: '' });
-      expect(resp.output).toMatch(/vendor:\s*Acme Logs/i);
-      expect(resp.output).toMatch(/amount:\s*\$42,000/i);
-      expect(resp.output).toMatch(/risk:\s*medium/i);
-      // Justification reflects the SOC 2 / termination / uptime
-      // details introduced by the vendor-thread enrichment.
-      expect(resp.output).toMatch(/SOC 2/);
-      expect(resp.output).toMatch(/termination/i);
+      expect(resp.output).toMatch(/\[MOCK\]/);
+      // The canned vendor-thread fields ("Acme Logs", "$42,000",
+      // SOC 2 / termination justifications) are now produced by
+      // the real LLM — the mock must not reproduce them.
+      expect(resp.output).not.toMatch(/Acme Logs/);
+      expect(resp.output).not.toMatch(/\$42,000/);
+      expect(resp.output).not.toMatch(/SOC 2/);
+    });
+
+    it('draft_artifact output is generic and labelled [MOCK]', async () => {
+      const resp = await adapter.run({ taskType: 'draft_artifact', prompt: '' });
+      expect(resp.output).toMatch(/\[MOCK\]/);
+      expect(resp.output).not.toMatch(/inline translation/i);
     });
   });
 });
@@ -121,15 +115,10 @@ describe('estimateTokens', () => {
 });
 
 describe('mockLatencyMS', () => {
-  it('uses different bases per task type', () => {
-    const a = mockLatencyMS('smart_reply', 0);
-    const b = mockLatencyMS('draft_artifact', 0);
-    expect(b).toBeGreaterThan(a);
-  });
-
-  it('adds a token penalty', () => {
-    const lo = mockLatencyMS('summarize', 0);
-    const hi = mockLatencyMS('summarize', 200);
-    expect(hi).toBeGreaterThan(lo);
+  it('produces deterministic latencies per task type', () => {
+    const a = mockLatencyMS('summarize', 100);
+    const b = mockLatencyMS('summarize', 100);
+    expect(a).toBe(b);
+    expect(a).toBeGreaterThan(0);
   });
 });

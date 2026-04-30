@@ -639,6 +639,7 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:trip-plan`         | `tripPlan(req)`                           | `runTripPlanner` in `skills/trip-planner.ts` — pulls weather / events / attractions from `MockSearchService`, reads `location` / `member` / `community-detail` AI Memory facts, and returns a structured day-by-day itinerary with per-item source attribution (on-device). |
 | `ai:guardrail-check`   | `guardrailCheck(req)`                     | `runGuardrailRewrite` in `skills/guardrail-rewrite.ts` — combines a deterministic PII regex pre-pass with an SLM tone / unverified-claim review and returns `{ safe, findings, rewrite?, rationale }` (on-device). |
 | `ai:recipe:run`        | `recipeRun(req)` (Phase 4)                | `runRecipe` in `electron/ipc-handlers.ts` — generic AI-Employee recipe dispatcher. Takes `{ recipeId, aiEmployeeId, channelId, threadId?, messages, allowedRecipes? }`, looks the recipe up in `RECIPE_REGISTRY` (`electron/inference/recipes/`), refuses when the AI Employee is not authorised for the recipe, and returns a uniform `RecipeResult` (`status: 'ok' | 'refused'`, `output`, `model`, `tier`, `reason`). Canonical recipes registered today (six, self-registered through `recipes/index.ts`): `summarize`, `extract_tasks`, `draft_prd`, `draft_proposal`, `create_qbr`, `prefill_approval`. |
+| `ai:extract-knowledge` | `extractKnowledge(req)` (Phase 7)         | `runExtractKnowledge` in `skills/extract-knowledge.ts` — calls the router with `taskType: extract_tasks`, parses Bonsai-8B output (`<kind> \| <description> \| <actor> \| <due>` rows), and projects each row onto the existing `KnowledgeEntity` shape (`decision` / `owner` / `risk` / `requirement` / `deadline`). Refusal contract: `INSUFFICIENT: <reason>` returns an empty entity list. The renderer's `frontend/src/api/knowledgeApi.ts` prefers this IPC bridge and falls back to the regex extractor at `POST /api/channels/{id}/knowledge/extract` when `window.electronAI` is unavailable or the LLM call fails. |
 | `model:status`         | `modelStatus()`                           | `OllamaAdapter.status()` (or stub when Ollama is offline) |
 | `model:load`           | `loadModel(name)`                         | `OllamaAdapter.load()` |
 | `model:unload`         | `unloadModel(name)`                       | `OllamaAdapter.unload()` |
@@ -745,6 +746,46 @@ which is the single integration point for swapping in `llama.cpp`,
 Unsloth Studio, or a confidential server runtime in later phases.
 Works on any laptop with enough RAM for an 8B GGUF model and does not
 depend on browser GPU support.
+
+### 4.1c Bonsai-8B prompt library (Phase 7)
+
+Every B2B AI surface (thread summary, task extraction, approval
+prefill, artifact drafting, knowledge extraction) used to inline its
+own prompt-construction string and ad-hoc parser into `tasks.ts`,
+which made it hard to tune the prompt for the 8B model class without
+a parallel sweep through every parser. Phase 7 hoists prompt
+construction and parsing into a dedicated module per task type under
+[`frontend/electron/inference/prompts/`](./frontend/electron/inference/prompts/):
+
+- `summarize.ts` — `buildSummarizePrompt(input) → string` and
+  `parseSummarizeOutput(output) → { bullets }`.
+- `extract-tasks.ts` — pipe-delimited `<owner> | <title> | <due>`
+  rows.
+- `prefill-approval.ts` — `<field>: <value>` lines for vendor /
+  amount / risk / justification with extras captured in `extra`.
+- `draft-artifact.ts` — section-aware Markdown prompt for PRD /
+  RFC / Proposal / SOP / QBR.
+- `extract-knowledge.ts` — `<kind> | <description> | <actor> |
+  <due>` rows that map onto the existing `KnowledgeEntity` shape.
+
+Every module follows the same conventions:
+
+- System instructions stay under ~200 tokens to leave room for the
+  rendered thread inside Bonsai-8B's 2048-token context window.
+- Output is line-oriented, parser-friendly: pipe-delimited columns
+  for tabular data, `key: value` lines for record data.
+- Refusal is explicit: when the model has nothing useful to say it
+  emits `INSUFFICIENT: <reason>`, which every parser interprets as
+  an empty result (no hallucinated rows).
+- Parsers are robust to extra whitespace, mixed bullet markers
+  (`-`, `*`, `•`, `1.`), an optional `[MOCK]` prefix, and to a
+  single missing trailing column.
+
+`tasks.ts` now delegates to these helpers. The `MockAdapter` returns
+`[MOCK]`-prefixed placeholder text so the same parsers still recover
+field labels in test environments while making it obvious in
+screenshots when the real LLM isn't running. Live-LLM tests are
+gated behind `OLLAMA_INTEGRATION=1`.
 
 ### 4.1b Confidential server tier (Phase 6)
 

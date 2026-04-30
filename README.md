@@ -11,6 +11,16 @@ tier for confidential-server tasks. A small Go data API supplies
 chats, threads, workspaces, and seeded KApp cards. No AI traffic
 leaves the device.
 
+Every B2B AI surface (thread summary, task extraction, approval
+prefill, artifact drafting, knowledge extraction) routes through the
+real on-device Bonsai-8B-Q1_0 model when Ollama is reachable; the
+`MockAdapter` is for tests only and now emits clearly-labelled
+`[MOCK]` placeholders so it's obvious in the UI when the real model
+isn't running. Prompt construction and parsing for these flows live
+in the dedicated [`frontend/electron/inference/prompts/`](./frontend/electron/inference/prompts/)
+library so prompts can be tuned for the 8B model class without
+chasing parsers through `tasks.ts`.
+
 The same product surface ships in two contexts:
 
 - **B2C** — personal chats, family and community groups, on-device
@@ -61,13 +71,16 @@ still works — every API helper falls back to legacy HTTP endpoints
 when `window.electronAI` is undefined, which is also how the Vitest
 suite runs.
 
-## Optional: run with a real local model
+## Run with a real local model (required for the B2B demo)
 
 The Electron main process auto-detects an Ollama daemon on
 `http://localhost:11434` (or `OLLAMA_BASE_URL`). When reachable, the
 router wires a single Ollama adapter bound to `MODEL_NAME` (default
-`bonsai-8b`); otherwise it falls back to `MockAdapter` so the demo
-always works without a model present.
+`bonsai-8b`); otherwise it falls back to `MockAdapter`. The fallback
+is fine for B2C smoke-testing and tests, but every B2B demo flow
+(thread summary, task extraction, approval prefill, artifact draft,
+knowledge graph) is designed to run against the real on-device LLM
+— without Ollama the panels show `[MOCK]` placeholder text.
 
 The default `bonsai-8b` is an *alias*, not an upstream Ollama tag —
 [`models/Modelfile.bonsai8b`](./models/Modelfile.bonsai8b) wraps the
@@ -113,7 +126,16 @@ slm-chat-demo/
 │   ├── cmd/server/
 │   └── internal/        api, services, models, store
 ├── frontend/
-│   ├── electron/        main, preload, ipc-handlers, inference/
+│   ├── electron/
+│   │   ├── inference/
+│   │   │   ├── prompts/    Bonsai-8B prompt library (one module per
+│   │   │   │               B2B task type — buildPrompt + parseOutput)
+│   │   │   ├── recipes/    AI Employee recipes
+│   │   │   ├── skills/     Composable skills (trip planner, guardrail,
+│   │   │   │               LLM knowledge extractor)
+│   │   │   ├── adapter.ts, ollama.ts, mock.ts, router.ts, …
+│   │   │   └── tasks.ts    B2B/B2C task helpers (delegates to prompts/)
+│   │   └── main.ts, preload.ts, ipc-handlers.ts
 │   └── src/             app, features, stores, api, types
 ├── demo/                Annotated screenshots (see demo/README.md)
 ├── docs/                cpu-perf-tuning and other deep dives
@@ -134,6 +156,14 @@ tracker).
 ```bash
 cd frontend && npm test         # Vitest + RTL; renderer + Electron inference
 cd backend  && go test ./...    # Go's standard testing + httptest
+```
+
+Optional: opt-in live-LLM integration tests against a running Ollama
+daemon (otherwise skipped). Loads Bonsai-8B and runs the prompt
+library through `OllamaAdapter`:
+
+```bash
+OLLAMA_INTEGRATION=1 npm test -- ollama-integration
 ```
 
 Lint and typecheck:

@@ -473,6 +473,9 @@ export interface ElectronAI {
   // dedicated `frontend/src/types/electron.d.ts` augmentation.
   tripPlan(req: unknown): Promise<unknown>;
   guardrailCheck(req: unknown): Promise<unknown>;
+  // Phase 7 — LLM-driven knowledge extraction. Opaque payloads here
+  // (the renderer side gets fully-typed shapes via `electron.d.ts`).
+  extractKnowledge(req: unknown): Promise<unknown>;
   recipeRun(req: unknown): Promise<unknown>;
   modelStatus(): Promise<ModelStatus>;
   loadModel(model?: string): Promise<{ loaded: boolean; model: string }>;

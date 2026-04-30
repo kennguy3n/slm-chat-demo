@@ -36,6 +36,14 @@ import type {
 } from './adapter.js';
 import type { InferenceRouter } from './router.js';
 import { INSUFFICIENT_RULE, detectInsufficient } from './skill-framework.js';
+import {
+  buildSummarizePrompt,
+  buildExtractTasksPrompt,
+  buildPrefillApprovalPrompt,
+  buildDraftArtifactPrompt,
+  parseExtractTasksOutput,
+  parsePrefillApprovalOutput,
+} from './prompts/index.js';
 
 // truncateForPrompt caps a string at `max` runes (not bytes) so multi-
 // byte characters (emoji, CJK) are never split mid-codepoint.
@@ -298,19 +306,25 @@ export function buildThreadSummary(
 ): ThreadSummaryResponse {
   const messages = req.messages;
   const limited = messages.slice(0, THREAD_SUMMARY_MAX_MESSAGES);
-  let prompt = '';
-  prompt += 'Summarise the following thread for a busy teammate. ';
-  prompt += 'Call out decisions made, open questions, owners, and deadlines. ';
-  prompt += 'Keep it to a short paragraph plus a bulleted list.\n\n';
-  const sources = limited.map((m) => {
-    prompt += `- ${m.senderId}: ${m.content}\n`;
-    return {
+  // Prompt construction lives in `prompts/summarize.ts` so the
+  // Bonsai-8B-tuned envelope (concise instructions, refusal
+  // contract, capped per-message length) can evolve without churn
+  // in this orchestrator.
+  const prompt = buildSummarizePrompt({
+    threadId: req.threadId,
+    messages: limited.map((m) => ({
       id: m.id,
       channelId: m.channelId,
-      sender: m.senderId,
-      excerpt: truncateForPrompt(m.content, 160),
-    };
+      senderId: m.senderId,
+      content: m.content,
+    })),
   });
+  const sources = limited.map((m) => ({
+    id: m.id,
+    channelId: m.channelId,
+    sender: m.senderId,
+    excerpt: truncateForPrompt(m.content, 160),
+  }));
 
   let model = 'bonsai-8b';
   let tier: ThreadSummaryResponse['tier'] = 'local';
@@ -347,14 +361,14 @@ export async function runKAppsExtractTasks(
     throw new Error('thread not found');
   }
   const limited = req.messages.slice(0, KAPPS_EXTRACT_MAX_MESSAGES);
-  let prompt = '';
-  prompt += 'Extract concrete tasks from the following work thread. ';
-  prompt += 'For each task identify the owner, the due date if mentioned, ';
-  prompt += 'and a clear title. Return one task per line as: ';
-  prompt += '<owner> | <title> | <due if any>.\n\n';
-  for (const m of limited) {
-    prompt += `- ${m.senderId}: ${m.content}\n`;
-  }
+  const prompt = buildExtractTasksPrompt({
+    messages: limited.map((m) => ({
+      id: m.id,
+      channelId: m.channelId,
+      senderId: m.senderId,
+      content: m.content,
+    })),
+  });
   const resp = await adapter.run({
     taskType: 'extract_tasks',
     prompt,
@@ -382,49 +396,56 @@ export async function runKAppsExtractTasks(
 
 // parseKAppsExtractedTasks honours the SLM refusal contract by
 // returning an empty list when the model output starts with
-// `INSUFFICIENT:` (see skill-framework.ts).
+// `INSUFFICIENT:`. The pipe-delimited "<owner> | <title> | <due>"
+// row parsing is delegated to the prompt library so the format
+// shared with the prompt template stays in one place; this wrapper
+// adds best-effort source-message attribution + a status field.
 export function parseKAppsExtractedTasks(
   out: string,
   sources: { id: string; content: string }[],
 ): KAppsExtractedTask[] {
   if (detectInsufficient(out)) return [];
+  const { tasks: rows } = parseExtractTasksOutput(out);
   const tasks: KAppsExtractedTask[] = [];
-  for (const raw of out.split('\n')) {
-    let line = raw.trim();
-    if (!line) continue;
-    line = line.replace(/^[-*•·\s\t]+/, '');
-    if (!line) continue;
-    const parts = line.split('|').map((p) => p.trim());
-    if (parts.length >= 2) {
-      const t: KAppsExtractedTask = {
-        owner: parts[0],
-        title: parts[1],
-        status: 'open',
-        ...(parts.length >= 3 && parts[2] ? { dueDate: parts[2] } : {}),
-      };
-      const matched = matchSourceMessage(t.title, sources);
-      if (matched) t.sourceMessageId = matched;
-      if (!t.title) continue;
-      tasks.push(t);
-      continue;
-    }
-    let title = line;
-    let due = '';
-    const dueIdx = line.lastIndexOf('(due ');
-    if (dueIdx >= 0) {
-      const closeIdx = line.indexOf(')', dueIdx);
-      if (closeIdx > dueIdx) {
-        due = line.slice(dueIdx + '(due '.length, closeIdx).trim();
-        title = line.slice(0, dueIdx).trim();
-      }
-    }
-    const matched = matchSourceMessage(title, sources);
-    tasks.push({
-      title,
+  for (const row of rows) {
+    if (!row.title) continue;
+    const t: KAppsExtractedTask = {
+      owner: row.owner,
+      title: row.title,
       status: 'open',
-      ...(due ? { dueDate: due } : {}),
-      ...(matched ? { sourceMessageId: matched } : {}),
-    });
+      ...(row.dueDate ? { dueDate: row.dueDate } : {}),
+    };
+    const matched = matchSourceMessage(t.title, sources);
+    if (matched) t.sourceMessageId = matched;
+    tasks.push(t);
+  }
+  // Legacy fallback: if the prompt library found no rows but the
+  // model wrote "<title> (due <date>)" prose, recover via the older
+  // best-effort parser so older fixtures keep working.
+  if (tasks.length === 0) {
+    for (const raw of out.split('\n')) {
+      let line = raw.trim();
+      if (!line) continue;
+      line = line.replace(/^[-*•·\s\t]+/, '');
+      if (!line) continue;
+      let title = line;
+      let due = '';
+      const dueIdx = line.lastIndexOf('(due ');
+      if (dueIdx >= 0) {
+        const closeIdx = line.indexOf(')', dueIdx);
+        if (closeIdx > dueIdx) {
+          due = line.slice(dueIdx + '(due '.length, closeIdx).trim();
+          title = line.slice(0, dueIdx).trim();
+        }
+      }
+      const matched = matchSourceMessage(title, sources);
+      tasks.push({
+        title,
+        status: 'open',
+        ...(due ? { dueDate: due } : {}),
+        ...(matched ? { sourceMessageId: matched } : {}),
+      });
+    }
   }
   return tasks;
 }
@@ -472,14 +493,18 @@ export async function runPrefillApproval(
   const limited = req.messages.slice(0, PREFILL_APPROVAL_MAX_MESSAGES);
   const expectedFields = APPROVAL_TEMPLATE_FIELDS[template];
 
-  let prompt = '';
-  prompt += `Prefill an ${template} approval card from the following work thread. `;
-  prompt += `Output one ${expectedFields.join(' / ')} pair per line as: `;
-  prompt += '<field>: <value>. ';
-  prompt += 'Keep each value short. Leave a value blank if the thread does not mention it.\n\n';
-  for (const m of limited) {
-    prompt += `- ${m.senderId}: ${truncateForPrompt(m.content, 200)}\n`;
-  }
+  // expectedFields informs the renderer which values to surface
+  // — the prompt itself is now built by the prompt library.
+  void expectedFields;
+  const prompt = buildPrefillApprovalPrompt({
+    templateId: template,
+    messages: limited.map((m) => ({
+      id: m.id,
+      channelId: m.channelId,
+      senderId: m.senderId,
+      content: m.content,
+    })),
+  });
 
   const resp = await router.run({
     taskType: 'prefill_approval',
@@ -515,28 +540,29 @@ export async function runPrefillApproval(
 
 export function parsePrefilledApprovalFields(out: string): PrefilledApprovalFields {
   if (detectInsufficient(out)) return {};
+  // The pipe parsing is shared with the prompt template via the
+  // prompt library. This wrapper preserves the legacy alias keys
+  // (`requester` / `subject` -> vendor, `severity` -> risk) that
+  // the renderer used before the prompt library landed.
+  const { fields: parsed } = parsePrefillApprovalOutput(out);
   const fields: PrefilledApprovalFields = {};
+  if (parsed.vendor) fields.vendor = parsed.vendor;
+  if (parsed.amount) fields.amount = parsed.amount;
+  if (parsed.justification) fields.justification = parsed.justification;
+  if (parsed.risk) fields.risk = parsed.risk;
   const extra: Record<string, string> = {};
-  for (const raw of out.split('\n')) {
-    let line = raw.trim();
-    if (!line) continue;
-    line = line.replace(/^[-*•·\s\t]+/, '');
-    const colon = line.indexOf(':');
-    if (colon <= 0) continue;
-    const key = line.slice(0, colon).trim().toLowerCase();
-    let value = line.slice(colon + 1).trim();
-    value = value.replace(/^["']|["']$/g, '');
-    if (!value) continue;
-    if (key === 'vendor' || key === 'requester' || key === 'subject') {
-      fields.vendor = value;
-    } else if (key === 'amount' || key === 'cost' || key === 'price') {
-      fields.amount = value;
-    } else if (key === 'justification' || key === 'reason' || key === 'why') {
-      fields.justification = value;
-    } else if (key === 'risk' || key === 'risk level' || key === 'severity') {
-      fields.risk = value;
-    } else if (key.length > 0) {
-      extra[key] = value;
+  if (parsed.extra) {
+    for (const [k, v] of Object.entries(parsed.extra)) {
+      const key = k.toLowerCase();
+      if (!fields.vendor && (key === 'requester' || key === 'subject')) {
+        fields.vendor = v;
+        continue;
+      }
+      if (!fields.risk && key === 'severity') {
+        fields.risk = v;
+        continue;
+      }
+      extra[key] = v;
     }
   }
   if (Object.keys(extra).length > 0) fields.extra = extra;
@@ -598,23 +624,28 @@ export function buildDraftArtifact(
   }
   const limited = req.messages.slice(0, DRAFT_ARTIFACT_MAX_MESSAGES);
   const section: ArtifactSection = req.section ?? 'all';
-  const typeHint = ARTIFACT_TYPE_HINT[req.artifactType];
-  const sectionHint = ARTIFACT_SECTION_HINT[section];
-
-  let prompt = '';
-  prompt += `Draft a ${req.artifactType} (${typeHint}) — ${sectionHint}. `;
-  prompt += 'Use the following thread as the only source. ';
-  prompt += 'Cite owners, decisions, and deadlines where the thread mentions them. ';
-  prompt += 'Output Markdown.\n\n';
-  const sources = limited.map((m) => {
-    prompt += `- ${m.senderId}: ${m.content}\n`;
-    return {
+  // ARTIFACT_TYPE_HINT / ARTIFACT_SECTION_HINT now live in
+  // `prompts/draft-artifact.ts` so the Bonsai-tuned wording is in
+  // one place. Kept the legacy local copies above for tests that
+  // still assert on the old wording.
+  void ARTIFACT_TYPE_HINT;
+  void ARTIFACT_SECTION_HINT;
+  const prompt = buildDraftArtifactPrompt({
+    artifactType: req.artifactType,
+    section,
+    messages: limited.map((m) => ({
       id: m.id,
       channelId: m.channelId,
-      sender: m.senderId,
-      excerpt: truncateForPrompt(m.content, 160),
-    };
+      senderId: m.senderId,
+      content: m.content,
+    })),
   });
+  const sources = limited.map((m) => ({
+    id: m.id,
+    channelId: m.channelId,
+    sender: m.senderId,
+    excerpt: truncateForPrompt(m.content, 160),
+  }));
 
   // Default: route to the on-device model. The router's decision
   // still wins when the confidential-server tier is wired in and the

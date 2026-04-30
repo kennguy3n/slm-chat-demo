@@ -210,8 +210,11 @@ func TestWorkspacesAndChannels(t *testing.T) {
 		Channels []models.Channel `json:"channels"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-	if len(body.Channels) != 3 {
-		t.Errorf("expected 3 acme channels, got %d", len(body.Channels))
+	// 4 = general, engineering, vendor-management, product-launch
+	// (the last added during the B2B real-LLM redesign so Bonsai-8B
+	// has a multi-topic thread to summarise).
+	if len(body.Channels) != 4 {
+		t.Errorf("expected 4 acme channels, got %d", len(body.Channels))
 	}
 
 	rec = doGet(t, h, "/api/workspaces/ws_missing/channels", "user_alice")
