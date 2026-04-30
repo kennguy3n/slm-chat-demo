@@ -31,32 +31,36 @@ the enriched seed data (`backend/internal/store/seed.go`).
 > [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
 > host-class expectations and the per-arch (x86 vs ARM) quant choice.
 >
-> Captured in this pass (real on-device model loaded, 2026-04-30):
+> **2026-04-30 full capture pass.** All 27 screenshots were
+> refreshed against the live Vite + Go backend stack using
+> Playwright attached to the Electron shell via CDP
+> (`http://localhost:9222`). The full inventory is now present in
+> this directory:
 >
-> - Standalone: `local-model-status`.
-> - B2C (header chip shows `bonsai-8b · idle`,
->   `Translating on-device…` markers visible):
->   `08-event-rsvp`, `12-metrics-dashboard`.
-> - B2B (header chip shows `bonsai-8b · idle`):
->   `01-workspace-navigation`, `08-ai-employee-panel`,
->   `10-connector-panel`, `11-knowledge-graph`, `12-policy-admin`.
+> - Standalone: `local-model-status`, `privacy-strip-on-device`,
+>   `egress-summary-zero`.
+> - B2C (`demo/b2c/01`–`12`, plus the earlier
+>   `13-vi-en-translation-auto` kept as-is): morning catch-up
+>   banner + digest, family task extraction + cards, smart reply,
+>   translation caption, shopping nudges, event RSVP, privacy-strip
+>   detail close-up, DeviceCapabilityPanel, AIMemoryPage, and
+>   MetricsDashboard.
+> - B2B (`demo/b2b/01`–`12`): workspace navigation, thread summary,
+>   action launcher (right-rail action buttons on
+>   `vendor-management`), approval prefill, pending approval card,
+>   artifact draft (`Inline translation PRD`), artifact workspace,
+>   AIEmployeePanel, recipe output gate, connector panel,
+>   knowledge graph, and policy admin.
 >
-> Captured in earlier passes (Vite renderer):
->
-> - B2C: `01-morning-catchup-banner`, `03-family-task-extraction`,
->   `04-family-task-cards`, `06-translation-caption`,
->   `13-vi-en-translation-auto`.
-> - B2B: `02-thread-summary`, `03-action-launcher`,
->   `04-approval-prefill`, `05-approval-card-pending`,
->   `06-artifact-draft`.
->
-> Pending (need a manual capture pass — originally pending because
-> the prior Q2_0 default ran below the CPU-fallback floor on x86;
-> Bonsai-8B-Q1_0 lands at ~11.7 tok/s on the same VM, so these
-> surfaces should be re-captured against the live model in a future
-> pass): `b2c/02`, `b2c/05`, `b2c/07`, `b2c/09`,
-> `b2c/10`, `b2c/11`, `b2b/07`, `b2b/09`,
-> `privacy-strip-on-device.png`, `egress-summary-zero.png`.
+> Several B2C flows that require *completed* streamed AI output
+> (morning-digest text, smart-reply chips, shopping nudges list
+> items, task cards) were captured from the pre-streaming state of
+> the surface — the UI chrome, privacy strip, and action buttons
+> are visible and accurate, but the in-progress streaming indicator
+> may still be present in some frames because Bonsai-8B Q1_0 on a
+> CPU-only VM runs well below interactive latency. The
+> accompanying demo flow is still fully reproducible by hand using
+> the **How to reproduce** instructions below.
 
 ## B2C flows
 
