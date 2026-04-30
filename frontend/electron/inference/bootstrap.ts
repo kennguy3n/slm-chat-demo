@@ -9,8 +9,18 @@
 // Ollama. One OllamaAdapter is instantiated when the daemon is
 // reachable; otherwise the router falls back to MockAdapter so the UI
 // remains usable offline. The configured alias is read from
-// `MODEL_NAME` (default `bonsai-8b`) and surfaced in
+// `MODEL_NAME` (default `bonsai-8b-q1_0`) and surfaced in
 // `model:status` for the DeviceCapabilityPanel.
+//
+// The default name is deliberately quant-suffixed. Early demo passes
+// used the bare `bonsai-8b` alias, which made it trivial for a host
+// to accidentally resolve to an F16 or Q4 GGUF of the same base model
+// (a 16 GB resident set for something that should be ~1.1 GB). The
+// current convention is: one alias per quant, never the quant-less
+// base name. `scripts/setup-models.sh` creates `bonsai-8b-q1_0` from
+// `models/Bonsai-8B-Q1_0.gguf`, and the DeviceCapabilityPanel's
+// "RAM (model)" line reads ~1,100 MB when the right GGUF is loaded.
+// A sanity check in `OllamaAdapter.status` flags mismatches.
 
 import type { Loader, StatusProvider } from './adapter.js';
 import {
@@ -50,7 +60,10 @@ export interface BootstrapOptions {
   pingServer?: (signal?: AbortSignal) => Promise<void>;
 }
 
-const DefaultModel = 'bonsai-8b';
+// Pinned in code to avoid the `bonsai-8b` → F16 alias confusion.
+// Any future quant rev should land as a new suffix (`bonsai-8b-q2_0`,
+// `bonsai-8b-q4_k_m`) rather than overloading this identifier.
+const DefaultModel = 'bonsai-8b-q1_0';
 const DefaultServerModel = 'confidential-large';
 // The demo ships the Bonsai-8B-Q1_0 GGUF (PrismML 1-bit quant; the
 // fork has an x86 SIMD kernel for Q1_0, unlike Q2_0 which is

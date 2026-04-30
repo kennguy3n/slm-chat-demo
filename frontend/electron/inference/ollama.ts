@@ -21,11 +21,21 @@ interface OllamaGenerateRequest {
   prompt: string;
   stream: boolean;
   keep_alive?: number;
+  // Disables reasoning-model "thinking" mode on qwen3 / deepseek-r1
+  // family GGUFs. When true (the Ollama default for those families)
+  // the model emits a long `<think>…</think>` preamble into the
+  // `thinking` field and leaves `response` empty until the thinking
+  // budget runs out — on a CPU-only VM with Bonsai-8B that can burn
+  // the entire streaming window before a single user-visible token
+  // arrives. We default to `false` throughout the app so every
+  // on-device call produces direct response tokens.
+  think?: boolean;
 }
 
 interface OllamaGenerateResponse {
   model?: string;
   response?: string;
+  thinking?: string;
   done?: boolean;
   eval_count?: number;
   total_duration?: number; // nanoseconds
@@ -62,8 +72,13 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
 
   constructor(opts: OllamaAdapterOptions = {}) {
     this.baseURL = (opts.baseURL || DefaultOllamaBaseURL).replace(/\/$/, '');
-    this.model = opts.model || 'bonsai-8b';
-    this.quant = opts.quant || 'q4_k_m';
+    // Pinned to the Q1_0-suffixed alias. The bare `bonsai-8b` alias
+    // is intentionally *not* the default because hosts that already
+    // have an F16 or Q4 GGUF under that name silently load a 16 GB
+    // resident model instead of the ~1.1 GB Q1_0 quant the demo
+    // targets. See the comment in `bootstrap.ts`.
+    this.model = opts.model || 'bonsai-8b-q1_0';
+    this.quant = opts.quant || 'q1_0';
     this.fetchInjected = Boolean(opts.fetchImpl);
     this.fetchImpl = opts.fetchImpl || ((...a) => fetch(...(a as Parameters<typeof fetch>)));
   }
@@ -108,6 +123,7 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
       model,
       prompt: req.prompt ?? '',
       stream: true,
+      think: false,
     };
 
     // Tests inject fetchImpl directly — keep using fetch in that path.
@@ -332,18 +348,37 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     if (!match) {
       return { loaded: false, model: this.model, quant: this.quant, ramUsageMB: 0, sidecar: 'running' };
     }
+    const ramUsageMB = Math.floor((match.size ?? 0) / (1024 * 1024));
+    // Sanity check the resident size against the expected quant.
+    // Q1_0 and Q2_0 GGUFs for the 8B Bonsai family land at
+    // ~1.1–2.2 GB; anything over ~3 GB almost certainly means the
+    // alias is pointing at the wrong GGUF (a bare `bonsai-8b` alias
+    // accidentally bound to an F16 or Q4 file, for example). Emit a
+    // loud warning — inference may still work, but the UI will
+    // misrepresent the on-device cost.
+    const lowerBoundQuant = ['q1_0', 'q2_0', 'q3_0', 'q4_0'].some((q) =>
+      this.quant.toLowerCase().startsWith(q),
+    );
+    if (lowerBoundQuant && ramUsageMB > 3_000) {
+      console.warn(
+        `[ollama] model "${match.name || match.model || this.model}" loaded at ` +
+          `${ramUsageMB} MB resident but quant=${this.quant} expects ~1-2 GB. ` +
+          `Check that the Ollama alias points at the Q1_0/Q2_0 GGUF ` +
+          `(see scripts/setup-models.sh).`,
+      );
+    }
     return {
       loaded: true,
       model: match.name || match.model || this.model,
       quant: this.quant,
-      ramUsageMB: Math.floor((match.size ?? 0) / (1024 * 1024)),
+      ramUsageMB,
       sidecar: 'running',
     };
   }
 
   async load(model: string, signal?: AbortSignal): Promise<void> {
     const m = model || this.model;
-    const body: OllamaGenerateRequest = { model: m, prompt: '', stream: false };
+    const body: OllamaGenerateRequest = { model: m, prompt: '', stream: false, think: false };
     const res = await this.fetchImpl(`${this.baseURL}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

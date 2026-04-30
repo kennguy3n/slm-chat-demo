@@ -17,7 +17,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-MODEL_ALIAS="${MODEL_NAME:-bonsai-8b}"
+# Quant-suffixed alias. Hosts that already have a bare `bonsai-8b`
+# alias bound to an F16 or Q4 GGUF will NOT be silently reused; this
+# alias is explicitly tied to `Bonsai-8B-Q1_0.gguf`. If you point
+# MODEL_NAME at a different alias you're responsible for making sure
+# it resolves to the Q1_0 GGUF (or the Q2_0 file on ARM hosts).
+MODEL_ALIAS="${MODEL_NAME:-bonsai-8b-q1_0}"
 
 echo "=== KChat SLM Demo — Model Setup ==="
 echo ""
@@ -113,7 +118,9 @@ ollama create "$MODEL_ALIAS" -f "$MODELFILE"
 
 echo ""
 echo "Done! Verify with: ollama list"
-echo "You should see '$MODEL_ALIAS' (~1.16 GB if the Q1_0 GGUF was used)."
+echo "You should see '$MODEL_ALIAS' at ~1.16 GB."
+echo "If the size looks like ~16 GB the alias has been bound to an F16"
+echo "GGUF by mistake — re-run this script after 'ollama rm $MODEL_ALIAS'."
 echo ""
 echo "NOTE: stock Ollama 0.22.x can create the alias from a PrismML"
 echo "      Q1_0 GGUF but cannot RUN inference against it (the bundled"
