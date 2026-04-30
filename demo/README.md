@@ -26,13 +26,15 @@ demo is reproducible without a live Ollama daemon.
 >   `04-family-task-cards`, `06-translation-caption`,
 >   `08-event-rsvp`, `12-metrics-dashboard`.
 > - B2B: `01-workspace-navigation`, `02-thread-summary`,
->   `04-approval-prefill`, `05-approval-card-pending`,
->   `06-artifact-draft`, `08-ai-employee-panel`,
->   `10-connector-panel`, `11-knowledge-graph`, `12-policy-admin`.
+>   `03-action-launcher`, `04-approval-prefill`,
+>   `05-approval-card-pending`, `06-artifact-draft`,
+>   `08-ai-employee-panel`, `10-connector-panel`,
+>   `11-knowledge-graph`, `12-policy-admin`.
 >
-> Pending (need a manual capture pass to surface the specific UI
-> state): `b2c/02`, `b2c/05`, `b2c/07`, `b2c/09`, `b2c/10`, `b2c/11`,
-> `b2b/03`, `b2b/07`, `b2b/09`, and the three standalone
+> Pending (need a manual capture pass — these surfaces require a live
+> AI stream from the Electron shell, which the renderer-only Vite
+> harness cannot fake): `b2c/02`, `b2c/05`, `b2c/07`, `b2c/09`,
+> `b2c/10`, `b2c/11`, `b2b/07`, `b2b/09`, and the three standalone
 > `local-model-status.png` / `privacy-strip-on-device.png` /
 > `egress-summary-zero.png` shots.
 
@@ -75,7 +77,7 @@ Source workspace: **Acme Corp** (`ws_acme`) with two domains —
 | 8 | [`b2b/08-ai-employee-panel.png`](./b2b/08-ai-employee-panel.png) | §5.4 — AI Employee | on-device | `AIEmployeePanel` showing Kara Ops AI with her budget, queued recipes, and recent runs. |
 | 9 | [`b2b/09-recipe-output-gate.png`](./b2b/09-recipe-output-gate.png) | §5 — output gate | on-device | `RecipeOutputGate` presenting the mandatory Accept / Edit / Discard review before a recipe writes into a KApp. |
 | 10 | [`b2b/10-connector-panel.png`](./b2b/10-connector-panel.png) | §5.4 — connector | on-device | `ConnectorPanel` showing the seeded Google Drive connector attached to `ch_vendor_management`. |
-| 11 | [`b2b/11-knowledge-graph.png`](./b2b/11-knowledge-graph.png) | §5 — knowledge | on-device | `KnowledgeGraphPanel` with extracted decisions / owners / risks from the Q2 OKR thread. |
+| 11 | [`b2b/11-knowledge-graph.png`](./b2b/11-knowledge-graph.png) | §5 — knowledge | on-device | `KnowledgeGraphPanel` (right-rail "Knowledge" tab) on `#vendor-management` after pressing **Extract**: 2 decisions ("pulling that now — pending decision…", "go with Acme Logs at $42,000/yr…"), 2 risks, 1 requirement, 0 owners — each with `source` link back to the originating message and a confidence badge. |
 | 12 | [`b2b/12-policy-admin.png`](./b2b/12-policy-admin.png) | §6 — policy | on-device | `PolicyAdminPanel` showing per-workspace AI compute rules (server compute denied, egress budget, redaction required). |
 
 ## On-device LLM demonstration
