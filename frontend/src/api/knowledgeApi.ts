@@ -38,7 +38,14 @@ export async function extractKnowledge(
       : undefined;
   if (bridge && typeof bridge.extractKnowledge === 'function') {
     try {
-      const messages = await fetchChannelMessages(channelId);
+      // Pull every message in the channel, including thread
+      // replies — Phase 2's enriched seed (decisions, owners,
+      // deadlines, risks) lives inside the threads, not on the
+      // top-level messages. Top-level-only would feed the LLM
+      // mostly thread-root sentences and miss the substance.
+      const messages = await fetchChannelMessages(channelId, {
+        includeReplies: true,
+      });
       const out = await bridge.extractKnowledge({
         channelId,
         messages: messages.map((m) => ({

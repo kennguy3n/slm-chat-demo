@@ -145,6 +145,17 @@ describe('prefill-approval prompt', () => {
     expect(parsePrefillApprovalOutput(out).fields.amount).toBe('$42k/yr');
   });
 
+  it('maps `why` / `reason` / `rationale` aliases onto justification', () => {
+    const out = [
+      'vendor: Acme Logs',
+      'why: Cheapest SOC 2-cleared bidder',
+    ].join('\n');
+    const { fields } = parsePrefillApprovalOutput(out);
+    expect(fields.justification).toBe('Cheapest SOC 2-cleared bidder');
+    // `why` should resolve cleanly — never leak into extra.
+    expect(fields.extra).toBeUndefined();
+  });
+
   it('strips quoted values and `[MOCK]` prefix from each line', () => {
     const out = [
       '[MOCK] vendor: "Acme Logs"',

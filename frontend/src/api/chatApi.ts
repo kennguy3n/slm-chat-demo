@@ -17,8 +17,14 @@ export async function fetchChats(context?: ContextMode): Promise<Channel[]> {
   return data.chats;
 }
 
-export async function fetchChannelMessages(chatId: string): Promise<Message[]> {
-  const data = await apiFetch<{ messages: Message[] }>(`/api/chats/${chatId}/messages`);
+export async function fetchChannelMessages(
+  chatId: string,
+  options?: { includeReplies?: boolean },
+): Promise<Message[]> {
+  const qs = options?.includeReplies ? '?includeReplies=true' : '';
+  const data = await apiFetch<{ messages: Message[] }>(
+    `/api/chats/${chatId}/messages${qs}`,
+  );
   return data.messages;
 }
 

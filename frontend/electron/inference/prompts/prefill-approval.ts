@@ -39,6 +39,12 @@ const KNOWN_FIELDS: Record<string, keyof PrefilledFields> = {
   justification: 'justification',
   reason: 'justification',
   rationale: 'justification',
+  // `why` was a recognised alias under the legacy parser
+  // (`tasks.ts → parsePrefilledApprovalFields`) and an 8B model
+  // routinely emits "why: …" instead of "justification: …".
+  // Keep it mapped to the canonical field so that prompt format
+  // doesn't silently end up in `extra`.
+  why: 'justification',
   risk: 'risk',
   'risk level': 'risk',
 };
