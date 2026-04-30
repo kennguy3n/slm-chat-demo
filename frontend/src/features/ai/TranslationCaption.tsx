@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchTranslate } from '../../api/aiApi';
 import type {
   PrivacyStripData,
@@ -10,19 +9,15 @@ import { PrivacyStrip } from './PrivacyStrip';
 interface Props {
   messageId: string;
   channelId?: string;
-  // The user's preferred language. Defaults to "en".
+  // The target language for the translation.
   targetLanguage?: string;
-  // When true the component renders the translation immediately on
-  // mount; otherwise it shows a "Translate" button and only fetches
-  // once the user opts in.
+  // When true (the default) the card always auto-renders on mount.
+  // Retained for backward compatibility with tests.
   autoFetch?: boolean;
-  // When true, render an inline PrivacyStrip below the card. The
-  // bubble already shows an on-device attribution pill inside the
-  // card, so the full strip is off by default in dense layouts.
+  // When true, render an inline PrivacyStrip below the card.
   showPrivacyStrip?: boolean;
-  // Optional fallback text for the original message. The API also
-  // returns `original`, but passing it in up-front lets the card
-  // render the top panel immediately while the translation streams.
+  // Optional fallback text for the original message, used for the top
+  // panel while the translation streams.
   originalFallback?: string;
 }
 
@@ -60,12 +55,19 @@ export function TranslationCaption({
   showPrivacyStrip = false,
   originalFallback,
 }: Props) {
-  const [requested, setRequested] = useState(autoFetch);
+  const queryClient = useQueryClient();
+  // MessageList seeds this cache key with `null` while a batched SLM
+  // call is in flight, and with a full TranslateResponse once it's
+  // back. When we see either we skip firing our own per-message query
+  // to avoid doubling up the inference cost.
+  const seeded = queryClient.getQueryData<TranslateResponse | null | undefined>([
+    'translate',
+    messageId,
+    targetLanguage,
+  ]);
+  const batchPending = seeded === null;
+  const hasBatchResult = seeded !== undefined && seeded !== null;
 
-  // useQuery caches results by key so remounts (e.g. after a message
-  // list refetch) don't re-fire the 30–90 s SLM inference. The query
-  // runs only once `requested` flips to true, which for `autoFetch`
-  // is the mount itself.
   const {
     data: queryData,
     isLoading,
@@ -73,7 +75,7 @@ export function TranslationCaption({
   } = useQuery({
     queryKey: ['translate', messageId, targetLanguage],
     queryFn: () => fetchTranslate({ messageId, channelId, targetLanguage }),
-    enabled: requested,
+    enabled: autoFetch && !batchPending && !hasBatchResult,
     staleTime: Infinity,
     gcTime: Infinity,
     retry: false,
@@ -83,21 +85,9 @@ export function TranslationCaption({
   });
 
   const data: TranslateResponse | null = queryData ?? null;
-  const loading = isLoading && requested;
+  const loading = autoFetch && (batchPending || (isLoading && !data));
   const error = queryError ? (queryError as Error).message : null;
 
-  if (!requested) {
-    return (
-      <button
-        type="button"
-        className="translation-caption__trigger"
-        data-testid="translation-trigger"
-        onClick={() => setRequested(true)}
-      >
-        Translate to {languageName(targetLanguage) || targetLanguage}
-      </button>
-    );
-  }
   if (loading && !data) {
     return (
       <span

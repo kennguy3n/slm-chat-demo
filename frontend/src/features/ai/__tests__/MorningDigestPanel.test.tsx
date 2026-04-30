@@ -31,14 +31,8 @@ describe('MorningDigestPanel', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders an empty state before generation', () => {
+  it('auto-runs the digest on mount and shows metrics + body when complete', async () => {
     renderWithProviders(<MorningDigestPanel />);
-    expect(screen.getByTestId('morning-digest-empty')).toBeInTheDocument();
-  });
-
-  it('runs the digest and shows metrics + body when complete', async () => {
-    renderWithProviders(<MorningDigestPanel />);
-    await userEvent.click(screen.getByTestId('morning-digest-run'));
     await waitFor(() =>
       expect(screen.getByTestId('digest-card-body')).toHaveTextContent('Morning summary content.'),
     );
@@ -51,10 +45,21 @@ describe('MorningDigestPanel', () => {
     expect(metrics).toHaveTextContent('2');
   });
 
-  it('shows an error alert if the digest fetch fails', async () => {
-    vi.spyOn(aiApi, 'fetchUnreadSummary').mockRejectedValueOnce(new Error('boom'));
+  it('re-runs the digest when the refresh button is clicked', async () => {
     renderWithProviders(<MorningDigestPanel />);
+    await waitFor(() =>
+      expect(screen.getByTestId('digest-card-body')).toHaveTextContent('Morning summary content.'),
+    );
     await userEvent.click(screen.getByTestId('morning-digest-run'));
+    await waitFor(() =>
+      expect(aiApi.fetchUnreadSummary).toHaveBeenCalledTimes(2),
+    );
+  });
+
+  it('shows an error alert when the auto-run fetch fails', async () => {
+    vi.spyOn(aiApi, 'fetchUnreadSummary').mockReset();
+    vi.spyOn(aiApi, 'fetchUnreadSummary').mockRejectedValue(new Error('boom'));
+    renderWithProviders(<MorningDigestPanel />);
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/boom/));
   });
 });

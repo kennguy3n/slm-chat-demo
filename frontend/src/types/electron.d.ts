@@ -199,6 +199,14 @@ interface ElectronAIBridge {
     text: string;
     targetLanguage?: string;
   }): Promise<TranslateResponse>;
+  translateBatch(req: {
+    items: {
+      messageId: string;
+      channelId: string;
+      text: string;
+      targetLanguage: string;
+    }[];
+  }): Promise<{ results: TranslateResponse[] }>;
   extractTasks(req: {
     channelId?: string;
     messageId?: string;

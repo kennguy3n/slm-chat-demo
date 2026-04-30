@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildDraftArtifact,
+  parseBatchTranslations,
   parseKAppsExtractedTasks,
   parsePrefilledApprovalFields,
   runPrefillApproval,
+  runTranslateBatch,
 } from './tasks.js';
 import { InferenceRouter } from './router.js';
 import { MockAdapter } from './mock.js';
@@ -270,5 +272,53 @@ describe('runPrefillForm', () => {
         messages: [],
       }),
     ).rejects.toThrow(/thread/);
+  });
+});
+
+describe('parseBatchTranslations', () => {
+  it('parses a numbered list into N entries', () => {
+    const out = '1. Hi Alice, are you free for phở tomorrow?\n2. Yes, 7pm at that place.';
+    expect(parseBatchTranslations(out, 2)).toEqual([
+      'Hi Alice, are you free for phở tomorrow?',
+      'Yes, 7pm at that place.',
+    ]);
+  });
+
+  it('returns empty strings for missing indices', () => {
+    const out = '1. first\n3. third';
+    expect(parseBatchTranslations(out, 3)).toEqual(['first', '', 'third']);
+  });
+
+  it('ignores stray commentary lines', () => {
+    const out = [
+      'Here are the translations:',
+      '1. first',
+      'blah',
+      '2. second',
+    ].join('\n');
+    expect(parseBatchTranslations(out, 2)).toEqual(['first', 'second']);
+  });
+});
+
+describe('runTranslateBatch', () => {
+  it('produces one TranslateResponse per input item', async () => {
+    const router = makeRouter();
+    const resp = await runTranslateBatch(router, {
+      items: [
+        { messageId: 'a', channelId: 'c', text: 'Hola', targetLanguage: 'en' },
+        { messageId: 'b', channelId: 'c', text: 'Gracias', targetLanguage: 'en' },
+      ],
+    });
+    expect(resp.results).toHaveLength(2);
+    expect(resp.results[0]?.messageId).toBe('a');
+    expect(resp.results[1]?.messageId).toBe('b');
+    expect(resp.results[0]?.computeLocation).toBe('on_device');
+    expect(resp.results[0]?.dataEgressBytes).toBe(0);
+  });
+
+  it('handles empty input', async () => {
+    const router = makeRouter();
+    const resp = await runTranslateBatch(router, { items: [] });
+    expect(resp.results).toEqual([]);
   });
 });

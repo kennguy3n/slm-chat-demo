@@ -19,6 +19,7 @@ import {
   runPrefillForm,
   runSmartReply,
   runTranslate,
+  runTranslateBatch,
 } from './inference/tasks.js';
 import {
   runEventRSVP,
@@ -53,6 +54,7 @@ import type {
   ShoppingNudgesRequest,
   SmartReplyRequest,
   ThreadSummaryRequest,
+  TranslateBatchRequest,
   TranslateRequest,
   UnreadSummaryRequest,
 } from './inference/adapter.js';
@@ -136,6 +138,11 @@ export function registerIPCHandlers(): void {
   ipcMain.handle('ai:translate', async (_e, req: TranslateRequest) => {
     const { router } = await getStack();
     return runTranslate(router, req);
+  });
+
+  ipcMain.handle('ai:translate-batch', async (_e, req: TranslateBatchRequest) => {
+    const { router } = await getStack();
+    return runTranslateBatch(router, req);
   });
 
   ipcMain.handle('ai:extract-tasks', async (_e, req: ExtractTasksRequest) => {

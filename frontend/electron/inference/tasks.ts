@@ -27,6 +27,8 @@ import type {
   ThreadSummaryRequest,
   ThreadSummaryResponse,
   Tier,
+  TranslateBatchRequest,
+  TranslateBatchResponse,
   TranslateRequest,
   TranslateResponse,
   UnreadSummaryRequest,
@@ -131,6 +133,71 @@ export async function runTranslate(
     computeLocation: 'on_device',
     dataEgressBytes: 0,
   };
+}
+
+// runTranslateBatch sends every message in a single prompt so the
+// model only pays the prompt-eval / load cost once. The response is a
+// JSON array keyed by index; missing entries fall back to the
+// original text so the renderer never blanks out.
+export async function runTranslateBatch(
+  adapter: Adapter,
+  req: TranslateBatchRequest,
+): Promise<TranslateBatchResponse> {
+  const items = req.items;
+  if (items.length === 0) return { results: [] };
+  if (items.length === 1) {
+    const only = items[0]!;
+    const one = await runTranslate(adapter, {
+      messageId: only.messageId,
+      channelId: only.channelId,
+      text: only.text,
+      targetLanguage: only.targetLanguage,
+    });
+    return { results: [one] };
+  }
+  const channelId = items[0]!.channelId;
+  const lines = items
+    .map((it, i) => `${i + 1}. (to ${it.targetLanguage}) ${truncateForPrompt(it.text, 400)}`)
+    .join('\n');
+  const prompt =
+    'Translate each of the following chat messages into the language indicated in parentheses. ' +
+    'Preserve tone, names, and emoji. Output one translation per line in the exact format ' +
+    '`<N>. <translation>` with nothing else — no commentary, no repetition of the original.\n\n' +
+    lines;
+  const resp = await adapter.run({
+    taskType: 'translate',
+    prompt,
+    channelId,
+    maxTokens: Math.max(256, items.reduce((s, it) => s + it.text.length, 0)),
+  });
+  const parsed = parseBatchTranslations(resp.output, items.length);
+  const results: TranslateResponse[] = items.map((it, i) => ({
+    messageId: it.messageId,
+    channelId: it.channelId,
+    original: it.text,
+    translated: parsed[i]?.trim() || it.text,
+    targetLanguage: it.targetLanguage,
+    model: resp.model,
+    computeLocation: 'on_device',
+    dataEgressBytes: 0,
+  }));
+  return { results };
+}
+
+export function parseBatchTranslations(out: string, expected: number): string[] {
+  const result: string[] = new Array(expected).fill('');
+  if (!out) return result;
+  const lines = out.split('\n');
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^\s*\(?(\d+)[.):\]]?\s+(.+)$/);
+    if (!m) continue;
+    const idx = Number.parseInt(m[1]!, 10) - 1;
+    if (idx < 0 || idx >= expected) continue;
+    if (!result[idx]) result[idx] = m[2]!.trim();
+  }
+  return result;
 }
 
 // ---------- extract tasks (B2C) ----------

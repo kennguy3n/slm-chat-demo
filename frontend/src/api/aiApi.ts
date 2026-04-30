@@ -1,6 +1,22 @@
 import { apiFetch } from './client';
 import { fetchChannelMessages, fetchChats, fetchThreadMessages } from './chatApi';
 import { getElectronAI } from './electronBridge';
+
+// Preload scripts run before renderer JS but during the first hot
+// reload we occasionally see the bridge attach a microtask late. A
+// tiny retry window swallows that race so the user doesn't see a
+// transient 404/bridge-unavailable error on their first smart reply.
+async function waitForElectronAI(timeoutMs = 400) {
+  const first = getElectronAI();
+  if (first) return first;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 25));
+    const found = getElectronAI();
+    if (found) return found;
+  }
+  return null;
+}
 import type {
   AIRouteResponse,
   AIRunRequest,
@@ -107,20 +123,45 @@ export async function fetchSmartReply(req: {
   channelId: string;
   messageId?: string;
 }): Promise<SmartReplyResponse> {
-  const ipc = getElectronAI();
-  if (ipc) {
-    const messages = await fetchChannelMessages(req.channelId);
-    return ipc.smartReply({
-      channelId: req.channelId,
-      messageId: req.messageId,
-      context: messages.map((m) => ({ senderId: m.senderId, content: m.content })),
-    });
+  const ipc = await waitForElectronAI();
+  if (!ipc) {
+    throw new Error(
+      'Smart reply needs the on-device SLM — open this demo in the Electron app.',
+    );
   }
-  return apiFetch<SmartReplyResponse>('/api/ai/smart-reply', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
+  const messages = await fetchChannelMessages(req.channelId);
+  return ipc.smartReply({
+    channelId: req.channelId,
+    messageId: req.messageId,
+    context: messages.map((m) => ({ senderId: m.senderId, content: m.content })),
   });
+}
+
+// fetchTranslateBatch dispatches a single IPC call that covers N
+// messages. The main process builds one prompt + one model call so
+// CPU inference isn't paying the prompt-eval cost N times. Falls back
+// to per-message `fetchTranslate` when the Electron bridge is
+// unavailable (browser dev mode, Vitest).
+export async function fetchTranslateBatch(req: {
+  items: {
+    messageId: string;
+    channelId: string;
+    text: string;
+    targetLanguage: string;
+  }[];
+}): Promise<{ results: TranslateResponse[] }> {
+  const ipc = await waitForElectronAI();
+  if (ipc) return ipc.translateBatch(req);
+  const results = await Promise.all(
+    req.items.map(async (it) => {
+      return fetchTranslate({
+        messageId: it.messageId,
+        channelId: it.channelId,
+        targetLanguage: it.targetLanguage,
+      });
+    }),
+  );
+  return { results };
 }
 
 // fetchTranslate: the renderer needs the source message text. We fetch
@@ -132,7 +173,7 @@ export async function fetchTranslate(req: {
   channelId?: string;
   targetLanguage?: string;
 }): Promise<TranslateResponse> {
-  const ipc = getElectronAI();
+  const ipc = await waitForElectronAI();
   if (ipc) {
     if (!req.channelId) {
       throw new Error('translate requires channelId in Electron mode');
