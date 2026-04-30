@@ -94,10 +94,11 @@ workspace policy allow it.
 
 ### Device-tier model mapping
 
-| Tier      | Model                                      | Devices                                                   | Workloads                                                              |
-| --------- | ------------------------------------------ | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| On-device | `prism-ml/Bonsai-8B-gguf` (Q1_0; Q2_0 from `prism-ml/Ternary-Bonsai-8B-gguf` on ARM / Apple Silicon) | Laptops, desktops, and high-end phones                    | Every non-server workload — a single 8B model handles summaries, drafts, reasoning, and task extraction. |
-| Server    | Confidential server runtime (Phase 6)      | Explicit workspace policy only                            | Corpora larger than local context or workspace-approved heavy runs.    |
+| Tier             | Model                                                    | Devices                                | Workloads |
+| ---------------- | -------------------------------------------------------- | -------------------------------------- | --------- |
+| On-device (x86)  | `Bonsai-8B-Q1_0` from `prism-ml/Bonsai-8B-gguf`          | x86 laptops and desktops               | Every non-server workload — a single 8B model handles summaries, drafts, reasoning, and task extraction. |
+| On-device (ARM)  | `Ternary-Bonsai-8B-Q2_0` from `prism-ml/Ternary-Bonsai-8B-gguf` | ARM / Apple Silicon laptops and high-end phones | Same as above; selected via `MODEL_QUANT=q2_0`. |
+| Server           | Confidential server runtime (Phase 6)                    | Explicit workspace policy only         | Corpora larger than local context or workspace-approved heavy runs. |
 
 The demo assumes every KChat user has enough local compute to run the
 Bonsai-8B GGUF through Ollama. The inference router exposes a

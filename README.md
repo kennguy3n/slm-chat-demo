@@ -1,47 +1,40 @@
 # KChat SLM Demo
 
-KChat SLM Demo is an **Electron desktop app** that proves the AI features
-inside KChat can run on-device using a quantized local small language
-model — **Bonsai-8B** ([prism-ml/Bonsai-8B-gguf](https://huggingface.co/prism-ml/Bonsai-8B-gguf))
-served through Ollama. The Electron **main process** owns all inference
-and talks directly to the local Ollama daemon (or `MockAdapter` when
-Ollama isn't running). A small Go **data API** provides chats, threads,
-workspaces and seeded KApp cards. No AI traffic ever leaves the device.
+KChat SLM Demo is an Electron desktop app that proves the AI features
+inside KChat — summaries, drafts, translation, task extraction, approval
+prefill, knowledge graph — can run on-device using a quantized local
+small language model. Inference is owned by the Electron main process,
+served through a local Ollama daemon (or `MockAdapter` when Ollama is
+not running) and routed by a single `InferenceRouter` with two
+destinations: an on-device `local` tier and a policy-gated `server`
+tier for confidential-server tasks. A small Go data API supplies
+chats, threads, workspaces, and seeded KApp cards. No AI traffic
+leaves the device.
 
-The router distinguishes exactly two destinations: a single on-device
-`local` adapter (the Bonsai-8B model) and a policy-gated
-`server` adapter for confidential-server tasks. Operators can override
-the on-device alias via the `MODEL_NAME` env var without touching any
-code.
+The same product surface ships in two contexts:
 
-The demo runs the **same product surface in two contexts**:
+- **B2C** — personal chats, family and community groups, on-device
+  AI memory, smart reply, inline translation, task extraction, RSVP
+  cards.
+- **B2B** — workspace / domain / channel collaboration with KApps,
+  AI Employees, approvals, artifacts (PRD / RFC / SOP / QBR), and
+  human-reviewable AI output anchored to the originating thread.
 
-- **B2C** — personal chats, family groups, community groups, on-device AI
-  memory, smart reply, inline translation, task extraction, RSVP cards.
-- **B2B** — workspace / domain / channel collaboration with KApps, AI
-  employees, approvals, artifacts (PRD / RFC / SOP / QBR), and
-  human-reviewable AI output anchored to the chat thread that produced it.
-
-For the full product thesis, architecture, phasing, and progress, see:
-
-- [PROPOSAL.md](./PROPOSAL.md) — product vision and "one shell, two contexts"
-  design
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — Electron renderer, Electron main
-  process inference, Go data API, AI policy engine, KApps object model
-- [PHASES.md](./PHASES.md) — seven-phase delivery plan (Phase 0 → Phase 6)
-- [PROGRESS.md](./PROGRESS.md) — per-phase task tracker
+For the full product thesis, system design, phasing, and progress see
+[PROPOSAL.md](./PROPOSAL.md), [ARCHITECTURE.md](./ARCHITECTURE.md),
+[PHASES.md](./PHASES.md), and [PROGRESS.md](./PROGRESS.md).
 
 ## Tech stack
 
-| Layer       | Stack                                                                          |
-| ----------- | ------------------------------------------------------------------------------ |
-| Shell       | Electron 31 (main + preload + renderer), TypeScript                            |
-| Renderer    | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL      |
-| Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` (default model: `bonsai-8b`) and an `InferenceRouter` that picks `local` vs. `server` per task. |
-| IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `familyChecklist`, `shoppingNudges`, `eventRSVP`, `tripPlan`, `guardrailCheck`, `recipeRun` (Phase 4 generic AI-Employee recipe runner), `modelStatus`, `loadModel`, `unloadModel`, `route`. |
-| Local memory | `features/memory/memoryStore.ts` — IndexedDB (`kchat-slm-memory` / `facts`) with an in-memory fallback. The AI never auto-writes; users add / edit / remove facts from the AI Memory page. 0 B egress. |
-| Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
-| Persistence | (Phase 0) in-memory; (Phase 6+) PostgreSQL + NATS JetStream + MinIO/S3         |
+| Layer        | Stack |
+| ------------ | ----- |
+| Shell        | Electron 31 (main + preload + renderer), TypeScript |
+| Renderer     | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL |
+| Inference    | Electron main process (`frontend/electron/inference/`) — `MockAdapter`, `OllamaAdapter`, `ConfidentialServerAdapter`, and an `InferenceRouter` that picks `local` vs. `server` per task |
+| IPC          | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `route`, the per-skill helpers (`smartReply`, `translate`, `summarizeThread`, `prefillApproval`, `draftArtifact`, …), and the `model:*` and `egress:*` channels |
+| Local memory | `features/memory/memoryStore.ts` — IndexedDB (`kchat-slm-memory` / `facts`) with an in-memory fallback. Users add / edit / remove facts; the AI never auto-writes. 0 B egress |
+| Data API     | Go 1.25 + chi router + chi/cors, in-memory store |
+| Persistence  | In-memory (Phase 0); PostgreSQL + NATS JetStream + MinIO/S3 land in later phases |
 
 ## Quick start
 
@@ -56,88 +49,41 @@ npm install
 npm run electron:dev
 ```
 
-`npm run electron:dev` starts the Vite renderer dev server on
+`npm run electron:dev` starts the Vite renderer on
 `http://localhost:5173` and launches Electron with `ELECTRON_DEV=1`.
-The renderer loads the dev server URL; the main process boots the
-inference router (`frontend/electron/inference/bootstrap.ts`) and
-registers all IPC handlers. Use the **B2C / B2B** button in the top bar
-to switch shells; the sidebar lists seeded chats.
+The main process boots the inference router
+(`frontend/electron/inference/bootstrap.ts`) and registers all IPC
+handlers. Use the **B2C / B2B** button in the top bar to switch
+shells.
 
-For a plain browser dev loop (no Electron, no IPC), `npm run dev` still
-works — every API helper falls back to the legacy HTTP endpoints when
-`window.electronAI` is undefined, which is also how the Vitest suite
-runs.
+For a plain browser dev loop (no Electron, no IPC) `npm run dev`
+still works — every API helper falls back to legacy HTTP endpoints
+when `window.electronAI` is undefined, which is also how the Vitest
+suite runs.
 
-## Demo screenshots
-
-Annotated screenshots of every PROPOSAL.md §5 demo flow live in
-[`demo/`](./demo/README.md). Each screenshot maps to one of the four
-flows (Morning Catch-up, Task Extraction, Approval Prefill, PRD Draft)
-and shows the on-device privacy strip (`compute: on-device`,
-`model: bonsai-8b`, `egress: 0 B`) where applicable.
-
-Representative captures:
-
-- [`demo/b2c/03-family-task-extraction.png`](./demo/b2c/03-family-task-extraction.png)
-  — enriched Family Group thread + `TaskCreatedPill`.
-- [`demo/b2c/08-event-rsvp.png`](./demo/b2c/08-event-rsvp.png)
-  — Neighborhood chat showing the multi-event enriched seed (block
-  party, garage sale, lost pet, volunteer request) and the
-  `EventRSVPCard`.
-- [`demo/b2b/04-approval-prefill.png`](./demo/b2b/04-approval-prefill.png)
-  — `ApprovalPrefillCard` with vendor / amount / risk / justification
-  drawn from the enriched `ch_vendor_management` thread.
-
-See [`demo/README.md`](./demo/README.md) for the full index and
-step-by-step reproduction instructions for every flow.
-
-### Optional: run with a real local model (Ollama)
+## Optional: run with a real local model
 
 The Electron main process auto-detects an Ollama daemon on
-`http://localhost:11434` (or `OLLAMA_BASE_URL`). When it's reachable,
-the inference router wires a single Ollama adapter bound to
-`MODEL_NAME` (default `bonsai-8b`); otherwise it falls back
-to the bundled `MockAdapter` so the demo always works without a model
-present.
+`http://localhost:11434` (or `OLLAMA_BASE_URL`). When reachable, the
+router wires a single Ollama adapter bound to `MODEL_NAME` (default
+`bonsai-8b`); otherwise it falls back to `MockAdapter` so the demo
+always works without a model present.
 
-The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults
-`MODEL_NAME` to `bonsai-8b`. That name is an *alias*, not the
-upstream Ollama tag — the `models/` directory ships a single
-[`Modelfile.bonsai8b`](./models/Modelfile.bonsai8b) whose `FROM` line
-points at the **Q1_0 GGUF**
-([`Bonsai-8B-Q1_0.gguf`](https://huggingface.co/prism-ml/Bonsai-8B-gguf/blob/main/Bonsai-8B-Q1_0.gguf),
-~1.16 GB on disk) from the
+The default `bonsai-8b` is an *alias*, not an upstream Ollama tag —
+[`models/Modelfile.bonsai8b`](./models/Modelfile.bonsai8b) wraps the
+Q1_0 GGUF file from
 [`prism-ml/Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Bonsai-8B-gguf)
-HuggingFace repo. Ollama's `hf.co/<user>/<repo>:<quant>` shorthand
-does not recognise `Q1_0` as a valid quantisation tag, so the
-Modelfile references the file by local path and the setup script
-downloads it directly.
-
-Why `Q1_0` and not `Q2_0`? PrismML's `llama.cpp` fork ships a real
-x86 SIMD kernel (AVX2/FMA) for Q1_0 but no x86 SIMD kernel for Q2_0,
-so on commodity AMD/Intel CPUs Q1_0 runs ~25× faster (~11.7 tok/s
-on 8 vCPU EPYC vs ~0.45 tok/s for Q2_0). On ARM / Apple Silicon, the
-`Ternary-Bonsai-8B-Q2_0.gguf` file is the faster path — set
-`MODEL_QUANT=q2_0` and update the Modelfile. Full kernel attribution
-and per-arch guidance in
-[`docs/cpu-perf-tuning.md` → Why Q2_0 is slow on x86](./docs/cpu-perf-tuning.md#why-q2_0-is-slow-on-x86).
-
-The fastest way to set the alias up is the bundled script:
+(`Bonsai-8B-Q1_0.gguf`, ~1.16 GB on disk). The bundled script handles
+the download and alias creation:
 
 ```bash
-# Downloads Bonsai-8B-Q1_0.gguf (~1.16 GB) into models/ if not
-# already present, then creates the bonsai-8b alias the
-# bootstrap looks for.
 ./scripts/setup-models.sh
-
-# Make sure the daemon is running in the background.
 ollama serve &
 export OLLAMA_BASE_URL=http://localhost:11434
-
 cd frontend && npm run electron:dev
 ```
 
-To set up the alias by hand:
+To set the alias up by hand:
 
 ```bash
 curl -L -o models/Bonsai-8B-Q1_0.gguf \
@@ -145,40 +91,59 @@ curl -L -o models/Bonsai-8B-Q1_0.gguf \
 ollama create bonsai-8b -f models/Modelfile.bonsai8b
 ```
 
-> **Heads-up:** stock Ollama 0.22.x can `create` the alias from this
-> file but **cannot run inference** against it (the bundled
-> `llama.cpp` does not implement the Q1_0 tensor type). The CPU-only
-> demo path uses the PrismML `llama.cpp` fork behind an Ollama-API
-> shim — see
-> [`docs/cpu-perf-tuning.md`](./docs/cpu-perf-tuning.md) and
-> [`demo/README.md` → step 4](./demo/README.md#how-to-reproduce).
+Stock Ollama 0.22.x can `create` the alias but cannot run inference
+against the Q1_0 GGUF; the CPU-only demo path uses the PrismML
+`llama.cpp` fork behind an Ollama-API shim. ARM / Apple Silicon
+hosts get the fastest path from the Q2_0 GGUF in
+[`prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf);
+set `MODEL_QUANT=q2_0` and update the Modelfile. Full per-arch
+quant choice, kernel attribution, and tuning matrix in
+[`docs/cpu-perf-tuning.md`](./docs/cpu-perf-tuning.md). Modelfile
+knobs and local-GGUF fallback instructions live in
+[`models/README.md`](./models/README.md). Override the alias at
+runtime with `MODEL_NAME=some-other-alias`; if it resolves to a
+model the daemon hasn't pulled, the bootstrap falls back to
+`MockAdapter` and `DeviceCapabilityPanel` surfaces the fallback.
 
-A single setup run is enough to light up on-device routing. If you
-later pull a different model and want the router to use it without
-renaming anything, override at runtime:
+## Project structure
 
-```bash
-export MODEL_NAME=some-other-alias
-cd frontend && npm run electron:dev
+```
+slm-chat-demo/
+├── backend/             Go data API (no AI inference)
+│   ├── cmd/server/
+│   └── internal/        api, services, models, store
+├── frontend/
+│   ├── electron/        main, preload, ipc-handlers, inference/
+│   └── src/             app, features, stores, api, types
+├── demo/                Annotated screenshots (see demo/README.md)
+├── docs/                cpu-perf-tuning and other deep dives
+├── models/              Modelfile + setup script
+├── PROPOSAL.md
+├── ARCHITECTURE.md
+├── PHASES.md
+└── PROGRESS.md
 ```
 
-When `MODEL_NAME` resolves to a model the daemon hasn't pulled, the
-bootstrap falls back to the `MockAdapter` so the demo still works —
-the **Local model** panel and privacy strip surface the fallback.
+All AI inference lives under `frontend/electron/inference/`
+(`OllamaAdapter`, `MockAdapter`, `ConfidentialServerAdapter`,
+`InferenceRouter`, skills, recipes, redaction engine, egress
+tracker).
 
-See [`models/README.md`](./models/README.md) for the full list of
-Modelfile knobs (context length, temperature, system prompt) and for
-local-GGUF fallback instructions for environments where the
-`FROM hf.co/<user>/<repo>` shorthand is not yet supported.
+## Running the tests
 
-The **Local model** panel in the right sidebar (`DeviceCapabilityPanel`)
-calls `window.electronAI.modelStatus()` over IPC; the main process
-queries Ollama's `/api/ps` for *currently resident* models. Load /
-Unload buttons issue the same IPC channels (`model:load`, `model:unload`)
-which the main process translates into a small `/api/generate` warm-up
-request and a `keep_alive=0` eviction respectively.
+```bash
+cd frontend && npm test         # Vitest + RTL; renderer + Electron inference
+cd backend  && go test ./...    # Go's standard testing + httptest
+```
 
-### Production build
+Lint and typecheck:
+
+```bash
+cd frontend && npm run lint
+cd frontend && npm run typecheck
+```
+
+## Production build
 
 ```bash
 cd frontend
@@ -191,772 +156,62 @@ npm run electron:build
 2. `npm run electron:tsc` — `tsconfig.electron.json` compiles
    `electron/` to CommonJS in `dist-electron/`, then
    `scripts/finalize-electron-build.mjs` writes a
-   `dist-electron/package.json` with `"type": "commonjs"` so Electron
-   treats the `.js` files as CommonJS even though the outer
-   `frontend/package.json` is ESM.
-3. `electron-builder` packages the result into a platform installer
-   under `frontend/release/`. Targets are configured in the
-   `"build"` block of `frontend/package.json`:
+   `dist-electron/package.json` with `"type": "commonjs"`.
+3. `electron-builder` packages the result under `frontend/release/`:
+   Linux `AppImage` (x64), macOS `dmg` (x64 + arm64, unsigned by
+   default), Windows `nsis` (x64).
 
-   - **Linux**: `AppImage` (x64).
-   - **macOS**: `dmg` (x64 + arm64; unsigned by default).
-   - **Windows**: `nsis` installer (x64).
+Build a single target with `npx electron-builder --linux AppImage`,
+`--mac dmg`, or `--win nsis`. Code-signing certificates are not
+configured; set `CSC_LINK` / `CSC_KEY_PASSWORD` (macOS) or
+`WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` (Windows) in CI when shipping
+signed builds.
 
-Build only one target with `npx electron-builder --linux AppImage`,
-`--mac dmg`, or `--win nsis`. The Linux AppImage build has been
-verified end-to-end on this snapshot — it produces a single
-`~107 MB` self-contained executable that bundles Electron + the
-React renderer + the TypeScript inference layer.
+## Demo screenshots
 
-Code-signing certificates are not configured. When you're ready to
-ship signed builds, set `CSC_LINK` / `CSC_KEY_PASSWORD` (macOS) or
-`WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` (Windows) in your CI.
+Annotated captures of every PROPOSAL.md §5 demo flow live in
+[`demo/`](./demo/README.md). Each screenshot maps to one of the four
+flows (Morning Catch-up, Task Extraction, Approval Prefill, PRD
+Draft) and shows the on-device privacy strip
+(`compute: on-device`, `model: bonsai-8b`, `egress: 0 B`) where
+applicable.
 
-## Project structure
+## Current status
 
-```
-slm-chat-demo/
-├── backend/                     # Go data API (no AI inference)
-│   ├── cmd/server/main.go
-│   ├── internal/
-│   │   ├── api/
-│   │   │   ├── router.go        (data-only routes)
-│   │   │   ├── middleware.go
-│   │   │   ├── handlers/        (chat, workspace, kapps, privacy, artifacts, audit, ai_employees, recipe_runs, connectors, retrieval, knowledge, policy, scim, encryption, tenant_storage)
-│   │   │   ├── middleware_logging.go  (Phase 6: StructuralLogger + SanitizeLogFields)
-│   │   │   ├── middleware_sso.go      (Phase 6: stub Authorization: Bearer SSO middleware)
-│   │   │   └── userctx/         (request-scoped user helpers)
-│   │   ├── services/            (identity, workspace, chat, kapps, audit, ai_employees, recipe_runs, connectors, retrieval, knowledge, policy, encryption, tenant_storage)
-│   │   ├── models/              (user, workspace, message, task, approval, artifact, event, card, audit, ai_employee, recipe_run, connector, retrieval, knowledge, policy, sso, encryption, tenant_storage)
-│   │   └── store/               (memory store + Phase-0 seed + Phase-4 AI Employee seed)
-│   └── go.mod
-├── frontend/
-│   ├── electron/
-│   │   ├── main.ts              (BrowserWindow, lifecycle, dev/prod URL switch)
-│   │   ├── preload.ts           (contextBridge → window.electronAI)
-│   │   ├── ipc-handlers.ts      (ipcMain.handle for ai:* and model:*)
-│   │   └── inference/
-│   │       ├── adapter.ts       (Adapter / Loader / StatusProvider interfaces, types)
-│   │       ├── mock.ts          (canned MockAdapter; same outputs as the Go port)
-│   │       ├── ollama.ts        (HTTP client for the local daemon, NDJSON streaming)
-│   │       ├── llamacpp.ts      (LlamaCppAdapter stub; throws "not yet implemented")
-│   │       ├── router.ts        (PROPOSAL.md §2 scheduler — local / server)
-│   │       ├── tasks.ts         (smart-reply / translate / extract-tasks / summary helpers)
-│   │       ├── secondBrain.ts   (Phase 2: family checklist, shopping nudges, RSVP extraction)
-│   │       ├── skill-framework.ts  (declarative SkillDefinition contract + runSkill executor)
-│   │       ├── search-service.ts   (SearchService interface + MockSearchService for trip planner)
-│   │       ├── confidential-server.ts  (Phase 6: ConfidentialServerAdapter for server-tier inference)
-│   │       ├── redaction.ts            (Phase 6: RedactionEngine — tokenize/redact/detokenize PII)
-│   │       ├── egress-tracker.ts       (Phase 6: EgressTracker singleton for privacy UI)
-│   │       ├── logging.ts              (Phase 6: sanitizeForLog / logInference — strips bodies/prompts/outputs)
-│   │       ├── aicore-bridge.ts        (Phase 6: AICoreBridge interface + StubAICoreBridge for the Android port)
-│   │       ├── skills/
-│   │       │   ├── trip-planner.ts       (B2C trip / event planning skill)
-│   │       │   └── guardrail-rewrite.ts  (PII / tone / unverified-claim detection + rewrite)
-│   │       ├── recipes/
-│   │       │   ├── registry.ts           (RecipeDefinition + RECIPE_REGISTRY + register/get/list)
-│   │       │   ├── summarize.ts          (wraps buildThreadSummary; preferredTier: local)
-│   │       │   ├── extract-tasks.ts      (wraps runKAppsExtractTasks; source provenance)
-│   │       │   ├── draft-prd.ts          (wraps buildDraftArtifact, artifactType='PRD')
-│   │       │   ├── draft-proposal.ts     (wraps buildDraftArtifact, artifactType='Proposal')
-│   │       │   ├── create-qbr.ts         (wraps buildDraftArtifact, artifactType='QBR')
-│   │       │   ├── prefill-approval.ts   (wraps runPrefillApproval; flattens vendor/amount/risk/justification)
-│   │       │   └── index.ts              (barrel — self-registers all 6 canonical recipes)
-│   │       └── bootstrap.ts     (pings Ollama; chooses real vs. mock adapter set; instantiates SearchService)
-│   ├── src/
-│   │   ├── app/                 (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar, useMediaQuery)
-│   │   ├── features/
-│   │   │   ├── chat/            (ChatSurface, ThreadPanel, MessageList, MessageBubble, Composer, launcherDispatch)
-│   │   │   ├── ai/              (PrivacyStrip, ActionLauncher, AIEmployeeModeBadge, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, FamilyChecklistCard, ShoppingNudgesPanel, EventRSVPCard, TripPlannerCard, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, activityLog, formatEgressBytes, useEgressSummary, PolicyAdminPanel)
-│   │   │   ├── memory/          (AIMemoryPage + memoryStore — local-only IndexedDB-backed second brain)
-│   │   │   ├── kapps/           (TaskCard, ApprovalCard, ArtifactCard, EventCard, KAppCardRenderer, TasksKApp, CreateTaskForm, CreateApprovalForm, FormCard, AuditLogPanel, OutputReview)
-│   │   │   ├── artifacts/       (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections)
-│   │   │   ├── ai-employees/    (AIEmployeeList, AIEmployeePanel, QueueView, RecipeOutputGate, recipeCatalog)
-│   │   │   └── knowledge/       (SourcePicker, ConnectorPanel, PermissionPreview, CitationChip, CitationRenderer, KnowledgeGraphPanel — Phase 5 channel/thread/file scoping, mock connector attach, egress-aware permission preview, inline citation rendering, workspace knowledge-graph extraction)
-│   │   ├── stores/              (workspaceStore, chatStore*, aiStore*, useKAppsStore)
-│   │   ├── api/                 (client, chatApi, aiApi, streamAI, kappsApi, auditApi, aiEmployeeApi, recipeRunApi, connectorApi, knowledgeApi, retrievalContext, electronBridge, policyApi)
-│   │   ├── types/               (chat, ai, kapps, workspace, audit, aiEmployee, knowledge — includes Connector, ConnectorFile, RetrievalChunk, RetrievalResult, KnowledgeEntity — electron.d.ts)
-│   │   ├── router.tsx
-│   │   ├── styles.css
-│   │   └── main.tsx
-│   ├── index.html
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── tsconfig.electron.json
-│   └── vite.config.ts
-├── demo/                        # Annotated PROPOSAL §5 demo screenshots
-│   ├── README.md                (index: B2C / B2B tables + how-to-reproduce)
-│   ├── b2c/                     (B2C flow captures: DM, family, neighborhood)
-│   └── b2b/                     (B2B flow captures: vendor, engineering, general)
-├── PROPOSAL.md
-├── ARCHITECTURE.md
-├── PHASES.md
-└── PROGRESS.md
-```
+| Phase | Status      | Progress | Summary |
+| ----- | ----------- | -------- | ------- |
+| Phase 0 — Consolidated prototype foundation | Complete    | 100% | Electron shell, B2C/B2B layouts, KApp card system, Privacy Strip, AI Action Launcher, Go data API. |
+| Phase 1 — Local LLM MVP                     | Complete    | 100% | Ollama adapter, single-tier on-device router, IPC streaming, real privacy strip, B2C/B2B inference helpers. |
+| Phase 2 — B2C second-brain demo             | Complete    | 100% | AI Memory, family checklist, shopping nudges, RSVP, trip planner, guardrails, metrics dashboard, skills framework. |
+| Phase 3 — B2B KApps MVP                     | Complete    | 100% | Workspace navigation, Tasks/Approvals/Artifacts/Forms KApps, audit log, human review gates, source pins. |
+| Phase 4 — AI Employees and recipe engine    | Complete    | 100% | Three seeded employees, recipe registry, queue, budget controls, output gate, mode badges. |
+| Phase 5 — Connectors and knowledge graph    | Complete    | 100% | Drive + OneDrive mock connectors, channel-scoped retrieval, source picker, knowledge graph, citations, ACL sync. |
+| Phase 6 — Confidential server mode          | In progress | ~85% | ConfidentialServerAdapter, RedactionEngine, EgressTracker, policy admin, audit export, SSO/SCIM, encryption-key + tenant-storage models. |
 
-`*` = Phase-1+ placeholder; the file exists but most logic ships in a later
-phase.
+See [PROGRESS.md](./PROGRESS.md) for the per-task tracker and
+changelog.
 
-## Running the tests
+## What's deferred
 
-```bash
-# Frontend (Vitest + React Testing Library + jsdom; covers the renderer
-# components AND the Electron main-process inference modules).
-cd frontend
-npm test
+The following components are referenced by the architecture docs but
+have not yet shipped:
 
-# Backend (Go's standard `testing` + `net/http/httptest` — data endpoints
-# and the legacy inference package's routing rules).
-cd backend
-go test ./...
-```
-
-## Phase 0 — what's actually shipped
-
-- React app shell with **B2C ↔ B2B mode switching** in the top bar
-- B2C layout: personal chats, family groups, community groups
-- B2B layout: workspace → domain → channel hierarchy + DM section
-- Three-column shell (sidebar / main chat / right panel) per
-  ARCHITECTURE.md section 2 and PROPOSAL.md section 4.1
-- **Mobile-responsive layout** that collapses to a single column with a
-  five-tab bottom navigation (Message / Notification / Tasks / Settings /
-  More) at ≤ 768 px; resize the browser or use device emulation to test
-- **Shared KApp card system** — `TaskCard`, `ApprovalCard`, `ArtifactCard`,
-  `EventCard`, plus a `KAppCardRenderer` dispatcher rendering wire-format
-  `Card` envelopes from `GET /api/kapps/cards`
-- **Privacy strip** rendered below every AI-generated card with all eight
-  PROPOSAL.md §4.3 elements (compute location, model name, sources,
-  egress, confidence, why-suggested, accept/edit/discard, linked origin)
-- **AI Action Launcher** in the composer: B2C quick actions (Catch me up,
-  Translate, Remind me, Extract tasks) and B2B four-intent grid (Create,
-  Analyze, Plan, Approve) with submenus
-- **Electron shell** — `frontend/electron/main.ts` opens a
-  BrowserWindow, registers IPC, picks dev URL vs. built `index.html`
-- **Local inference adapter interface in TypeScript** + `MockAdapter`
-  returning canned responses for `summarize`, `translate`,
-  `extract_tasks`, `smart_reply`, `prefill_approval`, `draft_artifact`
-  — wired into `window.electronAI.run` and `window.electronAI.route`
-  (the latter returns the Phase-0 policy: allow / on-device / 0
-  egress)
-- Go data API on `:8080` with chi router, chi/cors, JSON content-type, and
-  a mock-auth middleware that injects a user from the `X-User-ID` header
-- Five seeded users (Alice, Bob, Carol, Dave, Eve) and two workspaces
-  (Personal, Acme Corp with Engineering / Finance domains)
-- Realistic seed messages backing the demo flows in PROPOSAL.md section 5
-  plus four seeded KApp cards (family task, neighborhood event, vendor
-  approval, engineering PRD draft)
-- 522 frontend tests (renderer components + Electron main-process
-  inference) covering the Phase 2 skills framework, the Phase 3
-  KApp lifecycle (`TaskCard`, `ApprovalCard`, `ArtifactCard`,
-  `KAppCardRenderer`, `TasksKApp`, `CreateTaskForm`,
-  `CreateApprovalForm`, `FormCard`, `ArtifactWorkspace`,
-  `ArtifactDiffView`, `SourcePin`, `workspaceApi`, `B2BLayout`),
-  the Phase 3 audit log (`AuditLogPanel`), human review gates
-  (`OutputReview`), and Action Launcher integration
-  (`launcherDispatch`), the `ai:prefill-form` task helper
-  (`runPrefillForm` / `parseFormFields`), the on-device routing tier
-  (`bootstrap.test.ts`, `router.test.ts`), and the full Phase 0 →
-  Phase 2 baseline plus full Go test coverage of the data
-  endpoints, including the Phase 3 task lifecycle, approval submit
-  + decision, artifact CRUD + versions, forms intake, audit log
-  (`audit_test.go`), linked-objects, and workspace-domain endpoints.
-
-## Phase 1 — complete
-
-- **Single on-device routing tier** — `bootstrap.ts` creates one
-  `OllamaAdapter` instance (`MODEL_NAME`, defaulting to
-  `bonsai-8b`), pings the Ollama daemon, and falls back to
-  the mock adapter when the model is not pulled. The
-  `InferenceRouter` `decide()` reports the real model so the privacy
-  strip and `model:status` (`model`, `loaded`) reflect what actually
-  ran. The `DeviceCapabilityPanel` shows the on-device model status.
-
-## Phase 6 — complete
-
-The remaining 8 enterprise-hardening deliverables ship in the same
-release as the confidential-server adapter / redaction engine /
-egress tracker described below.
-
-- **No-content server logging** — `backend/internal/api/middleware_logging.go`
-  installs a `StructuralLogger` that records only
-  `method`, `path`, `status`, `bytes`, `latency`, `reqID`, `userID`
-  for every HTTP request. The same file exports
-  `SanitizeLogFields(map[string]any)` which strips known sensitive
-  keys (`body`, `content`, `prompt`, `output`, `fields`, `text`,
-  `messages`, `chunk`, …) before any structured log call. On the
-  Electron side `frontend/electron/inference/logging.ts` ships
-  `sanitizeForLog` and `logInference(label, meta)` — the IPC layer
-  and inference router run every debug print through them so prompts
-  and outputs never appear in the main-process log.
-- **Per-workspace AI compute policy** — `backend/internal/models/policy.go`
-  introduces `WorkspacePolicy { AllowServerCompute, ServerAllowedTasks,
-  ServerDeniedTasks, MaxEgressBytesPerDay, RequireRedaction, … }`. The
-  new `PolicyService` exposes `Get` / `Update`, and
-  `GET / PATCH /api/workspaces/{id}/policy` is wired into the router.
-  The renderer adds `frontend/src/features/ai/PolicyAdminPanel.tsx`
-  in the new B2B right-rail "Policy" tab — toggles for the master
-  switch, redaction requirement, max-daily-egress, and per-`TaskType`
-  allow / deny checkboxes. The default policy seeded for `ws_acme`
-  has `AllowServerCompute: false` and `RequireRedaction: true`.
-- **Audit log JSON / CSV export** — `GET /api/audit/export?format=json|csv`
-  reuses the existing `objectId` / `objectKind` / `channelId` filters,
-  emits a `Content-Disposition: attachment; filename="audit-export.<fmt>"`
-  header, and returns either the same `[]AuditEntry` array or a CSV
-  with columns `id, timestamp, eventType, objectKind, objectId, actor,
-  details` (details rendered as a JSON string). `AuditLogPanel` gained
-  Export JSON / Export CSV buttons that hit the new endpoint and
-  trigger a hidden `<a download>`.
-- **Stub SSO middleware** — `backend/internal/api/middleware_sso.go`
-  decodes a base64 JWT-style payload `{ sub, email }` from
-  `Authorization: Bearer …`, validates the email domain against
-  `cfg.AllowedDomains`, and falls back to `MockAuth` when there is
-  no Bearer header or `cfg.Enabled == false`. The router opts in via
-  `SSO_ENABLED=true` env var. A default `SSOConfig` is seeded for
-  `ws_acme` (`Enabled: false`, `AllowedDomains: ["acme.example.com"]`).
-- **SCIM v2 user provisioning** — `backend/internal/api/handlers/scim.go`
-  implements `GET /api/scim/v2/Users`, `GET /api/scim/v2/Users/{id}`,
-  `POST /api/scim/v2/Users`, `PATCH /api/scim/v2/Users/{id}`, and
-  `DELETE /api/scim/v2/Users/{id}` with the SCIM core schema
-  (`urn:ietf:params:scim:schemas:core:2.0:User`, `userName`, `emails`,
-  `active`). The user model gained `Active` and `Email`, the store
-  gained `CreateUser` / `DeactivateUser`, and the `/api/scim/v2`
-  routes are mounted outside the MockAuth pipeline because real IdPs
-  authenticate with their own bearer tokens.
-- **Per-tenant encryption keys** — `backend/internal/models/encryption.go`
-  defines `TenantEncryptionKey { WorkspaceID, KeyID, Algorithm,
-  CreatedAt, RotatedAt, Active }`. `EncryptionKeyService` exposes
-  `GenerateKey` / `GetActiveKey` / `RotateKey` / `ListKeys` and a
-  stub `EncryptStub` that logs `would encrypt with key X`
-  (real encryption is deferred to the PostgreSQL phase). HTTP surface:
-  `GET / POST /api/workspaces/{id}/encryption-keys` and
-  `POST /api/workspaces/{id}/encryption-keys/rotate`. A default key
-  (`key_acme_seed`, AES-256-GCM) is seeded for `ws_acme`.
-- **Tenant storage configuration** —
-  `backend/internal/models/tenant_storage.go` defines
-  `TenantStorageConfig { DatabaseRegion, StorageBucket, Dedicated,
-  EncryptionKeyID, … }`. `TenantStorageService` exposes `Get` /
-  `Update`, and `GET / PATCH /api/workspaces/{id}/storage` is wired
-  in. Default for `ws_acme`: `us-east-1`, shared (`Dedicated: false`),
-  bound to `key_acme_seed`. Physical isolation is deferred to the
-  PostgreSQL / S3 phase; this ships the model, service, and surface.
-- **Android AICore bridge stub** —
-  `frontend/electron/inference/aicore-bridge.ts` exports the
-  `AICoreBridge` interface (a strict superset of the existing
-  `Adapter` interface, with `initialize` / `isAvailable` /
-  `getSupportedModels` lifecycle hooks) plus a
-  `StubAICoreBridge` class that throws
-  `"Android AICore not available in Electron"` for every method.
-  This is the contract the React Native / native Android port will
-  implement against Google AICore (ML Kit GenAI).
-
-## Phase 6 — confidential-server building blocks (already shipped before this release)
-
-- **Confidential server compute mode** —
-  `frontend/electron/inference/confidential-server.ts` adds a third
-  `ConfidentialServerAdapter` tier that POSTs to a configurable
-  `CONFIDENTIAL_SERVER_URL` (default `http://localhost:8090`) using the
-  same NDJSON streaming pattern as the Ollama adapter, but always with
-  `onDevice: false`. The router is two-tier (`'local' | 'server'`)
-  with `attachServer()` / `hasServer()` and a policy-gated `decide()`
-  that requires both adapter availability AND
-  `CONFIDENTIAL_SERVER_POLICY=allow`. Bootstrap probes
-  `${url}/v1/health` on startup and only wires the server tier when both
-  the ping resolves and the policy permits — otherwise the router refuses
-  with a clear "unreachable" error (no silent fallback). The
-  `model:status` IPC reports `serverModel` / `serverAvailable` /
-  `serverUrl`, which `DeviceCapabilityPanel` surfaces in a new
-  "Confidential server" sub-section.
-- **Redaction / tokenization before egress** —
-  `frontend/electron/inference/redaction.ts` introduces a
-  `RedactionEngine` with `tokenize` (reversible — replaces emails,
-  phones, SSNs, and two-word names with `[EMAIL_n]`, `[PHONE_n]`,
-  `[SSN_n]`, `[NAME_n]` placeholders and stores the mapping), `redact`
-  (non-reversible `[REDACTED]` substitution), and `detokenize`
-  (longest-token-first replacement so `[EMAIL_10]` doesn't get clobbered
-  by `[EMAIL_1]`). The `RedactionPolicy` carries fine-grained boolean
-  flags plus a `customPatterns` escape hatch. The router now tokenizes
-  the prompt before dispatching to the server adapter and detokenizes
-  the response (or each stream delta) before returning to the renderer
-  — so the server only ever sees placeholder tokens, and the user-facing
-  text is always restored. `PrivacyStrip` renders a "Redaction" row
-  ("3 items redacted (2 names, 1 email)") only for confidential-server
-  outputs.
-- **Data egress summary** — `frontend/electron/inference/egress-tracker.ts`
-  introduces an `EgressTracker` singleton that records every
-  server-routed inference (`{ timestamp, taskType, egressBytes,
-  redactionCount, model, channelId }`) and reports
-  `{ totalBytes, totalRequests, totalRedactions, byChannel, byModel,
-  recent }` via the new `egress:summary` / `egress:reset` IPC channels.
-  The renderer's new `EgressSummaryPanel` (`src/features/ai/`) shows a
-  prominent "0 B" zero-state, per-channel and per-model breakdowns, a
-  recent-activity timeline, and a Reset button; the existing TopBar
-  "Egress" badge now reads from the live tracker via the new
-  `useEgressSummary` hook. UTF-8 byte length drives the tally so
-  reported bytes match wire bytes.
-
-## Phase 5 — complete
-
-- **Source picker UI** — `features/knowledge/SourcePicker.tsx` +
-  `types/knowledge.ts` (`SelectedSource`, `SelectedSourceKind`,
-  `ThreadSummary`) lets B2B users scope which channels, threads, and
-  files an AI Employee may read before running a knowledge intent.
-  Three tabs (Channels / Threads / Files), a chip list with per-chip
-  × removal, Confirm / Cancel buttons, and optional `initialSelected`
-  seeding. The Files tab now lists real channel-attached connector
-  files (replacing the kickoff "Coming soon" placeholder); chips
-  surface the connector name. Wired into `ActionLauncher` via
-  `workspaceId` + `channelId` + `intentsRequiringSources` props and
-  into `ArtifactDraftCard` via `pickedSources`.
-- **Google Drive connector (mock)** — backend `models/connector.go`
-  (`Connector`, `ConnectorKind`, `ConnectorStatus`, `ConnectorFile`),
-  `services.ConnectorService`, six handlers (`GET /api/connectors`,
-  `GET /api/connectors/{id}`, `GET /api/connectors/{id}/files`,
-  `GET /api/channels/{channelId}/connector-files`,
-  `POST /api/connectors/{id}/channels`,
-  `DELETE /api/connectors/{id}/channels/{channelId}`). Seed adds
-  `conn_gdrive_acme` (Acme Corp Drive) attached to `ch_vendor_management`
-  with four mock files (PRD, vendor contract, budget spreadsheet,
-  design brief). Frontend `connectorApi.ts` mirrors all six endpoints.
-- **Channel-scoped connector attachment** —
-  `features/knowledge/ConnectorPanel.tsx` mounted in the B2B right-rail
-  "Connectors" tab. Lists workspace connectors, shows attach status
-  against the active channel, exposes per-row file counts, and toggles
-  attach / detach via `connectorApi`. The SourcePicker Files tab uses
-  `fetchChannelConnectorFiles(channelId)` so a file is only selectable
-  when its connector is attached to the active channel — matching
-  PROPOSAL.md §7 rule 2.
-- **Permission preview before AI access** —
-  `features/knowledge/PermissionPreview.tsx` renders the "AI will read
-  from…" sheet with one row per channel / thread / file, a
-  `0 bytes will leave this device` egress badge, and Confirm / Cancel
-  actions. Wired between SourcePicker confirm and `onAction` dispatch
-  in `ActionLauncher`, and as an in-card gate inside
-  `ArtifactDraftCard` whenever `pickedSources` includes file selections.
-- **Per-channel retrieval index** — backend `models/retrieval.go`
-  (`RetrievalChunk`, `RetrievalSourceKind`, `RetrievalResult`),
-  `services.RetrievalService` with `IndexChannel` (chunks all channel +
-  thread messages and connector file excerpts) and `Search`
-  (whitespace tokenize + stopword filter + term-overlap score), plus
-  `POST /api/channels/{channelId}/index` and
-  `GET /api/channels/{channelId}/search?q=&topK=` endpoints. Frontend
-  `connectorApi.indexChannel` / `searchChannel` and
-  `api/retrievalContext.ts` `gatherRetrievalContext` helper that
-  coalesces channel + thread picks, indexes once per channel, and
-  returns merged top-K results sorted by score — ready to feed AI
-  prompt assembly.
-- **Citation rendering in AI outputs** —
-  `features/knowledge/CitationChip.tsx` (`[N]`-style chip with hover
-  tooltip and click-through to `#message-{id}` or the connector URL)
-  and `CitationRenderer.tsx` (parses `[source:id]` markers in
-  streamed text, renders chips numbered in citation order, repeats
-  reuse the same index, emits a "Sources (N)" footer with full
-  attribution). Wired into `ThreadSummaryCard`, `ArtifactDraftCard`,
-  `ApprovalPrefillCard`, and `RecipeOutputGate` so any AI body
-  containing markers renders inline chips + a footer attribution
-  list while marker-free bodies fall back to the existing rendering.
-- **Workspace knowledge graph** — backend `models/knowledge.go`
-  (`KnowledgeEntity`, `KnowledgeEntityKind`, `KnowledgeEntityStatus`),
-  `services.KnowledgeService` with `ExtractEntities` (heuristic
-  keyword extraction over channel messages), `List`, and `Get`. Five
-  entity kinds — `decision`, `owner`, `risk`, `requirement`,
-  `deadline` — each linked back to its `sourceMessageId` for thread
-  attribution. Endpoints
-  `POST /api/channels/{channelId}/knowledge/extract`,
-  `GET /api/channels/{channelId}/knowledge?kind=`, and
-  `GET /api/knowledge/{id}` are wired in `api/router.go`. Frontend
-  `knowledgeApi.ts` mirrors the three endpoints; the new
-  `features/knowledge/KnowledgeGraphPanel.tsx` mounts in the B2B
-  right-rail "Knowledge" tab and renders five collapsible sections
-  with extract action, source-message links, confidence badges,
-  actor pills (for owners), and due-date chips (for deadlines).
-- **TOCTOU fix in `ConnectorService.AttachToChannel`** — the
-  idempotency check now runs *inside* the `UpdateConnector` callback
-  under the store's write lock, so two concurrent attaches with the
-  same channelId can no longer pass a stale snapshot and
-  double-append (regression covered by
-  `TestAttachIsIdempotentForRepeatedChannel` in
-  `backend/internal/api/handlers/connectors_test.go`).
-- **OneDrive connector (mock)** — second seeded connector
-  `conn_onedrive_acme` (`kind: 'onedrive'`, name "Acme OneDrive")
-  attached to `ch_engineering` with three mock files (engineering
-  kickoff notes, quarterly engineering report, OKR summary). Reuses
-  the same `ConnectorService` / handlers / `ConnectorPanel` plumbing
-  as the Drive connector, so both kinds appear automatically in the
-  workspace connector list.
-- **Connector ACL sync** — `ConnectorFile.ACL []string` carries a
-  machine-readable list of user IDs allowed to read each file (the
-  existing `Permissions` field stays as the human-readable label).
-  New `ConnectorService.SyncACL(connectorID)` rewrites every file's
-  ACL based on its `Permissions` (Phase 5 mock; OAuth-driven sync
-  is Phase 6+) and `ConnectorService.CheckFileAccess(fileID, userID)`
-  is the single gate consulted by retrieval.
-  `RetrievalService.IndexChannel(channelID, userID)` and
-  `Search(channelID, query, userID)` filter chunks against the
-  requesting user's ACL so a connector file with no entry for that
-  user produces zero retrieval hits. Endpoint:
-  `POST /api/connectors/{id}/sync-acl`. Frontend
-  `connectorApi.syncConnectorACL(connectorId)` and per-file ACL
-  rendering in `PermissionPreview.tsx`.
-
-## Phase 4 — complete
-
-- **Budget controls (token / compute limits)** —
-  `AIEmployeeService.UpdateBudget(id, maxTokensPerDay)`,
-  `IncrementUsage(id, tokensUsed)` (atomic — returns
-  `ErrBudgetExceeded` when a run would exceed `MaxTokensPerDay`),
-  and `ResetDailyUsage()` live in
-  `backend/internal/services/ai_employees.go`.
-  `PATCH /api/ai-employees/{id}/budget` and
-  `POST /api/ai-employees/{id}/budget/increment` (returns
-  **429 Too Many Requests** with the employee payload on overrun)
-  are wired in `api/router.go`. Frontend ships
-  `updateAIEmployeeBudget` / `incrementAIEmployeeBudgetUsage` (with a
-  typed `BudgetExceededError`) in `src/api/aiEmployeeApi.ts`, an
-  inline "Edit budget" editor in `AIEmployeePanel` with optimistic
-  update + rollback, and a pre-execution budget charge in the
-  Electron `runRecipe` handler (`electron/ipc-handlers.ts`) that
-  calls `POST …/budget/increment` *before* executing and refuses
-  with `{ status: 'refused', reason: 'budget exceeded' }` when the
-  backend returns 429. Falls open on transport errors so a broken
-  proxy can't hard-block a demo.
-- **Human approval before publish gate** — new
-  `features/ai-employees/RecipeOutputGate.tsx` wraps the existing
-  `OutputReview` review surface and stands between a recipe run and
-  any KApp persistence. The gate pretty-prints recipe-specific
-  output shapes (PRD prompts verbatim, `extract_tasks` as a numbered
-  list, `prefill_approval` as labelled fields), exposes
-  Accept / Edit / Discard with `allowEdit=false` for status
-  transitions (`prefill_approval`), and renders a non-interactive
-  refusal banner when `RecipeResult.status === 'refused'`.
-  `QueueView` now exposes an `onReviewRun` callback and
-  `AIEmployeePanel` tracks `pendingReview` state so clicking a
-  completed run opens the gate in the right rail before anything is
-  written.
-- **Auto mode badge + Inline mode badge** — new
-  `features/ai/AIEmployeeModeBadge.tsx` renders a small pill
-  (`⚡ Auto · {name}` or `👤 Inline · {name}`) with
-  `data-testid="ai-employee-mode-badge"` + one of
-  `ai-employee-mode-badge-auto` / `ai-employee-mode-badge-inline`
-  and a descriptive `aria-label`. Wired into `MessageBubble`
-  (renders below a message when `message.aiEmployeeId` is set and
-  the parent passes the employee), `KAppCardRenderer` (wraps
-  AI-generated cards with a header that shows the badge), and
-  `AIEmployeeList` (shows the badge next to each employee name in
-  the sidebar).
-
-## Phase 4 — earlier deliverables
-
-- **AI Employee profiles (Kara Ops AI, Nina PM AI, Mika Sales AI)** —
-  backend defines `models/ai_employee.go` (`AIEmployee` struct with
-  role / avatar color / description / allowed channel ids / recipes /
-  budget / mode), an RWMutex-guarded store
-  (`PutAIEmployee` / `GetAIEmployee` / `ListAIEmployees` /
-  `UpdateAIEmployee`), `seedAIEmployees`, and an
-  `AIEmployeeService` exposed through `GET /api/ai-employees` and
-  `GET /api/ai-employees/{id}`. The renderer fetches employees via
-  `src/api/aiEmployeeApi.ts`; `AIEmployeeList` renders the three
-  compact cards under the B2B sidebar and `AIEmployeePanel` renders
-  the full profile in a new "AI Employees" right-rail tab with role
-  / mode badges, allowed-channel chips, assigned recipes, and a
-  budget-usage bar.
-- **Allowed channels configuration per AI Employee** —
-  `PATCH /api/ai-employees/{id}/channels` validates every channel id
-  against the workspace store and rejects unknown channels with
-  HTTP 400. The `AIEmployeePanel` "Configure channels" button opens
-  an inline multi-select; Save pushes through `updateAIEmployeeChannels`
-  and the React tree refreshes optimistically through the TanStack
-  Query cache so the chips update before the network round trip
-  settles. `PATCH /api/ai-employees/{id}/recipes` ships the same
-  pattern for the recipe list.
-- **Recipe registry** — `frontend/electron/inference/recipes/registry.ts`
-  defines `RecipeDefinition` (`id`, `name`, `description`, `taskType`,
-  `preferredTier`, `execute(router, context)`), `RecipeContext`
-  (`channelId`, `threadId?`, `messages`, `aiEmployeeId`), `RecipeResult`
-  (`status: ok | refused`, `output`, `model`, `tier`, `reason`), a
-  module-level `RECIPE_REGISTRY` Map, and `registerRecipe` /
-  `getRecipe` / `listRecipes` helpers. The registry is intentionally
-  separate from the AI Skills Framework in `skill-framework.ts`:
-  skills are low-level inference contracts (prompts, guardrails,
-  parsers); recipes are higher-level AI-Employee-scoped wrappers that
-  compose existing task helpers.
-- **Recipes: summarize + extract_tasks** — `recipes/summarize.ts`
-  wraps `buildThreadSummary` and exposes a short-thread heuristic
-  (advertises `preferredTier: 'local'`).
-  `recipes/extract-tasks.ts` wraps `runKAppsExtractTasks`, preserves
-  per-task source provenance through the `sourceMessageId` field, and
-  returns a `refused` envelope (not an exception) for empty threads.
-  Both self-register into `RECIPE_REGISTRY` via the
-  `recipes/index.ts` barrel.
-- **`ai:recipe:run` IPC channel** — a generic recipe runner in
-  `electron/ipc-handlers.ts` accepts
-  `{ recipeId, aiEmployeeId, channelId, threadId?, messages, allowedRecipes? }`,
-  looks the recipe up in `RECIPE_REGISTRY`, refuses recipes the
-  calling AI Employee is not authorised for (returning a uniform
-  `RecipeResult` with `status: 'refused'` rather than throwing), and
-  delegates to `recipe.execute`. Exported as `runRecipe` for direct
-  unit-testing without spinning up the Electron main process.
-- **Recipes: draft_prd / draft_proposal / create_qbr / prefill_approval** —
-  four new recipes in `electron/inference/recipes/` compose existing
-  `buildDraftArtifact` (PRD / Proposal / QBR) and `runPrefillApproval`
-  task helpers. All advertise `preferredTier: 'local'`, return a uniform
-  `RecipeResult` envelope (drafting recipes surface `{ prompt, sources,
-  threadId, channelId }` so the renderer streams the body through
-  `ai:stream`; the approval recipe flattens `{ vendor, amount, risk,
-  justification, sourceMessageIds }`), and refuse empty threads with
-  `status: 'refused'` instead of throwing. With these the registry now
-  ships all six canonical Phase-4 recipes through `recipes/index.ts`.
-- **Queue view (pending AI tasks)** — new `models/recipe_run.go`
-  (`RecipeRun` with `id` / `aiEmployeeId` / `recipeId` / `channelId` /
-  `threadId` / `status` / `createdAt` / `completedAt` / `resultSummary`),
-  append-only `RecipeRuns` slice in `store/memory.go`
-  (`AppendRecipeRun` / `ListRecipeRuns(aiEmployeeId?)` /
-  `UpdateRecipeRun`), `services/recipe_runs.go`
-  (`RecipeRunService.List` / `Record` / `Complete`), and handlers at
-  `GET /api/ai-employees/{id}/queue` + `POST /api/ai-employees/{id}/queue`.
-  Frontend ships `src/api/recipeRunApi.ts` (`fetchQueue` / `recordRun`)
-  and `features/ai-employees/QueueView.tsx` — a compact KApp-style card
-  list showing recipe name, status badge, channel, timestamp, and
-  result summary, with a "No pending tasks" empty state. Mounted
-  inside `AIEmployeePanel` beneath the budget section.
-
-## Phase 3 — complete
-
-- **Audit log (immutable event log)** — `models/audit.go`
-  (`AuditEntry` + 9 event types: `task.created`, `task.updated`,
-  `task.closed`, `approval.submitted`, `approval.decisioned`,
-  `artifact.created`, `artifact.version_added`,
-  `artifact.status_changed`, `form.submitted`),
-  `Memory.AppendAuditEntry` / `ListAuditEntries`, an
-  `AuditService.Record` writer wired into every `KApps` mutation
-  via `WithAudit`, and `GET /api/audit` supporting `?objectId=` /
-  `?objectKind=` / `?channelId=` filters. The renderer's
-  `AuditLogPanel` (`features/kapps/AuditLogPanel.tsx`) renders the
-  per-object timeline.
-- **Human review gates (review before publish)** — `OutputReview`
-  (ARCHITECTURE.md module #12) is the formal human-confirmation
-  gate from PROPOSAL.md §4.3. It renders the AI-generated content
-  with source attribution, a privacy strip, and Accept / Edit /
-  Discard. `ArtifactWorkspace` now opens it before every
-  `draft → in_review` and `in_review → published` status PATCH so
-  no transition lands without explicit confirmation.
-- **Action Launcher integration** — every B2B path is wired
-  end-to-end via `frontend/src/features/chat/launcherDispatch.ts`:
-  Create > PRD/RFC/Proposal/Task, Analyze > Thread/Risks/Decisions
-  (reuses the thread summarizer with a focus hint), Plan >
-  Milestones/Sprint/Rollout (reuses the artifact draft pipeline
-  with a section hint), Approve > Vendor/Budget/Access (reuses
-  approval prefill). `ChatSurface.handleAIAction` returns true for
-  every wired path so the launcher suppresses its placeholder
-  toast.
-- **Workspace → Domain → Channel navigation** — backend exposes
-  `GET /api/workspaces/{id}/domains` and
-  `GET /api/domains/{id}/channels`; frontend's `B2BLayout` renders a
-  collapsible domain tree (auto-expanded on first mount), and
-  `workspaceStore` tracks `selectedDomainId` / `expandedDomainIds`.
-- **Thread linked objects** — `Card.ThreadID` plus
-  `GET /api/threads/{id}/linked-objects` powers the new
-  *Linked objects (n)* `<details>` rail in `ThreadPanel` (compact
-  KApp cards rendered inline).
-- **KApp card lifecycle** — `KAppCardRenderer` accepts `onAction`
-  (typed union for status / decide / open-source / view) plus a
-  `mode` prop (`full` | `compact`). `TaskCard` ships status
-  transitions and inline edit; `ApprovalCard` ships
-  approve/reject/comment with a confirmation pane and a
-  decision-log timeline; `ArtifactCard` ships `View` + version
-  history.
-- **Tasks KApp** — `POST /api/kapps/tasks`,
-  `GET /api/kapps/tasks?channelId=`, `PATCH /api/kapps/tasks/{id}`,
-  `PATCH /api/kapps/tasks/{id}/status`,
-  `DELETE /api/kapps/tasks/{id}`, and
-  `POST /api/kapps/approvals/{id}/decide` (immutable history /
-  decision log) are wired through a zustand `useKAppsStore`,
-  `TasksKApp` (filter by status, sort by due date, counts), and
-  `CreateTaskForm`.
-- **Approvals KApp — submit flow** — `POST /api/kapps/approvals`
-  + `CreateApprovalForm`; the `ApprovalPrefillCard` Accept button
-  and Action Launcher's `Approve > Vendor / Budget / Access` paths
-  both feed AI-prefilled fields into the new endpoint.
-- **Docs/Artifacts KApp** — full `POST/GET/PATCH /api/kapps/artifacts*`
-  CRUD plus `POST /api/kapps/artifacts/{id}/versions` and
-  `GET /api/kapps/artifacts/{id}/versions/{version}`. The new
-  `ArtifactWorkspace` (right-rail) renders the artifact body split
-  by section, source pins inline as footnote chips, version history
-  with line-by-line LCS diffs (`ArtifactDiffView`), and `Submit for
-  review` / `Publish` status transitions.
-- **Forms intake** — `Form` model + `POST/GET /api/kapps/forms` +
-  seeded `vendor_onboarding_v1` / `expense_report_v1` /
-  `access_request_v1` templates; new `FormCard` renderer (highlights
-  AI-prefilled fields) and a new `ai:prefill-form` IPC channel +
-  `runPrefillForm` task helper (on-device).
-- **Source pins** — `ArtifactSourcePin` flows from the streamed
-  `ArtifactDraftCard` `sources[]` into the artifact's first
-  version's `sourcePins`, then renders inline next to the
-  referenced section in `ArtifactWorkspace`.
-
-## Earlier — what's already in place
-
-- **Ollama HTTP adapter in TypeScript**
-  (`frontend/electron/inference/ollama.ts`) talking to a local daemon
-  at `http://localhost:11434` (configurable via `OLLAMA_BASE_URL`); the
-  Electron main process pings on startup and falls back to the
-  `MockAdapter` when the daemon is unreachable so `npm run electron:dev`
-  always works.
-- **Inference router** (`frontend/electron/inference/router.ts`)
-  implementing PROPOSAL.md §2's scheduler rule: short / private /
-  latency-sensitive tasks (`summarize`, `translate`, `extract_tasks`,
-  `smart_reply`) route to the on-device tier; reasoning-heavy tasks (`draft_artifact`,
-  `prefill_approval`) also route on-device (a single 8B model handles both when no server
-  adapter is available. The router exposes its decision (model, tier,
-  reason) over IPC so the privacy strip can show *why* a model was
-  chosen.
-- **IPC streaming** on the `ai:stream` channel — the main process pumps
-  per-chunk `ai:stream:chunk` events back to the renderer, where
-  `frontend/src/api/streamAI.ts` translates them into the same
-  `onDelta` / `onDone` callback shape the SSE client used to expose,
-  with an `AbortController` for cancellation.
-- **Live model status panel** (`DeviceCapabilityPanel`,
-  ARCHITECTURE.md module #10): polls `window.electronAI.modelStatus()`
-  every 10 s and surfaces model name, loaded/unloaded badge, quant
-  level, model RAM usage, sidecar state, plus device RAM and WebGPU
-  support; Load / Unload buttons hit `model:load` / `model:unload`
-  IPC channels.
-- **B2C "Catch me up" digest** end-to-end: the renderer fetches B2C
-  message data from `GET /api/chats?context=b2c` and `GET
-  /api/chats/{id}/messages`, then calls `window.electronAI.unreadSummary`
-  (or streams via `window.electronAI.stream` with `taskType:
-  summarize`). The Go side stays data-only.
-- **B2C smart reply, inline translation, task extraction** — same
-  pattern: the renderer pulls message context from the Go data API
-  and forwards it to `window.electronAI.smartReply`,
-  `window.electronAI.translate`, `window.electronAI.extractTasks`.
-  on-device routing, on-device / 0-byte egress privacy strip on every output.
-- **B2B thread summarization + task extraction** — the renderer pulls
-  thread messages from `GET /api/threads/{threadId}/messages` and
-  forwards them to `window.electronAI.summarizeThread` /
-  `window.electronAI.extractKAppTasks`.
-- **B2B Approval prefill** — `window.electronAI.prefillApproval` runs a
-  single on-device inference over the thread, parses the result into
-  `{ vendor, amount, risk, justification }`, attaches the source
-  message ids it found supporting evidence in, and the renderer
-  shows them in `ApprovalPrefillCard` with editable fields, a
-  missing-info hint, and a privacy strip with per-source provenance.
-- **B2B Draft artifact section** — `window.electronAI.draftArtifact`
-  returns the prompt + sources for a PRD / RFC / Proposal / SOP / QBR
-  (optionally scoped to `goal | requirements | risks`); the renderer
-  streams the body via `ai:stream` exactly once, exactly like the
-  thread summary flow, into `ArtifactDraftCard`.
-
-## Phase 2 — complete
-
-- **AI task-created pills** — `TaskCreatedPill` renders an inline AI
-  badge below the originating message after the user accepts items
-  from a `TaskExtractionCard` ("2 tasks created from …"). Keeps the
-  conversation surface compact rather than letting accepted-task
-  cards balloon vertically.
-- **"Why suggested" expandable explanations** — `PrivacyStrip`'s `Why`
-  row now toggles open into a `whyDetails[]` list with per-signal
-  source links, fully accessible (`aria-expanded`, keyboardable
-  toggle).
-- **Morning digest panel** — `MorningDigestPanel` mounted in the B2C
-  right rail. One button generates an on-device catch-up across all
-  seeded B2C chats and renders chats / messages / egress / compute
-  metrics next to the streamed digest body.
-- **Family checklist** — `FamilyChecklistCard` reads the active family
-  chat and asks the on-device router for a concrete prep list (with an
-  optional event focus like "Soccer practice tomorrow"). Each item
-  back-links to the chat message that produced it; the privacy strip
-  shows on-device routing and 0 B egress.
-- **Shopping list with nudges** — `ShoppingNudgesPanel` owns a small
-  local shopping list. The "Suggest from chat" button asks the model
-  for additions grounded in the conversation ("Add sunscreen because
-  field trip is tomorrow"); the existing list is forwarded as a
-  dedup hint and never leaves the device.
-- **Community event / RSVP cards** — `EventRSVPCard` lifts events out
-  of community chats with title / when / location / RSVP-by metadata
-  and lets the user mark Yes / Maybe / No locally.
-- **AI Memory page** — `features/memory/AIMemoryPage` renders the
-  user's local-only memory index (people, preferences, routines,
-  free-form notes), with add / edit / remove. Backed by a tiny
-  IndexedDB-or-in-memory store (`memoryStore.ts`); the AI never
-  auto-writes — every entry passes through a confirmation step.
-- **Tabbed B2C right rail** — `B2CLayout` now switches between Digest /
-  Family / Shopping / Events / Trip / Memory / Stats in the right rail
-  so the second-brain surfaces share one column without overflowing.
-- **AI Skills Framework** — `electron/inference/skill-framework.ts`
-  defines a declarative `SkillDefinition` contract (meta prompt, steps,
-  tools, guardrails, response template, preferred tier) plus a
-  `runSkill(router, def, ctx)` executor that injects user context, runs
-  pre-/post-inference guardrails, parses the model output, and detects
-  the `INSUFFICIENT: <reason>` refusal pattern that all skills share.
-  Existing `tasks.ts` / `secondBrain.ts` parsers honour the same
-  refusal contract.
-- **Trip planner** — `TripPlannerCard` mounted as the right-rail "Trip"
-  tab. Reads AI Memory (`location`, `member`, `community-detail`)
-  for the family/community context, calls the new `MockSearchService`
-  for weather / events / attractions at the destination, and asks the
-  on-device router for a day-by-day itinerary. Every item is back-
-  linked to its source (search tool or memory fact); the privacy
-  strip shows routing + 0 B egress for inference.
-- **Guardrail rewrite card** — `Composer` now calls
-  `window.electronAI.guardrailCheck` before sending. The
-  `runGuardrailRewrite` skill combines a deterministic PII regex with
-  the on-device SLM's tone / claim review and surfaces a
-  `GuardrailRewriteCard` inline with the original, suggested rewrite,
-  category-tagged findings, and Accept / Keep original / Edit actions.
-- **Metrics dashboard** — `MetricsDashboard` mounted as the right-rail
-  "Stats" tab. Reads from the new in-memory `activityLog` module which
-  records `{ skillId, model, tier, itemsProduced, egressBytes,
-  latencyMs }` for every successful AI call across smart reply,
-  translate, extract-tasks, summary, family checklist, shopping
-  nudges, RSVP, trip plan, and guardrail review. Renders runs / items
-  / egress / time-saved cards plus a per-run drilldown — confirming
-  that "all AI ran on-device" with 0 bytes egressed.
-
-## Performance optimizations
-
-Three round-trip-saving optimizations ship with the AI surface area:
-
-- **Batch translation** — `MessageList` collects every translatable
-  message in the active chat and dispatches a single
-  `ai:translate-batch` IPC call (one prompt, N responses) instead of
-  fanning out one IPC per bubble. While the batch is in flight a
-  `null` sentinel is seeded into the react-query cache for each
-  pending key so the per-message hook does not also fire its own
-  request; on success each `TranslateResponse` is written into the
-  cache under `translateQueryKey(messageId, targetLanguage)`. See
-  `frontend/src/features/chat/MessageList.tsx`,
-  `frontend/src/api/aiApi.ts` (`fetchTranslateBatch`), and the
-  Electron-side handler that fans the batch out to the on-device
-  router.
-- **Auto-run morning digest with react-query caching** —
-  `MorningDigestPanel` auto-runs the digest on mount via a
-  `startedRef`-guarded `useEffect` (so React StrictMode's
-  double-invoke does not trigger two runs) and caches the completed
-  digest under `DIGEST_CACHE_KEY` in react-query, so revisits to the
-  Digest tab read from cache instead of re-streaming.
-- **Smart-reply IPC guard with retry window** — `aiApi.ts` exposes
-  `waitForElectronAI(timeoutMs = 400)`, which polls
-  `getElectronAI()` for up to 400 ms before giving up. `fetchSmartReply`
-  (and the batch-translate path) await this guard instead of calling
-  `getElectronAI()` synchronously, closing the preload race window
-  where the renderer mounted before `window.electronAI` was attached.
-
-## What's deferred to later phases
-
-The architecture documents still reference a handful of components
-that have not yet shipped in the demo:
-
-- **PostgreSQL** — production persistence layer (the demo currently
-  uses an in-memory store).
+- **PostgreSQL** — production persistence layer.
 - **NATS JetStream** — durable async messaging fabric.
 - **MinIO / S3** — object storage for artifacts and binary blobs.
 - **Meilisearch** — full-text search index.
-- **llama.cpp / llama-server native adapter** — second on-device model
-  runtime (`LlamaCppAdapter` is currently a stub that throws
-  `not yet implemented`).
+- **`LlamaCppAdapter`** — second on-device runtime (currently a stub
+  that throws `not yet implemented`).
 - **Unsloth Studio** — fine-tuning workflow.
 
-Connectors, the knowledge graph, and AI Employees / recipes have
-**all shipped** in Phases 4–5 and are no longer deferred. See
-[PHASES.md](./PHASES.md) for the full plan and
-[PROGRESS.md](./PROGRESS.md) for the current per-task tracker.
+## Links
+
+- [PROPOSAL.md](./PROPOSAL.md) — product thesis and "one shell, two
+  contexts" design.
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — Electron renderer, main-
+  process inference, Go data API, AI policy engine, KApps object
+  model.
+- [PHASES.md](./PHASES.md) — seven-phase delivery plan.
+- [PROGRESS.md](./PROGRESS.md) — per-phase tracker and changelog.
+- [docs/cpu-perf-tuning.md](./docs/cpu-perf-tuning.md) — CPU-only
+  tuning guide and per-arch quant choice.

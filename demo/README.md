@@ -11,56 +11,15 @@ the enriched seed data (`backend/internal/store/seed.go`).
 - [On-device LLM — measured performance](#on-device-llm-performance)
 - [How to reproduce each screenshot](#how-to-reproduce)
 
-> **Note on coverage.** Most screenshots are captured from the Vite
-> renderer served at `http://localhost:5173/` (the same React app the
-> Electron shell loads). The 2026-04-30 pass also re-captured a set of
-> shots against the **real** Bonsai-8B weights pulled through
-> `./scripts/setup-models.sh` (→ `hf.co/prism-ml/Bonsai-8B-gguf`
-> → Ollama → the Electron shell's `OllamaAdapter`) — those shots show
-> the `bonsai-8b · idle` chip in the top-right header instead
-> of the mock badge, and pending in-flight LLM calls render the
-> `Translating on-device…` and `Drafting on-device replies…` markers
-> visible in several frames. A subset of screens require a fully
-> streamed AI result whose wall-time does not fit a single capture
-> window — those entries remain marked **(pending)** below. The
-> accompanying demo flow is still reproducible by hand using the
-> **How to reproduce** instructions. Live `Bonsai-8B-Q1_0`
-> benchmark numbers for this VM class (AMD EPYC 7763, 8 vCPU,
-> 31 GiB RAM, CPU-only) are in
-> [On-device LLM performance](#on-device-llm-performance) below; see
+> **Note on coverage.** Captured 2026-04-30 via Playwright over the
+> Electron CDP endpoint (`http://localhost:9222`) against the live
+> Vite + Go backend stack with Bonsai-8B-Q1_0 served through Ollama.
+> Some streaming surfaces (morning digest, smart-reply chips,
+> shopping nudges) show the in-progress streaming marker because
+> Q1_0 on a CPU-only VM runs well below interactive latency — the
+> chrome, privacy strip, and action buttons are still accurate. See
 > [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
-> host-class expectations and the per-arch (x86 vs ARM) quant choice.
->
-> **2026-04-30 full capture pass.** All 27 screenshots were
-> refreshed against the live Vite + Go backend stack using
-> Playwright attached to the Electron shell via CDP
-> (`http://localhost:9222`). The full inventory is now present in
-> this directory:
->
-> - Standalone: `local-model-status`, `privacy-strip-on-device`,
->   `egress-summary-zero`.
-> - B2C (`demo/b2c/01`–`12`, plus the earlier
->   `13-vi-en-translation-auto` kept as-is): morning catch-up
->   banner + digest, family task extraction + cards, smart reply,
->   translation caption, shopping nudges, event RSVP, privacy-strip
->   detail close-up, DeviceCapabilityPanel, AIMemoryPage, and
->   MetricsDashboard.
-> - B2B (`demo/b2b/01`–`12`): workspace navigation, thread summary,
->   action launcher (right-rail action buttons on
->   `vendor-management`), approval prefill, pending approval card,
->   artifact draft (`Inline translation PRD`), artifact workspace,
->   AIEmployeePanel, recipe output gate, connector panel,
->   knowledge graph, and policy admin.
->
-> Several B2C flows that require *completed* streamed AI output
-> (morning-digest text, smart-reply chips, shopping nudges list
-> items, task cards) were captured from the pre-streaming state of
-> the surface — the UI chrome, privacy strip, and action buttons
-> are visible and accurate, but the in-progress streaming indicator
-> may still be present in some frames because Bonsai-8B Q1_0 on a
-> CPU-only VM runs well below interactive latency. The
-> accompanying demo flow is still fully reproducible by hand using
-> the **How to reproduce** instructions below.
+> per-host-class quant matrix and tok/s expectations.
 
 ## B2C flows
 
@@ -250,41 +209,12 @@ footprint, with no host-class change.
      npm run electron:dev
    ```
 
-   llama-server flag notes (see [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md)
-   for the full matrix):
-
-   - `-c 1024`: limits attention cost per token; use `-c 512` for even
-     faster classification / routing tasks.
-   - `-t 6 -tb 6`: 6 threads peaked on the reference 8 vCPU EPYC box
-     (see the thread sweep in `docs/cpu-perf-tuning.md`); always
-     re-run the sweep on your host before pinning `-t`.
-   - `--mlock`: prevents the OS from paging model weights to swap.
-   - `--no-mmap`: avoids slow page faults on VMs with slow virtual
-     disk; test both with and without on your host.
-
-   Wall-time for fully-streamed AI results depends heavily on host
-   class — see [On-device LLM performance](#on-device-llm-performance)
-   for measured numbers on the VM that ships with the demo, and
+   The `llama-server` flags above are the demo defaults; see
    [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
-   full host-class matrix. Benchmark your box before blaming the
-   model:
-
-   ```bash
-   for t in 1 2 4 6 8; do
-     ./build/bin/llama-bench \
-       -m /path/to/Bonsai-8B-Q1_0.gguf \
-       -p 64 -n 32 -t $t -r 2
-   done
-   ```
-
-   See [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
-   full tuning checklist (CPU feature probing, thread-count sweeps,
-   KV-cache quant, swap monitoring, recommended fallback models).
-   **Decision threshold**: if generation stays under 5 tok/s on Q1_0
-   after tuning, drop to `Bonsai-4B-Q1_0` (~20 tok/s on 8 vCPU
-   EPYC) or move to GPU / Metal / NPU. On ARM / Apple Silicon, the
-   `Ternary-Bonsai-8B-Q2_0.gguf` file is the faster path — set
-   `MODEL_QUANT=q2_0` and update the Modelfile accordingly.
+   full host-class matrix, the thread-count sweep methodology, the
+   decision threshold for falling back to `Bonsai-4B-Q1_0` or a GPU
+   path, and the per-arch quant choice (Q1_0 on x86, Q2_0 on ARM via
+   `MODEL_QUANT=q2_0`).
 
 ### B2C flow (screenshots 1-12)
 
