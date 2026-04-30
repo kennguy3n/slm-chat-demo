@@ -22,6 +22,13 @@ FROM hf.co/prism-ml/Ternary-Bonsai-8B-gguf
 
 PARAMETER temperature 0.7
 PARAMETER top_p 0.9
-PARAMETER num_ctx 8192
+# num_ctx: attention cost scales with context window, so a larger
+# window slows every token on CPU-only hosts. 2048 covers most KChat
+# task prompts (256–1024 input, 32–256 output) while keeping CPU-only
+# inference tractable on the 8GB shared VM the demo targets. Raise to
+# 4096 or 8192 only when running on GPU / Metal / NPU where KV-cache
+# bandwidth is cheap. See docs/cpu-perf-tuning.md for the full
+# context / thread / mlock / no-mmap tuning matrix.
+PARAMETER num_ctx 2048
 
 SYSTEM """You are a helpful AI assistant inside KChat. You run on-device for privacy. Keep responses concise and actionable."""

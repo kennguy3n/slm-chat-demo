@@ -54,3 +54,35 @@ export MODEL_NAME=my-custom-bonsai
 MODEL_NAME=my-custom-bonsai ./scripts/setup-models.sh
 cd frontend && npm run electron:dev
 ```
+
+## CPU performance
+
+The ternary `Ternary-Bonsai-8B-Q2_0` quant used by the demo runs at
+**~0.3 tok/s on shared 8-core CPU VMs** — below the product threshold
+for every streaming AI surface (see
+[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
+per-surface thresholds and the full tuning checklist). The Modelfile
+in this directory now defaults to `num_ctx 2048` so that CPU-only
+hosts don't pay the 8K-context attention cost per token.
+
+For CPU-only deployments, prefer a smaller model. Good candidates
+(see [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
+full list including small-QAT alternatives):
+
+- **Qwen3 0.6B Q4_K_M** — router / classifier.
+- **Qwen2.5 1.5B Q4_K_M** — default CPU chat / summarisation.
+
+The `MODEL_NAME` and `MODEL_QUANT` env vars (consumed by
+`frontend/electron/inference/bootstrap.ts`) let you switch models
+without code changes:
+
+```bash
+MODEL_NAME=qwen2.5-1.5b MODEL_QUANT=q4_k_m npm run electron:dev
+```
+
+Reserve the 8B model for hosts with GPU, Apple Silicon (Metal), or an
+NPU — it is not a reasonable default on CPU-only boxes. See
+[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the full
+diagnostic checklist (CPU feature probing, thread-count sweeps,
+context reduction, `--mlock` / `--no-mmap`, swap monitoring, KV-cache
+quantisation, expected token rates, and minimum usable thresholds).

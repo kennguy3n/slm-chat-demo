@@ -50,6 +50,13 @@ export interface BootstrapOptions {
 
 const DefaultModel = 'ternary-bonsai-8b';
 const DefaultServerModel = 'confidential-large';
+// The demo ships the Ternary-Bonsai-8B-Q2_0 GGUF (PrismML ternary
+// quant). Callers can override via the MODEL_QUANT env var when
+// running a different quantisation — e.g. MODEL_QUANT=q4_k_m for the
+// mainline llama.cpp Q4_K_M build. The value is surfaced verbatim by
+// the DeviceCapabilityPanel so it should match what llama.cpp /
+// Ollama actually loaded.
+const DefaultQuant = 'q2_0';
 
 export async function bootstrapInference(
   optsOrFetch?: BootstrapOptions | typeof fetch,
@@ -59,6 +66,7 @@ export async function bootstrapInference(
   const { fetchImpl, pingServer } = opts;
   const baseURL = process.env.OLLAMA_BASE_URL || DefaultOllamaBaseURL;
   const modelName = process.env.MODEL_NAME || DefaultModel;
+  const modelQuant = process.env.MODEL_QUANT || DefaultQuant;
   const serverURL =
     process.env.CONFIDENTIAL_SERVER_URL || DefaultConfidentialServerURL;
   const serverModel =
@@ -149,7 +157,7 @@ export async function bootstrapInference(
     status,
     loader,
     defaultModel: modelName,
-    defaultQuant: 'q4_k_m',
+    defaultQuant: modelQuant,
     source,
     hasServer,
     defaultServerModel: serverModel,
