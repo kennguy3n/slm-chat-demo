@@ -72,9 +72,9 @@ function fakeOk(destination = 'Tokyo'): TripPlannerExecution {
       rawOutput: 'raw',
       privacy: {
         computeLocation: 'on_device',
-        modelName: 'bonsai-8b',
+        modelName: 'bonsai-1.7b',
         tier: 'local',
-        reason: 'Routed trip planner to on-device Bonsai-8B for itinerary.',
+        reason: 'Routed trip planner to on-device Bonsai-1.7B for itinerary.',
         dataEgressBytes: 0,
         sources: [{ kind: 'tool', id: 'mock-events', label: 'events' }],
       },

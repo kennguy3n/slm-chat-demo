@@ -65,8 +65,29 @@ export function MorningDigestPanel(_props: Props = {}) {
   );
   const [err, setErr] = useState<string | null>(null);
   const startedRef = useRef<string | null>(null);
+  // Latest in-flight run id. Each call to `run()` generates a new id;
+  // any callback that fires from an older run becomes a no-op so a
+  // channel switch (or a refresh while an earlier stream is still
+  // pumping tokens) cannot bleed the previous run's summary into the
+  // new conversation. The matching AbortController is also tracked so
+  // we can cancel the previous run instead of leaving its IPC stream
+  // running unread in the background.
+  const runIdRef = useRef(0);
+  const inFlightRef = useRef<{ id: number; controller: AbortController | null } | null>(null);
 
   function run() {
+    // Cancel any stale in-flight stream before kicking a new one.
+    if (inFlightRef.current?.controller) {
+      try {
+        inFlightRef.current.controller.abort();
+      } catch {
+        // ignore — controller may already be settled
+      }
+    }
+    runIdRef.current += 1;
+    const myRunId = runIdRef.current;
+    inFlightRef.current = { id: myRunId, controller: null };
+
     setErr(null);
     setDigest(null);
     setStreamingText('');
@@ -83,17 +104,20 @@ export function MorningDigestPanel(_props: Props = {}) {
         : fetchUnreadSummary();
     void fetcher
       .then((raw) => {
+        if (runIdRef.current !== myRunId) return;
         const d: UnreadSummaryResponse = { ...raw, sources: raw.sources ?? [] };
         digestSnapshot = d;
         setDigest(d);
-        streamAITask(
+        const controller = streamAITask(
           { taskType: 'summarize', prompt: d.prompt },
           {
             onChunk: (delta) => {
+              if (runIdRef.current !== myRunId) return;
               collected += delta;
               setStreamingText((t) => t + delta);
             },
             onDone: () => {
+              if (runIdRef.current !== myRunId) return;
               setIsStreaming(false);
               const now = new Date();
               setGeneratedAt(now);
@@ -104,17 +128,34 @@ export function MorningDigestPanel(_props: Props = {}) {
                   generatedAt: now.toISOString(),
                 });
               }
+              if (inFlightRef.current?.id === myRunId) inFlightRef.current = null;
             },
             onError: (e) => {
+              if (runIdRef.current !== myRunId) return;
               setErr(e.message);
               setIsStreaming(false);
+              if (inFlightRef.current?.id === myRunId) inFlightRef.current = null;
             },
           },
         );
+        if (inFlightRef.current?.id === myRunId) {
+          inFlightRef.current.controller = controller;
+        } else {
+          // A newer run started between the fetcher resolving and the
+          // streamAITask returning — abort this stream immediately so
+          // it does not leak.
+          try {
+            controller.abort();
+          } catch {
+            // ignore
+          }
+        }
       })
       .catch((e: Error) => {
+        if (runIdRef.current !== myRunId) return;
         setErr(e.message);
         setIsStreaming(false);
+        if (inFlightRef.current?.id === myRunId) inFlightRef.current = null;
       });
   }
 
@@ -128,14 +169,42 @@ export function MorningDigestPanel(_props: Props = {}) {
     startedRef.current = key;
     const existing = queryClient.getQueryData<DigestCache>(cacheKey);
     if (existing) {
+      // Switching to a channel with cached output — bump the run id
+      // so any tokens still arriving from a previous run are dropped.
+      runIdRef.current += 1;
+      if (inFlightRef.current?.controller) {
+        try {
+          inFlightRef.current.controller.abort();
+        } catch {
+          // ignore
+        }
+      }
+      inFlightRef.current = null;
       setDigest(existing.digest);
       setStreamingText(existing.streamingText);
       setGeneratedAt(new Date(existing.generatedAt));
+      setIsStreaming(false);
       return;
     }
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel?.id]);
+
+  // On unmount, abort any in-flight stream so its IPC chunks don't
+  // outlive the component.
+  useEffect(() => {
+    return () => {
+      runIdRef.current += 1;
+      if (inFlightRef.current?.controller) {
+        try {
+          inFlightRef.current.controller.abort();
+        } catch {
+          // ignore
+        }
+      }
+      inFlightRef.current = null;
+    };
+  }, []);
 
   const sources = digest?.sources ?? [];
   const chatsCount = new Set(sources.map((s) => s.channelId)).size;
@@ -202,7 +271,7 @@ export function MorningDigestPanel(_props: Props = {}) {
             digest={
               digest ?? {
                 prompt: '',
-                model: 'bonsai-8b',
+                model: 'bonsai-1.7b',
                 sources: [],
                 computeLocation: 'on_device',
                 dataEgressBytes: 0,

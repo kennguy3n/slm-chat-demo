@@ -1,0 +1,37 @@
+# Ollama Modelfile for Bonsai-1.7B — the on-device model used by the
+# KChat SLM demo when running against Ollama. The bootstrap also
+# supports the PrismML llama.cpp `llama-server` as the primary
+# on-device runtime; this Modelfile is for the Ollama fallback path.
+#
+# Source: https://huggingface.co/prism-ml/Bonsai-1.7B-gguf
+#
+# A single GGUF artifact ships in this repo: `Bonsai-1.7B.gguf`. The
+# 1.7B model is small enough that quant-specific x86 vs ARM kernel
+# selection is no longer the dominant performance lever — both archs
+# run it interactively on commodity CPUs.
+#
+# Usage:
+#   ./scripts/setup-models.sh
+# or, manually:
+#   curl -L -o models/Bonsai-1.7B.gguf \
+#     https://huggingface.co/prism-ml/Bonsai-1.7B-gguf/resolve/main/Bonsai-1.7B.gguf
+#   ollama create bonsai-1.7b -f models/Modelfile.bonsai1_7b
+#
+# Note: the demo's primary on-device path is `llama-server` from the
+# PrismML llama.cpp fork (kennguy3n/llama.cpp branch `prism`). The
+# bootstrap probes `LLAMACPP_BASE_URL` first and falls back to Ollama
+# only when llama-server is not reachable. See README.md.
+
+FROM ./Bonsai-1.7B.gguf
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+# num_ctx: Bonsai-1.7B has a smaller effective context than the 8B
+# sibling and CPU-only inference on this size benefits from a tight
+# window. 1024 covers every prompt the demo emits (the redesigned
+# task prompts in `frontend/electron/inference/tasks.ts` and
+# `secondBrain.ts` cap their inputs to ~120-char snippets and ~15
+# messages so the full prompt + completion stays well under 1024).
+PARAMETER num_ctx 1024
+
+SYSTEM """You run on-device inside KChat for privacy. Be concise. Follow the requested output format exactly. Never invent facts. If you cannot complete the task, reply: INSUFFICIENT: <reason>"""

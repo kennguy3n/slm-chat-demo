@@ -1,7 +1,7 @@
 // Phase 6 §4.3b — Android native local-inference path.
 //
 // The KChat SLM demo currently ships as an Electron desktop app, but
-// the proposal calls for an Android port that runs Bonsai-8B
+// the proposal calls for an Android port that runs Bonsai-1.7B
 // on-device through Google's AICore / ML Kit GenAI runtime. This
 // module is the architecture stub for that future port: it defines the
 // `AICoreBridge` interface a React Native (or fully native) Android

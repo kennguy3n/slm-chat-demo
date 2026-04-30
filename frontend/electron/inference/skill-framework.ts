@@ -1,6 +1,6 @@
 // AI Skills Framework — the structured contract every skill in the
 // Electron main-process inference layer follows. SLMs
-// (Bonsai-8B) have limited world knowledge and a non-trivial
+// (Bonsai-1.7B) have limited world knowledge and a non-trivial
 // hallucination rate,
 // so every skill is built around four load-bearing rules:
 //
@@ -204,11 +204,9 @@ export function __resetSkillsForTesting(): void {
 // ---------- prompt building ----------
 
 // SLM-required hard rule. Every skill prompt prepends this so the model
-// has explicit permission to refuse rather than fabricate.
-export const INSUFFICIENT_RULE =
-  "If you do not have enough information or are not confident in your answer, " +
-  "respond ONLY with 'INSUFFICIENT: <reason>' and do not attempt to guess or " +
-  'fabricate information.';
+// has explicit permission to refuse rather than fabricate. Phase 7
+// shortened this for the smaller Bonsai-1.7B context window.
+export const INSUFFICIENT_RULE = 'If unsure, reply ONLY: INSUFFICIENT: <reason>';
 
 const USER_CONTEXT_PLACEHOLDER = '[USER_CONTEXT_SLOT]';
 const INPUT_PLACEHOLDER = '[INPUT_SLOT]';
@@ -447,7 +445,7 @@ export async function runSkill<I, O>(
     confidence: parsed.confidence ?? 1,
     privacy: {
       computeLocation: 'on_device',
-      modelName: model || 'bonsai-8b',
+      modelName: model || 'bonsai-1.7b',
       tier,
       reason: routeReason || `Routed ${def.id} to ${tier.toUpperCase()}.`,
       dataEgressBytes: 0,

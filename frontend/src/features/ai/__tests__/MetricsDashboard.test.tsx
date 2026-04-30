@@ -13,7 +13,7 @@ const sample: ActivityEntry[] = [
     id: 'a1',
     timestamp: '2026-04-28T10:00:00.000Z',
     skillId: 'family-checklist',
-    model: 'bonsai-8b',
+    model: 'bonsai-1.7b',
     tier: 'local',
     itemsProduced: 3,
     egressBytes: 0,
@@ -23,7 +23,7 @@ const sample: ActivityEntry[] = [
     id: 'a2',
     timestamp: '2026-04-28T10:05:00.000Z',
     skillId: 'trip-planner',
-    model: 'bonsai-8b-alt',
+    model: 'bonsai-1.7b-alt',
     tier: 'local',
     itemsProduced: 4,
     egressBytes: 0,
@@ -38,8 +38,8 @@ describe('MetricsDashboard', () => {
     expect(screen.getByTestId('metrics-items')).toHaveTextContent('7');
     expect(screen.getByTestId('metrics-egress')).toHaveTextContent('0 B');
     expect(screen.getByTestId('metrics-time-saved')).toHaveTextContent('3m 30s');
-    expect(screen.getByTestId('metrics-models')).toHaveTextContent('bonsai-8b');
-    expect(screen.getByTestId('metrics-models')).toHaveTextContent('bonsai-8b-alt');
+    expect(screen.getByTestId('metrics-models')).toHaveTextContent('bonsai-1.7b');
+    expect(screen.getByTestId('metrics-models')).toHaveTextContent('bonsai-1.7b-alt');
     expect(screen.getByTestId('metrics-assurance')).toHaveTextContent('All AI ran on-device');
   });
 
@@ -49,7 +49,7 @@ describe('MetricsDashboard', () => {
     act(() => {
       logActivity({
         skillId: 'family-checklist',
-        model: 'bonsai-8b',
+        model: 'bonsai-1.7b',
         tier: 'local',
         itemsProduced: 2,
         egressBytes: 0,

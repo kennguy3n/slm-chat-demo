@@ -252,7 +252,7 @@ func TestWorkspacesAndChannels(t *testing.T) {
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	// 4 = general, engineering, vendor-management, product-launch
-	// (the last added during the B2B real-LLM redesign so Bonsai-8B
+	// (the last added during the B2B real-LLM redesign so Bonsai-1.7B
 	// has a multi-topic thread to summarise).
 	if len(body.Channels) != 4 {
 		t.Errorf("expected 4 acme channels, got %d", len(body.Channels))

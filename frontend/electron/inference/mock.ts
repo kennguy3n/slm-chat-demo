@@ -19,7 +19,7 @@ import type {
 export class MockAdapter implements Adapter {
   model: string;
 
-  constructor(model = 'bonsai-8b') {
+  constructor(model = 'bonsai-1.7b') {
     this.model = model;
   }
 
@@ -79,7 +79,7 @@ function mockOutputFor(req: InferenceRequest): string {
       }
       return [
         '- [MOCK] Decision: routing summary placeholder produced by MockAdapter.',
-        '- [MOCK] Open question: real Bonsai-8B output replaces this when Ollama is reachable.',
+        '- [MOCK] Open question: real Bonsai-1.7B output replaces this when llama-server or Ollama is reachable.',
         '- [MOCK] Owner: alice (placeholder).',
         '- [MOCK] Deadline: this week (placeholder).',
       ].join('\n');
@@ -101,7 +101,7 @@ function mockOutputFor(req: InferenceRequest): string {
       ].join('\n');
     case 'prefill_approval':
       // Generic placeholder fields — no references to seed data
-      // anymore. Real Bonsai-8B fills these from whatever thread the
+      // anymore. Real Bonsai-1.7B fills these from whatever thread the
       // caller passes through.
       return [
         '[MOCK] vendor: <vendor name from thread>',
@@ -120,7 +120,7 @@ function mockOutputFor(req: InferenceRequest): string {
         '# [MOCK] artifact draft',
         '',
         '## Goal',
-        '[MOCK] Real Bonsai-8B output replaces this body when Ollama is reachable.',
+        '[MOCK] Real Bonsai-1.7B output replaces this body when llama-server or Ollama is reachable.',
         '',
         '## Requirements',
         '- [MOCK] requirement 1',

@@ -29,9 +29,10 @@ Electron App
 │   ├── Ollama Adapter / Mock Adapter
 │   ├── Model lifecycle (load / unload / status)
 │   └── Privacy / policy engine
-│       ↓ (HTTP to local daemon)
-└── Ollama / llama.cpp (local sidecar)
-    └── Bonsai-8B-Q1_0 GGUF (hf.co/prism-ml/Bonsai-8B-gguf)
+│       ↓ (HTTP to local sidecar)
+├── llama-server (PrismML llama.cpp fork, default :8080) — preferred
+└── Ollama daemon            (default :11434, fallback)
+    └── Bonsai-1.7B GGUF (hf.co/prism-ml/Bonsai-1.7B-gguf)
 
 Go Data API (optional, localhost:8080)
 ├── Chat / thread / message data
@@ -155,7 +156,7 @@ frontend/
 │       ├── adapter.ts                (Adapter / Loader / StatusProvider interfaces)
 │       ├── mock.ts                   (MockAdapter; canned outputs per TaskType)
 │       ├── ollama.ts                 (HTTP client for the local daemon, NDJSON streaming)
-│       ├── llamacpp.ts               (LlamaCppAdapter stub; throws "not yet implemented")
+│       ├── llamacpp.ts               (LlamaCppAdapter — talks to PrismML llama-server via SSE /completion)
 │       ├── router.ts                 (PROPOSAL.md §2 scheduler — local / server)
 │       ├── tasks.ts                  (smart-reply / translate / extract-tasks helpers)
 │       ├── secondBrain.ts            (Phase 2: family checklist, shopping nudges, RSVP extraction)
@@ -637,7 +638,7 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:translate`         | `translate(req)`                          | `runTranslate` (`taskType: translate`) |
 | `ai:translate-batch`   | `translateBatch(req)`                     | `runTranslateBatch` in `tasks.ts` — batch-translates N messages in a single prompt; returns one `TranslateResponse` per input item. Used by `MessageList` to prefetch all visible bubbles in one IPC round-trip instead of fanning out N per-bubble calls. |
 | `ai:extract-tasks`     | `extractTasks(req)`                       | `runExtractTasks` (`taskType: extract_tasks`) |
-| `ai:summarize-thread`  | `summarizeThread(req)`                    | `buildThreadSummary` (on-device Bonsai-8B) |
+| `ai:summarize-thread`  | `summarizeThread(req)`                    | `buildThreadSummary` (on-device Bonsai-1.7B) |
 | `ai:unread-summary`    | `unreadSummary(req)`                      | `buildUnreadSummary` (`taskType: summarize`) |
 | `ai:kapps-extract`     | `extractKAppTasks(req)`                   | `runKAppsExtractTasks` (B2B thread → tasks with provenance) |
 | `ai:prefill-approval`  | `prefillApproval(req)`                    | `runPrefillApproval` (B2B thread → vendor / amount / risk / justification fields) |
@@ -649,7 +650,7 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:trip-plan`         | `tripPlan(req)`                           | `runTripPlanner` in `skills/trip-planner.ts` — pulls weather / events / attractions from `MockSearchService`, reads `location` / `member` / `community-detail` AI Memory facts, and returns a structured day-by-day itinerary with per-item source attribution (on-device). |
 | `ai:guardrail-check`   | `guardrailCheck(req)`                     | `runGuardrailRewrite` in `skills/guardrail-rewrite.ts` — combines a deterministic PII regex pre-pass with an SLM tone / unverified-claim review and returns `{ safe, findings, rewrite?, rationale }` (on-device). |
 | `ai:recipe:run`        | `recipeRun(req)` (Phase 4)                | `runRecipe` in `electron/ipc-handlers.ts` — generic AI-Employee recipe dispatcher. Takes `{ recipeId, aiEmployeeId, channelId, threadId?, messages, allowedRecipes? }`, looks the recipe up in `RECIPE_REGISTRY` (`electron/inference/recipes/`), refuses when the AI Employee is not authorised for the recipe, and returns a uniform `RecipeResult` (`status: 'ok' | 'refused'`, `output`, `model`, `tier`, `reason`). Canonical recipes registered today (six, self-registered through `recipes/index.ts`): `summarize`, `extract_tasks`, `draft_prd`, `draft_proposal`, `create_qbr`, `prefill_approval`. |
-| `ai:extract-knowledge` | `extractKnowledge(req)` (Phase 7)         | `runExtractKnowledge` in `skills/extract-knowledge.ts` — calls the router with `taskType: extract_tasks`, parses Bonsai-8B output (`<kind> \| <description> \| <actor> \| <due>` rows), and projects each row onto the existing `KnowledgeEntity` shape (`decision` / `owner` / `risk` / `requirement` / `deadline`). Refusal contract: `INSUFFICIENT: <reason>` returns an empty entity list. The renderer's `frontend/src/api/knowledgeApi.ts` prefers this IPC bridge and falls back to the regex extractor at `POST /api/channels/{id}/knowledge/extract` when `window.electronAI` is unavailable or the LLM call fails. |
+| `ai:extract-knowledge` | `extractKnowledge(req)` (Phase 7)         | `runExtractKnowledge` in `skills/extract-knowledge.ts` — calls the router with `taskType: extract_tasks`, parses Bonsai-1.7B output (`<kind> \| <description> \| <actor> \| <due>` rows), and projects each row onto the existing `KnowledgeEntity` shape (`decision` / `owner` / `risk` / `requirement` / `deadline`). Refusal contract: `INSUFFICIENT: <reason>` returns an empty entity list. The renderer's `frontend/src/api/knowledgeApi.ts` prefers this IPC bridge and falls back to the regex extractor at `POST /api/channels/{id}/knowledge/extract` when `window.electronAI` is unavailable or the LLM call fails. |
 | `model:status`         | `modelStatus()`                           | `OllamaAdapter.status()` (or stub when Ollama is offline) |
 | `model:load`           | `loadModel(name)`                         | `OllamaAdapter.load()` |
 | `model:unload`         | `unloadModel(name)`                       | `OllamaAdapter.unload()` |
@@ -717,53 +718,70 @@ Electron Renderer (React)
    ↓  IPC (window.electronAI.*)
 Electron Main Process (Node.js / TypeScript)
    ├── InferenceRouter   (frontend/electron/inference/router.ts)
+   ├── LlamaCppAdapter   (frontend/electron/inference/llamacpp.ts)
    ├── OllamaAdapter     (frontend/electron/inference/ollama.ts)
    └── MockAdapter       (frontend/electron/inference/mock.ts)
-   ↓  HTTP (localhost:11434)
-Ollama / llama.cpp (local sidecar)
-   └── Bonsai-8B-Q1_0 GGUF (hf.co/prism-ml/Bonsai-8B-gguf)
+   ↓  HTTP
+   ├── llama-server (PrismML llama.cpp, default :8080)  — preferred
+   └── Ollama       (default :11434)                    — fallback
+        └── Bonsai-1.7B GGUF (hf.co/prism-ml/Bonsai-1.7B-gguf)
 ```
 
-The `InferenceRouter` boots in `bootstrap.ts`, which pings Ollama at
-`OLLAMA_BASE_URL` (default `http://localhost:11434`) with a 500 ms
-timeout. When reachable it instantiates **a single `OllamaAdapter`**
-bound to `MODEL_NAME` (default `bonsai-8b`). The default name is an
-*alias*: `models/Modelfile.bonsai8b` wraps the upstream Bonsai-8B
-GGUF (Q1_0 file `Bonsai-8B-Q1_0.gguf` from
-[`hf.co/prism-ml/Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Bonsai-8B-gguf))
-with the demo's preferred temperature / top_p / context length /
-system prompt. `scripts/setup-models.sh` automates the pull + alias
-creation. When the daemon is unreachable the adapter falls back to
-`MockAdapter`. `model:status` reports `model` / `loaded` /
-`ramUsageMB` so `DeviceCapabilityPanel` can render the on-device
-status. ARM / Apple Silicon hosts can swap the alias to the Q2_0
-file from
-[`hf.co/prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf)
-by setting `MODEL_QUANT=q2_0` — see
-[`docs/cpu-perf-tuning.md`](./docs/cpu-perf-tuning.md).
+The `InferenceRouter` boots in `bootstrap.ts`, which probes the two
+on-device runtimes in priority order:
+
+1. **`LlamaCppAdapter`** — issues a 1.5 s `GET /health` to
+   `LLAMACPP_BASE_URL` (default `http://localhost:8080`). The
+   PrismML `llama.cpp` fork's `llama-server` speaks the Bonsai
+   GGUF format natively, supports SSE streaming through
+   `POST /completion`, and exposes `/props` for live model-path
+   reporting. When this probe succeeds the adapter becomes the
+   `local` destination and `model:status` reports `sidecar:
+   running` with the resolved GGUF basename.
+2. **`OllamaAdapter`** — fallback. Pings
+   `OLLAMA_BASE_URL` (default `http://localhost:11434`) with a
+   5 s timeout. The bootstrap binds the adapter to `MODEL_NAME`
+   (default `bonsai-1.7b`); the alias is created by
+   `scripts/setup-models.sh` from
+   [`models/Modelfile.bonsai1_7b`](./models/Modelfile.bonsai1_7b),
+   which wraps the upstream
+   [`hf.co/prism-ml/Bonsai-1.7B-gguf`](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf)
+   GGUF with the demo's preferred temperature / top_p / context
+   length / system prompt.
+3. **`MockAdapter`** — final fallback. Returns `[MOCK]`-prefixed
+   placeholder text so tests and offline demo work, but
+   `DeviceCapabilityPanel` surfaces the degraded state.
+
+`model:status` reports `model` / `loaded` / `ramUsageMB` so
+`DeviceCapabilityPanel` can render the on-device status. Bonsai-1.7B
+ships as a single GGUF, so there is no per-arch quant split to
+manage — the same artifact runs on x86 CPU, ARM CPU, and Apple
+Silicon. See [`docs/cpu-perf-tuning.md`](./docs/cpu-perf-tuning.md)
+for CPU tuning details.
 
 The router only distinguishes two destinations: `local` (the on-device
-Bonsai-8B adapter) and `server` (the Phase 6 confidential
-server tier, gated on explicit policy). Every non-server request goes
-to the single local adapter. The router records its decision (model,
-tier, reason) and exposes it via `window.electronAI.route()` so the
-privacy strip can show *why* a model was chosen.
+Bonsai-1.7B adapter — either `LlamaCppAdapter` or `OllamaAdapter`)
+and `server` (the Phase 6 confidential server tier, gated on
+explicit policy). Every non-server request goes to whichever local
+adapter the bootstrap selected. The router records its decision
+(model, tier, reason) and exposes it via `window.electronAI.route()`
+so the privacy strip can show *why* a model was chosen.
 
 This is the most reliable path and the one the demo defaults to. The
 model runs locally via a sidecar process; the renderer never touches
 the daemon directly — every AI call goes through the main process,
 which is the single integration point for swapping in `llama.cpp`,
 Unsloth Studio, or a confidential server runtime in later phases.
-Works on any laptop with enough RAM for an 8B GGUF model and does not
-depend on browser GPU support.
+Works on any laptop with enough RAM for a ~1 GB GGUF model and does
+not depend on browser GPU support.
 
-### 4.1c Bonsai-8B prompt library (Phase 7)
+### 4.1c Bonsai-1.7B prompt library (Phase 7)
 
 Every B2B AI surface (thread summary, task extraction, approval
 prefill, artifact drafting, knowledge extraction) used to inline its
 own prompt-construction string and ad-hoc parser into `tasks.ts`,
-which made it hard to tune the prompt for the 8B model class without
-a parallel sweep through every parser. Phase 7 hoists prompt
+which made it hard to tune the prompt for the 1.7B model class
+without a parallel sweep through every parser. Phase 7 hoists prompt
 construction and parsing into a dedicated module per task type under
 [`frontend/electron/inference/prompts/`](./frontend/electron/inference/prompts/):
 
@@ -781,7 +799,7 @@ construction and parsing into a dedicated module per task type under
 Every module follows the same conventions:
 
 - System instructions stay under ~200 tokens to leave room for the
-  rendered thread inside Bonsai-8B's 2048-token context window.
+  rendered thread inside Bonsai-1.7B's 1024-token context window.
 - Output is line-oriented, parser-friendly: pipe-delimited columns
   for tabular data, `key: value` lines for record data.
 - Refusal is explicit: when the model has nothing useful to say it
@@ -838,7 +856,7 @@ sub-section behind that flag.
 
 ### 4.2 Browser-local path (future)
 
-WebGPU inference where supported. Bonsai-8B's GGUF format is
+WebGPU inference where supported. Bonsai-1.7B's GGUF format is
 already browser-shippable via llama.cpp's WebGPU backend, so running it
 directly in the page is a capability target. It is not a main demo
 dependency — the sidecar path stays primary because availability and performance
@@ -852,7 +870,7 @@ are too uneven across browsers and devices today.
   backend; on-device inference via a bundled llama.cpp build.
 - **Phase 3** — Android AICore / ML Kit GenAI Prompt API for direct on-device
   inference with no sidecar, using the system-managed model. The same
-  two-tier routing contract carries over — Bonsai-8B stays the
+  two-tier routing contract carries over — Bonsai-1.7B stays the
   default model for both slots until a dedicated mobile-class model is
   available.
 
@@ -937,7 +955,7 @@ to the server tier per workspace.
   },
   "source_sensitivity": "public | internal | confidential | restricted",
   "allowed_compute": ["on_device", "confidential_server", "shared_server"],
-  "preferred_model": "bonsai-8b | server-large"
+  "preferred_model": "bonsai-1.7b | server-large"
 }
 ```
 
@@ -946,7 +964,7 @@ to the server tier per workspace.
 ```json
 {
   "decision": "allow | deny | downgrade",
-  "model": "bonsai-8b | server-large",
+  "model": "bonsai-1.7b | server-large",
   "quant": "q4_k_m | q5_k_m | q8_0 | fp16",
   "redaction_required": true,
   "data_egress_bytes": 0,

@@ -1,32 +1,29 @@
 // Bootstrap — wires up the inference router based on the local
-// environment. Mirrors `backend/cmd/server/main.go`'s logic: try to
-// reach Ollama, prefer it when reachable, fall back to the mock adapter
-// so the app always boots.
+// environment. Tries the on-device runtimes in priority order:
 //
-// The demo ships a single on-device model (Bonsai-8B-Q1_0 by default;
-// Ternary-Bonsai-8B-Q2_0 on ARM/Apple Silicon — see
-// docs/cpu-perf-tuning.md for the per-arch quant choice) via
-// Ollama. One OllamaAdapter is instantiated when the daemon is
-// reachable; otherwise the router falls back to MockAdapter so the UI
-// remains usable offline. The configured alias is read from
-// `MODEL_NAME` (default `bonsai-8b-q1_0`) and surfaced in
-// `model:status` for the DeviceCapabilityPanel.
+//   1. `llama-server` from the PrismML llama.cpp fork
+//      (`LLAMACPP_BASE_URL`, default http://localhost:8080).
+//   2. Ollama daemon (`OLLAMA_BASE_URL`, default localhost:11434).
+//   3. MockAdapter for offline demo.
 //
-// The default name is deliberately quant-suffixed. Early demo passes
-// used the bare `bonsai-8b` alias, which made it trivial for a host
-// to accidentally resolve to an F16 or Q4 GGUF of the same base model
-// (a 16 GB resident set for something that should be ~1.1 GB). The
-// current convention is: one alias per quant, never the quant-less
-// base name. `scripts/setup-models.sh` creates `bonsai-8b-q1_0` from
-// `models/Bonsai-8B-Q1_0.gguf`, and the DeviceCapabilityPanel's
-// "RAM (model)" line reads ~1,100 MB when the right GGUF is loaded.
+// The demo ships a single on-device model (Bonsai-1.7B). One adapter
+// is wired when its runtime is reachable; otherwise the router falls
+// back to MockAdapter so the UI remains usable offline. The
+// configured alias / model is read from `MODEL_NAME` (default
+// `bonsai-1.7b`) and surfaced in `model:status` for the
+// DeviceCapabilityPanel.
+//
+// `scripts/setup-models.sh` creates the `bonsai-1.7b` Ollama alias
+// from `models/Bonsai-1.7B.gguf`. The DeviceCapabilityPanel's
+// "RAM (model)" line reads ~1.1 GB when the right GGUF is loaded.
 // A sanity check in `OllamaAdapter.status` flags mismatches.
 
-import type { Loader, StatusProvider } from './adapter.js';
+import type { Adapter, Loader, StatusProvider } from './adapter.js';
 import {
   ConfidentialServerAdapter,
   DefaultConfidentialServerURL,
 } from './confidential-server.js';
+import { DefaultLlamaCppBaseURL, LlamaCppAdapter } from './llamacpp.js';
 import { MockAdapter } from './mock.js';
 import { DefaultOllamaBaseURL, OllamaAdapter } from './ollama.js';
 import { InferenceRouter } from './router.js';
@@ -38,7 +35,7 @@ export interface InferenceStack {
   loader?: Loader;
   defaultModel: string;
   defaultQuant: string;
-  source: 'ollama' | 'mock';
+  source: 'llama.cpp' | 'ollama' | 'mock';
   // Phase 6 — confidential-server tier. True when the bootstrap
   // successfully pinged the server and the workspace policy permits
   // server compute. Drives the "Server" section in
@@ -60,20 +57,15 @@ export interface BootstrapOptions {
   pingServer?: (signal?: AbortSignal) => Promise<void>;
 }
 
-// Pinned in code to avoid the `bonsai-8b` → F16 alias confusion.
-// Any future quant rev should land as a new suffix (`bonsai-8b-q2_0`,
-// `bonsai-8b-q4_k_m`) rather than overloading this identifier.
-const DefaultModel = 'bonsai-8b-q1_0';
+// The demo ships a single Bonsai-1.7B GGUF artifact. Operators can
+// rename the alias at runtime via `MODEL_NAME`.
+const DefaultModel = 'bonsai-1.7b';
 const DefaultServerModel = 'confidential-large';
-// The demo ships the Bonsai-8B-Q1_0 GGUF (PrismML 1-bit quant; the
-// fork has an x86 SIMD kernel for Q1_0, unlike Q2_0 which is
-// ARM-only). Callers can override via the MODEL_QUANT env var when
-// running a different quantisation — e.g. MODEL_QUANT=q2_0 for the
-// ARM/Apple-Silicon-optimised Ternary-Bonsai-8B-Q2_0 file, or
-// MODEL_QUANT=q4_k_m for a mainline llama.cpp build. The value is
-// surfaced verbatim by the DeviceCapabilityPanel so it should match
-// what llama.cpp / Ollama actually loaded.
-const DefaultQuant = 'q1_0';
+// Bonsai-1.7B ships as a single GGUF, so there is no
+// quant-specific arch split here. The label is surfaced verbatim
+// by the DeviceCapabilityPanel — set MODEL_QUANT explicitly to
+// override (e.g. MODEL_QUANT=q4_k_m for a mainline llama.cpp build).
+const DefaultQuant = 'default';
 
 export async function bootstrapInference(
   optsOrFetch?: BootstrapOptions | typeof fetch,
@@ -81,7 +73,8 @@ export async function bootstrapInference(
   const opts: BootstrapOptions =
     typeof optsOrFetch === 'function' ? { fetchImpl: optsOrFetch } : optsOrFetch ?? {};
   const { fetchImpl, pingServer } = opts;
-  const baseURL = process.env.OLLAMA_BASE_URL || DefaultOllamaBaseURL;
+  const ollamaURL = process.env.OLLAMA_BASE_URL || DefaultOllamaBaseURL;
+  const llamaCppURL = process.env.LLAMACPP_BASE_URL || DefaultLlamaCppBaseURL;
   const modelName = process.env.MODEL_NAME || DefaultModel;
   const modelQuant = process.env.MODEL_QUANT || DefaultQuant;
   const serverURL =
@@ -96,45 +89,80 @@ export async function bootstrapInference(
   const policyAllowsServer =
     (process.env.CONFIDENTIAL_SERVER_POLICY ?? '').toLowerCase() === 'allow';
 
-  const ollama = new OllamaAdapter({
-    baseURL,
+  const llamaCpp = new LlamaCppAdapter({
+    baseURL: llamaCppURL,
     fetchImpl,
     model: modelName,
     quant: modelQuant,
   });
-  const mock = new MockAdapter();
+  const ollama = new OllamaAdapter({
+    baseURL: ollamaURL,
+    fetchImpl,
+    model: modelName,
+    quant: modelQuant,
+  });
+  const mock = new MockAdapter(modelName);
 
-  // Always prefer the Ollama adapter at runtime so every request hits
-  // the real SLM weights. The ping below is informational only — it
-  // drives the "Model ready" vs "Starting" label in the
-  // DeviceCapabilityPanel but does NOT gate routing. If the daemon is
-  // unreachable mid-request the router surfaces the error instead of
-  // silently falling back to the MockAdapter, because the demo's
-  // privacy strip promises on-device SLM output.
-  const local: typeof ollama | MockAdapter = ollama;
-  let status: StatusProvider | undefined = ollama;
-  let loader: Loader | undefined = ollama;
-  let source: InferenceStack['source'] = 'ollama';
+  // Probe llama-server first — it is the demo's recommended on-device
+  // runtime. Fall back to Ollama, then MockAdapter. The ping is also
+  // informational: if the chosen runtime stops responding mid-request
+  // the router surfaces the error to the user instead of silently
+  // dropping to a mock response, because the demo's privacy strip
+  // promises on-device SLM output.
+  let local: Adapter = ollama;
+  let status: StatusProvider | undefined;
+  let loader: Loader | undefined;
+  let source: InferenceStack['source'] = 'mock';
 
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 5000);
+  const llamaAc = new AbortController();
+  const llamaTimer = setTimeout(() => llamaAc.abort(), 1500);
+  let llamaReady = false;
   try {
-    await ollama.ping(ac.signal);
-    console.log(`[bootstrap] on-device adapter ready: Ollama @ ${baseURL} (model=${modelName})`);
+    await llamaCpp.ping(llamaAc.signal);
+    llamaReady = true;
   } catch (err) {
-    // Ping failed but keep ollama wired anyway — the translate
-    // request will retry and either succeed (if the daemon comes up)
-    // or surface the error to the user. We flip `source` to 'mock'
-    // only so the DeviceCapabilityPanel shows a degraded state while
-    // the first ping is failing.
-    status = undefined;
-    loader = undefined;
-    source = 'mock';
     console.log(
-      `[bootstrap] Ollama ping failed at ${baseURL}: ${(err as Error).message}. Adapter still wired — requests will retry on demand.`,
+      `[bootstrap] llama-server unreachable at ${llamaCppURL}: ${(err as Error).message}. Will try Ollama.`,
     );
   } finally {
-    clearTimeout(timer);
+    clearTimeout(llamaTimer);
+  }
+
+  if (llamaReady) {
+    local = llamaCpp;
+    status = llamaCpp;
+    loader = llamaCpp;
+    source = 'llama.cpp';
+    console.log(
+      `[bootstrap] on-device adapter ready: llama-server @ ${llamaCppURL} (model=${modelName})`,
+    );
+  } else {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 5000);
+    try {
+      await ollama.ping(ac.signal);
+      local = ollama;
+      status = ollama;
+      loader = ollama;
+      source = 'ollama';
+      console.log(
+        `[bootstrap] on-device adapter ready: Ollama @ ${ollamaURL} (model=${modelName})`,
+      );
+    } catch (err) {
+      // Ping failed but keep ollama wired as the local adapter — the
+      // first request will retry and either succeed (if the daemon
+      // comes up) or surface the error. We flip `source` to 'mock'
+      // so the DeviceCapabilityPanel shows a degraded state.
+      local = ollama;
+      status = undefined;
+      loader = undefined;
+      source = 'mock';
+      console.log(
+        `[bootstrap] Ollama ping failed at ${ollamaURL}: ${(err as Error).message}. Adapter still wired — requests will retry on demand.`,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
   }
   void mock; // MockAdapter is kept for unit tests only — never routed in production.
 

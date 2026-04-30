@@ -1,6 +1,6 @@
 // Thread summarisation prompt — produces a 3-5 bullet summary of a
 // B2B work thread, anchored to decisions / open questions / owners
-// / deadlines. Tuned for Bonsai-8B-Q1_0 (1.16 GB, 2048-token window).
+// / deadlines. Tuned for Bonsai-1.7B (~1.0 GB, 1024-token window).
 
 import { formatThread, type ThreadMessage } from './shared.js';
 
@@ -18,12 +18,16 @@ export function buildSummarizePrompt(input: SummarizeInput): string {
   return [
     'You are summarising a work-chat thread for a busy teammate.',
     'Output 3-5 short bullets covering, in this order: decisions, open',
-    'questions, owners, and deadlines. Each bullet must be one short',
+    'questions, owners, and deadlines. Each bullet is one short',
     'sentence on its own line, prefixed with "- ". No preamble, no',
     'closing remark, no headings.',
-    '',
     'If the thread does not contain enough material to summarise,',
     'reply with the single line: INSUFFICIENT: <reason>.',
+    '',
+    'Example:',
+    '- Decision: pick vendor A at $40k/yr.',
+    '- Open question: confirm SOC 2 by Friday.',
+    '- Owner: alice drives the contract.',
     '',
     'Thread:',
     rendered,
@@ -33,7 +37,7 @@ export function buildSummarizePrompt(input: SummarizeInput): string {
 }
 
 // parseSummarizeOutput is intentionally tolerant of the slight
-// formatting variations Bonsai-8B produces: lines may use "-", "•",
+// formatting variations Bonsai-1.7B produces: lines may use "-", "•",
 // "*", or numeric prefixes; blank lines and stray commentary are
 // ignored.
 export function parseSummarizeOutput(out: string): SummarizeOutput {

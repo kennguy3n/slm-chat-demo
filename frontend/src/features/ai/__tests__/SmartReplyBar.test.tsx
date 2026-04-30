@@ -15,7 +15,7 @@ import { fetchSmartReply } from '../../../api/aiApi';
 
 const sample: SmartReplyResponse = {
   replies: ['On my way!', 'Sounds good — talk soon.', 'Got it, thanks.'],
-  model: 'bonsai-8b',
+  model: 'bonsai-1.7b',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
   channelId: 'ch_family',
@@ -59,7 +59,7 @@ describe('SmartReplyBar', () => {
     await waitFor(() => screen.getByTestId('privacy-compute'));
     expect(screen.getByTestId('privacy-compute')).toHaveTextContent('On-device');
     expect(screen.getByTestId('privacy-egress')).toHaveTextContent('0 B');
-    expect(screen.getByTestId('privacy-model')).toHaveTextContent('bonsai-8b');
+    expect(screen.getByTestId('privacy-model')).toHaveTextContent('bonsai-1.7b');
   });
 
   it('renders an error message when the request fails', async () => {

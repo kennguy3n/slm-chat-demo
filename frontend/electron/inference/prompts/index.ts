@@ -1,4 +1,4 @@
-// Bonsai-8B prompt library — Phase 7 (B2B real-LLM redesign).
+// Bonsai-1.7B prompt library — Phase 7 (model-swap + B2C redesign).
 //
 // Every B2B AI surface that needs a model call routes through one of
 // the modules in this directory. Each module exports two pure
@@ -8,17 +8,17 @@
 //   parseOutput(output) → structured     (the parsed result)
 //
 // Keeping the prompt construction and the output parser in the same
-// file makes it cheap to iterate on the prompt for the 8B model class
-// without chasing the parser through tasks.ts.
+// file makes it cheap to iterate on the prompt for the 1.7B model
+// class without chasing the parser through tasks.ts.
 //
 // Constraints honoured by every prompt:
 //
-//   • System / instruction span ≤ 200 tokens (≈ 800 characters) so
-//     the 2048-token context window has room for input + output.
+//   • System / instruction span ≤ 150 tokens (≈ 600 characters) so
+//     the 1024-token context window has room for input + output.
 //   • Explicit, single-line output format ("<field>: <value>" or
 //     "<owner> | <title> | <due>") so the parsers can recover from
-//     the slightly-noisier output Bonsai-8B-Q1_0 produces vs. a
-//     larger model.
+//     the slightly-noisier output Bonsai-1.7B produces vs. a larger
+//     model.
 //   • Caller-provided message content is truncated to a budget that
 //     leaves room for the system instruction + a generation window.
 //   • Refusal contract: the model is told to emit

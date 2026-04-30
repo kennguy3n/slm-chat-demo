@@ -4,14 +4,25 @@ KChat SLM demo — Ollama-compatible shim in front of PrismML `llama-server`.
 
 Why this exists
 ---------------
-The demo targets the Bonsai-8B-Q1_0 GGUF — PrismML's custom 1-bit
-tensor type — for CPU-only hosts. Stock Ollama 0.22.x (and as far as
-we know current mainline too) cannot load Q1_0 weights: the bundled
-`llama.cpp` does not implement the tensor type, and `ollama run
-bonsai-8b-q1_0` crashes the runner on load. See
-`docs/cpu-perf-tuning.md` §2 for the full story.
+Legacy: this shim was originally needed to drive the previous
+Bonsai-8B-Q1_0 GGUF (PrismML's custom 1-bit tensor type) through the
+Electron `OllamaAdapter`, because stock Ollama could not load Q1_0
+weights. The demo now defaults to **Bonsai-1.7B** and prefers the
+new `LlamaCppAdapter`, which talks directly to PrismML
+`llama-server` over `POST /completion` (SSE). The bootstrap probes
+`llama-server` on `LLAMACPP_BASE_URL` (default `http://localhost:8080`)
+first and only falls back to Ollama when llama-server is
+unreachable, so most users no longer need this script.
 
-The runtime path the demo actually uses is:
+The shim is retained for two niche cases:
+
+- Driving an exotic Bonsai GGUF that mainline Ollama cannot load,
+  but where the `OllamaAdapter` code path still needs to work
+  (e.g. integration tests gated on `OLLAMA_INTEGRATION=1`).
+- Rolling back to the historical 8B-class artifacts on hosts that
+  cannot run llama-server directly.
+
+The runtime path then becomes:
 
     Electron ── /api/generate  ─▶  this shim  ─▶  /completion  ─▶  llama-server
     (OllamaAdapter)                (port 11434)                    (PrismML fork,
@@ -32,14 +43,14 @@ is implemented:
 
 `think=false` is honoured by stripping any `<think>…</think>` blocks
 from the streamed output before forwarding to the client. The PrismML
-Q1_0 weights were fine-tuned from Qwen3, so without this the entire
+weights were fine-tuned from Qwen3, so without this the entire
 response can be consumed by the thinking preamble on CPU-only hosts.
 
 Usage
 -----
-    # 1. Build the PrismML llama.cpp fork (see docs/cpu-perf-tuning.md §3)
-    # 2. Launch llama-server on port 11400 with the Q1_0 GGUF:
-    #    ./llama-server -m models/Bonsai-8B-Q1_0.gguf --port 11400 -t 6 -c 2048
+    # 1. Build the PrismML llama.cpp fork (see docs/cpu-perf-tuning.md §2)
+    # 2. Launch llama-server on port 11400 with a Bonsai GGUF:
+    #    ./llama-server -m models/Bonsai-1.7B.gguf --port 11400 -t 6 -c 1024
     # 3. Run this shim on port 11434 (the default Ollama port):
     #    python3 scripts/ollama-shim.py
 """
@@ -64,7 +75,7 @@ class ShimHandler(BaseHTTPRequestHandler):
     # Injected by make_server.
     upstream: str = "http://127.0.0.1:11400"
     gguf_path: str = ""
-    alias: str = "bonsai-8b-q1_0"
+    alias: str = "bonsai-1.7b"
 
     # Silence BaseHTTPServer's per-request stderr log.
     def log_message(self, fmt, *args):  # noqa: N802 - stdlib signature
@@ -110,7 +121,7 @@ class ShimHandler(BaseHTTPRequestHandler):
             "model": self.alias,
             "size": size,
             "size_vram": 0,
-            "digest": "sha256:bonsai-8b-q1_0",
+            "digest": "sha256:bonsai-1.7b",
             "details": {
                 "format": "gguf",
                 "family": "qwen3",
@@ -396,8 +407,8 @@ def main() -> int:
     p.add_argument("--upstream", default=os.environ.get("LLAMA_SERVER_URL", "http://127.0.0.1:11400"))
     p.add_argument("--gguf", default=os.environ.get(
         "BONSAI_GGUF", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                    "models", "Bonsai-8B-Q1_0.gguf")))
-    p.add_argument("--alias", default=os.environ.get("MODEL_NAME", "bonsai-8b-q1_0"))
+                                    "models", "Bonsai-1.7B.gguf")))
+    p.add_argument("--alias", default=os.environ.get("MODEL_NAME", "bonsai-1.7b"))
     args = p.parse_args()
     srv = make_server(args.port, args.upstream, args.gguf, args.alias)
     print(f"[ollama-shim] listening on http://127.0.0.1:{args.port}")

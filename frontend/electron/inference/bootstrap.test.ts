@@ -1,18 +1,38 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bootstrapInference } from './bootstrap.js';
 
-// makeFetch returns a fake fetch that handles the two endpoints the
-// bootstrap probes: GET /api/tags (the ping) and POST /api/generate
-// (the run endpoint, not exercised here). Tests inject different ping
-// outcomes to drive the two bootstrap branches (ollama reachable vs.
-// fallback to mock).
+// makeFetch returns a fake fetch that handles the runtime probes the
+// bootstrap performs:
+//
+//   - GET /health        — llama-server health check (port 8080)
+//   - GET /api/tags      — Ollama ping + tag list (port 11434)
+//   - POST /api/generate — Ollama run (not exercised here)
+//
+// Tests inject different ping outcomes to drive the three bootstrap
+// branches (llama.cpp reachable, ollama reachable, both unreachable).
+// `llamaCppOk` defaults to `false` so the original Ollama-focused
+// tests keep their behaviour now that llama-server is the new
+// preferred runtime.
 function makeFetch(opts: {
   pingOk: boolean;
   tagModels?: string[];
+  llamaCppOk?: boolean;
 }): typeof fetch {
-  const { pingOk, tagModels } = opts;
+  const { pingOk, tagModels, llamaCppOk = false } = opts;
   return (async (url: RequestInfo | URL) => {
     const u = typeof url === 'string' ? url : url instanceof URL ? url.toString() : (url as Request).url;
+    if (u.endsWith('/health')) {
+      return new Response('{}', {
+        status: llamaCppOk ? 200 : 503,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (u.endsWith('/props')) {
+      return new Response(
+        JSON.stringify({ default_generation_settings: { model: '/Bonsai-1.7B.gguf' } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
     if (u.endsWith('/api/tags')) {
       if (!pingOk) {
         return new Response('boom', { status: 500 });
@@ -29,7 +49,7 @@ function makeFetch(opts: {
   }) as typeof fetch;
 }
 
-// The demo ships a single on-device model (Bonsai-8B). The
+// The demo ships a single on-device model (Bonsai-1.7B). The
 // bootstrap instantiates one OllamaAdapter pointing at it when the
 // daemon is reachable, otherwise it falls back to MockAdapter.
 describe('bootstrapInference', () => {
@@ -51,19 +71,19 @@ describe('bootstrapInference', () => {
 
   it('wires an ollama adapter when the daemon is reachable', async () => {
     const stack = await bootstrapInference({
-      fetchImpl: makeFetch({ pingOk: true, tagModels: ['bonsai-8b-q1_0'] }),
+      fetchImpl: makeFetch({ pingOk: true, tagModels: ['bonsai-1.7b'] }),
     });
     expect(stack.source).toBe('ollama');
     expect(stack.status).toBeDefined();
     expect(stack.loader).toBeDefined();
     // Default alias is quant-suffixed so a host with a bare
-    // `bonsai-8b` alias pointing at the wrong GGUF cannot be picked
+    // `bonsai-1.7b` alias pointing at the wrong GGUF cannot be picked
     // up silently. See bootstrap.ts.
-    expect(stack.defaultModel).toBe('bonsai-8b-q1_0');
+    expect(stack.defaultModel).toBe('bonsai-1.7b');
 
     const dec = stack.router.decide({ taskType: 'draft_artifact', prompt: 'p' });
     expect(dec.tier).toBe('local');
-    expect(dec.model).toBe('bonsai-8b-q1_0');
+    expect(dec.model).toBe('bonsai-1.7b');
     expect(dec.reason.toLowerCase()).toContain('on-device');
   });
 
@@ -78,6 +98,27 @@ describe('bootstrapInference', () => {
     expect(dec.model).toBe('custom-alias');
   });
 
+  it('prefers llama-server over Ollama when /health is reachable', async () => {
+    const stack = await bootstrapInference({
+      fetchImpl: makeFetch({ pingOk: true, llamaCppOk: true, tagModels: ['bonsai-1.7b'] }),
+    });
+    expect(stack.source).toBe('llama.cpp');
+    expect(stack.status).toBeDefined();
+    expect(stack.loader).toBeDefined();
+    // The router still uses the configured model alias for routing
+    // decisions, regardless of which on-device runtime backs it.
+    const dec = stack.router.decide({ taskType: 'summarize', prompt: 'p' });
+    expect(dec.tier).toBe('local');
+    expect(dec.model).toBe('bonsai-1.7b');
+  });
+
+  it('falls back from llama-server to Ollama when /health is down but /api/tags is up', async () => {
+    const stack = await bootstrapInference({
+      fetchImpl: makeFetch({ pingOk: true, llamaCppOk: false, tagModels: ['bonsai-1.7b'] }),
+    });
+    expect(stack.source).toBe('ollama');
+  });
+
   describe('MODEL_QUANT override', () => {
     const ORIGINAL_QUANT = process.env.MODEL_QUANT;
     afterEach(() => {
@@ -85,18 +126,18 @@ describe('bootstrapInference', () => {
       else process.env.MODEL_QUANT = ORIGINAL_QUANT;
     });
 
-    it('defaults defaultQuant to q1_0 when MODEL_QUANT is unset', async () => {
+    it('defaults defaultQuant to "default" when MODEL_QUANT is unset (Bonsai-1.7B ships as a single GGUF)', async () => {
       delete process.env.MODEL_QUANT;
       const stack = await bootstrapInference({
-        fetchImpl: makeFetch({ pingOk: true, tagModels: ['bonsai-8b-q1_0'] }),
+        fetchImpl: makeFetch({ pingOk: true, tagModels: ['bonsai-1.7b'] }),
       });
-      expect(stack.defaultQuant).toBe('q1_0');
+      expect(stack.defaultQuant).toBe('default');
     });
 
     it('honours MODEL_QUANT and propagates it to the Ollama adapter status()', async () => {
       process.env.MODEL_QUANT = 'q4_k_m';
       const stack = await bootstrapInference({
-        fetchImpl: makeFetch({ pingOk: true, tagModels: ['bonsai-8b-q1_0'] }),
+        fetchImpl: makeFetch({ pingOk: true, tagModels: ['bonsai-1.7b'] }),
       });
       expect(stack.defaultQuant).toBe('q4_k_m');
       // The status provider must report the configured quant, not a

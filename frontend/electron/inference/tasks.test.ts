@@ -22,7 +22,7 @@ import type {
 } from './adapter.js';
 
 // Stub adapter that returns a caller-provided output keyed by
-// taskType. Tests use this to simulate a Bonsai-8B response shape
+// taskType. Tests use this to simulate a Bonsai-1.7B response shape
 // without depending on MockAdapter's canned outputs (which were
 // stripped of seed-specific content as part of the B2B redesign).
 class StubAdapter implements Adapter {
@@ -34,7 +34,7 @@ class StubAdapter implements Adapter {
     const output = this.outputs[req.taskType] ?? '';
     return {
       taskType: req.taskType,
-      model: req.model || 'bonsai-8b',
+      model: req.model || 'bonsai-1.7b',
       output,
       tokensUsed: Math.max(1, Math.floor(output.length / 4)),
       latencyMs: 0,

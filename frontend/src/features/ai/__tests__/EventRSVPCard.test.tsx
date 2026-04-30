@@ -24,9 +24,9 @@ const fakeResp: EventRSVPResponse = {
     },
   ],
   sourceMessageIds: ['m1', 'm2'],
-  model: 'bonsai-8b',
+  model: 'bonsai-1.7b',
   tier: 'local',
-  reason: 'Routed RSVP extraction to on-device Bonsai-8B.',
+  reason: 'Routed RSVP extraction to on-device Bonsai-1.7B.',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
 };

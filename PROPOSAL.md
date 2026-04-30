@@ -94,21 +94,22 @@ workspace policy allow it.
 
 ### Device-tier model mapping
 
-| Tier             | Model                                                    | Devices                                | Workloads |
-| ---------------- | -------------------------------------------------------- | -------------------------------------- | --------- |
-| On-device (x86)  | `Bonsai-8B-Q1_0` from `prism-ml/Bonsai-8B-gguf`          | x86 laptops and desktops               | Every non-server workload — a single 8B model handles summaries, drafts, reasoning, and task extraction. |
-| On-device (ARM)  | `Ternary-Bonsai-8B-Q2_0` from `prism-ml/Ternary-Bonsai-8B-gguf` | ARM / Apple Silicon laptops and high-end phones | Same as above; selected via `MODEL_QUANT=q2_0`. |
-| Server           | Confidential server runtime (Phase 6)                    | Explicit workspace policy only         | Corpora larger than local context or workspace-approved heavy runs. |
+| Tier             | Model                                            | Devices                                | Workloads |
+| ---------------- | ------------------------------------------------ | -------------------------------------- | --------- |
+| On-device        | `Bonsai-1.7B` from `prism-ml/Bonsai-1.7B-gguf`   | x86 / ARM laptops, desktops, and high-end phones | Every non-server workload — a single 1.7B model handles summaries, drafts, smart replies, translation, and task extraction. |
+| Server           | Confidential server runtime (Phase 6)            | Explicit workspace policy only         | Corpora larger than local context or workspace-approved heavy runs. |
 
-The demo assumes every KChat user has enough local compute to run the
-Bonsai-8B GGUF through Ollama. The inference router exposes a
-single on-device tier (`local`) and a policy-gated `server` tier; the
-alias the on-device adapter binds to is controlled by the `MODEL_NAME`
-env var (default `bonsai-8b`).
+The demo assumes every KChat user has enough local compute to run
+the Bonsai-1.7B GGUF through one of two on-device runtimes:
+`llama-server` from the PrismML `llama.cpp` fork (the recommended
+runtime) or an Ollama daemon. The inference router exposes a
+single on-device tier (`local`) and a policy-gated `server` tier;
+the alias the on-device adapter binds to is controlled by the
+`MODEL_NAME` env var (default `bonsai-1.7b`).
 
 ### Workload routing table
 
-| Workload                              | On-device (Bonsai-8B) | Server (confidential, policy-gated) |
+| Workload                              | On-device (Bonsai-1.7B) | Server (confidential, policy-gated) |
 | ------------------------------------- | :---------------------------: | :---------------------------------: |
 | Smart reply                           | ✓ primary                     | —                                    |
 | Inline translation                    | ✓ primary                     | —                                    |
@@ -130,7 +131,7 @@ env var (default `bonsai-8b`).
 
 The local scheduler follows a strict, auditable decision tree:
 
-1. If the workload fits on-device → dispatch to the **Bonsai-8B local adapter**.
+1. If the workload fits on-device → dispatch to the **Bonsai-1.7B local adapter**.
 2. Else, if the **workspace policy permits** server compute → **tokenize
    and redact** the inputs, then dispatch to the **confidential server**.
 3. Else → **refuse** and surface the reason in the privacy strip.
@@ -172,7 +173,7 @@ preserved as components but no longer mounted.
 | Feature                  | Description                                                                                           | Local model role                                           |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | Inline bilingual translation | Two-panel translation card on every chat bubble — original on top, translation below, with per-language flag labels (🇺🇸 / 🇻🇳). The panel in the viewer's preferred language is the primary one; the partner-language panel is muted. | On-device per-message `translate` call, batched into a single IPC round-trip per visible bubble. |
-| Bilingual conversation summary | Right-rail "Summary" tab. Summarises the active bilingual chat in the viewer's language, calling out topics, action items, and decisions, and noting that the conversation spans two languages. | On-device (Bonsai-8B) summarises the visible message tail with a bilingual-aware prompt. |
+| Bilingual conversation summary | Right-rail "Summary" tab. Summarises the active bilingual chat in the viewer's language, calling out topics, action items, and decisions, and noting that the conversation spans two languages. | On-device (Bonsai-1.7B) summarises the visible message tail with a bilingual-aware prompt. |
 | Smart reply              | 2–3 contextual reply suggestions inline in the composer.                                              | On-device generates candidates.                            |
 | Task extraction          | Detects actionable items in incoming messages ("submit form", "bring X") and offers task cards.      | On-device parses; user confirms before any task is created. |
 | Guardrails               | Blocks risky auto-send; every suggested reply, task, or translation requires human confirmation.    | On-device classifier; no server call.                      |
@@ -264,7 +265,7 @@ allowed to surface.
 | Element                  | Purpose                                                                 |
 | ------------------------ | ----------------------------------------------------------------------- |
 | Compute location         | On-device / confidential server.                                        |
-| Model name               | `bonsai-8b` (on-device default) or a named confidential server. |
+| Model name               | `bonsai-1.7b` (on-device default) or a named confidential server. |
 | Sources used             | Messages, files, connector items, memories referenced.                  |
 | Data egress              | Bytes that left the device (0 for on-device).                           |
 | Confidence / missing info| Model-reported confidence and any gaps ("owner unknown", "date ambiguous"). |
@@ -285,7 +286,7 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
    first mount.
 2. The right rail's **Summary** tab is already loading. While the
    stream completes, the privacy strip on the panel shows
-   **on-device**, **bonsai-8b**, **0 B egress**.
+   **on-device**, **bonsai-1.7b**, **0 B egress**.
 3. The summary renders in the viewer's preferred language
    (English): plan + lunch reservation, restaurant order,
    per-side action items (Minh books the table; Alice brings an
@@ -308,7 +309,7 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
    panel is the primary surface; the Vietnamese panel is muted
    and labeled 🇻🇳 Vietnamese; English is labeled 🇺🇸 English.
 3. The privacy strip on the card shows **on-device**,
-   **bonsai-8b**, **0 B egress** with the source-message pin.
+   **bonsai-1.7b**, **0 B egress** with the source-message pin.
 4. Alice replies in English (*"Yes! That's the one. I heard
    their pho is amazing. Want to meet around noon?"*); the
    bubble renders the same two-panel card, but with the
@@ -328,7 +329,7 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
    enough natural-language context for an 8B model to ground each
    approval field.
 2. User opens the Action Launcher and picks **Request Approval**.
-3. The **on-device Bonsai-8B-Q1_0** model receives a Phase 7
+3. The **on-device Bonsai-1.7B** model receives a Phase 7
    prompt-library prompt (`prefill-approval.ts`) asking for
    `vendor: …`, `amount: …`, `justification: …`, `risk: …` lines.
    The parser tolerates extra whitespace, alternative bullet
@@ -350,7 +351,7 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
    the seeded `engineering` inline-translation discussion or the
    new `product-launch` cross-functional thread), a linked Drive
    folder, a PRD template, and a tone.
-3. The scheduler picks **on-device Bonsai-8B-Q1_0** (policy allows
+3. The scheduler picks **on-device Bonsai-1.7B** (policy allows
    server, but local is sufficient for this corpus).
 4. Nina PM streams the draft using the Phase 7 `draft-artifact.ts`
    prompt template (artifact-type-aware: PRD / RFC / Proposal /
@@ -400,11 +401,14 @@ leaves the device.
   - PRD draft workspace (Brief Builder + Artifact v1).
   - AI Employee queue (mocked execution, real UI and governance).
 - **Local AI**
-  - On-device route backed by `prism-ml/Bonsai-8B-gguf` (alias `bonsai-8b`,
-    Q1_0 default on x86; ARM / Apple Silicon callers can switch to
-    `prism-ml/Ternary-Bonsai-8B-gguf` Q2_0 via `MODEL_QUANT=q2_0`);
-    operators can override `MODEL_NAME` to point at a different pulled
-    alias without touching any code.
+  - On-device route backed by `prism-ml/Bonsai-1.7B-gguf` (alias
+    `bonsai-1.7b`, single GGUF that runs on x86, ARM, and Apple
+    Silicon). The Electron bootstrap probes `llama-server` from the
+    PrismML `llama.cpp` fork first (default `http://localhost:8080`,
+    override via `LLAMACPP_BASE_URL`) and falls back to an Ollama
+    daemon when llama-server is unreachable. Operators can override
+    `MODEL_NAME` to point at a different pulled alias without
+    touching any code.
   - Streaming output in the chat surface.
   - Privacy strip on every AI output (compute location, model, sources,
     egress, confidence, why, linked origin).

@@ -2,13 +2,14 @@
 // the modules in this directory can be imported by both the Electron
 // main process (Node) and Vitest (jsdom).
 
-// Bonsai-8B-Q1_0 has a 2048-token context window in the demo's
+// Bonsai-1.7B uses a 1024-token context window in the demo's
 // Modelfile. These caps reserve roughly half the window for input
-// (~1024 tokens / ~4096 chars) and the rest for system instructions
-// + generation. Values are runes (codepoints), not bytes, so multi-
-// byte characters (emoji, CJK) are never truncated mid-codepoint.
-export const PROMPT_MESSAGE_CAP = 200; // per-message body cap
-export const PROMPT_THREAD_CAP = 30;   // max messages forwarded to the model
+// (~512 tokens / ~2048 chars) and the rest for the system
+// instructions + generation. Values are runes (codepoints), not
+// bytes, so multi-byte characters (emoji, CJK) are never truncated
+// mid-codepoint.
+export const PROMPT_MESSAGE_CAP = 120; // per-message body cap
+export const PROMPT_THREAD_CAP = 15;   // max messages forwarded to the model
 
 // Refusal contract — the model is asked to emit this prefix when the
 // thread genuinely lacks the requested information. Each parser

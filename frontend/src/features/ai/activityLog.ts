@@ -3,7 +3,7 @@
 // tier, items produced, latency, egress bytes). The dashboard reads
 // these entries to summarise on-device AI work for the user. `tier`
 // here distinguishes local vs. confidential-server compute; the demo
-// ships a single on-device model (Bonsai-8B) so most entries
+// ships a single on-device model (Bonsai-1.7B) so most entries
 // will be `local`.
 //
 // This module deliberately keeps no IndexedDB persistence today — the

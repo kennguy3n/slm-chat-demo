@@ -18,7 +18,7 @@ const sample: TranslateResponse = {
   original: 'Field trip form due Friday',
   translated: 'Formulario de excursión vence el viernes',
   targetLanguage: 'es',
-  model: 'bonsai-8b',
+  model: 'bonsai-1.7b',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
 };
@@ -29,7 +29,7 @@ const sampleVi: TranslateResponse = {
   original: 'Chào Alice, tối mai bạn rảnh đi ăn phở không?',
   translated: "Hi Alice, are you free to grab phở tomorrow night?",
   targetLanguage: 'en',
-  model: 'bonsai-8b',
+  model: 'bonsai-1.7b',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
 };
@@ -67,7 +67,7 @@ describe('TranslationCaption', () => {
     const pill = await screen.findByTestId('translation-pill');
     expect(pill).toHaveTextContent(/SLM/);
     expect(pill).toHaveTextContent(/on-device/);
-    expect(pill).toHaveTextContent(/bonsai-8b/);
+    expect(pill).toHaveTextContent(/bonsai-1.7b/);
     expect(pill).toHaveTextContent(/0 B/);
   });
 

@@ -44,7 +44,7 @@ export const extractTasksRecipe: RecipeDefinition = {
       },
       model: resp.model,
       tier: decision.tier ?? 'local',
-      reason: decision.reason || 'extract_tasks routed to on-device Bonsai-8B.',
+      reason: decision.reason || 'extract_tasks routed to on-device Bonsai-1.7B.',
     };
   },
 };

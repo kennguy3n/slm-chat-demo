@@ -13,13 +13,14 @@ the enriched seed data (`backend/internal/store/seed.go`).
 
 > **Note on coverage.** Captured 2026-04-30 via Playwright over the
 > Electron CDP endpoint (`http://localhost:9222`) against the live
-> Vite + Go backend stack with Bonsai-8B-Q1_0 served through Ollama.
-> Some streaming surfaces (morning digest, smart-reply chips,
-> shopping nudges) show the in-progress streaming marker because
-> Q1_0 on a CPU-only VM runs well below interactive latency — the
-> chrome, privacy strip, and action buttons are still accurate. See
+> Vite + Go backend stack. The historical pass used Bonsai-8B-Q1_0
+> through Ollama; the demo now defaults to **Bonsai-1.7B** served by
+> the PrismML `llama-server` (the new primary on-device runtime).
+> The chrome, privacy strip, action buttons, and surfaces still
+> match the redesigned product — a fresh capture pass against the
+> 1.7B model is queued. See
 > [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
-> per-host-class quant matrix and tok/s expectations.
+> per-host-class tok/s expectations under the new model.
 
 ## B2C flows
 
@@ -58,12 +59,12 @@ the **Personal** workspace.
 
 ## B2B flows
 
-Source workspace: **Acme Corp** (`ws_acme`) with three domains —
+Source workspace: **Acme Corp** (`ws_acme`) with two domains —
 `Engineering` (`ch_general`, `ch_engineering`, `ch_product_launch`)
 and `Finance` (`ch_vendor_management`).
 
 > **Phase 7 redesign — real-LLM B2B.** Every B2B AI surface now
-> runs against the on-device **Bonsai-8B-Q1_0** model via the
+> runs against the on-device **Bonsai-1.7B** model via the
 > Phase 7 prompt library
 > (`frontend/electron/inference/prompts/`). The screenshots in
 > this section are intended to be re-captured against a running
@@ -82,28 +83,28 @@ and `Finance` (`ch_vendor_management`).
 | 1 | [`b2b/01-workspace-navigation.png`](./b2b/01-workspace-navigation.png) | §4 shell | — | B2B layout with the workspace → domain → channel hierarchy in the left sidebar. |
 | 2 | [`b2b/02-thread-summary.png`](./b2b/02-thread-summary.png) | §5.3 — summarize | on-device | `ThreadSummaryCard` with source citations anchored to the vendor-management thread. |
 | 3 | [`b2b/03-action-launcher.png`](./b2b/03-action-launcher.png) | §5.3 — launcher | — | Action Launcher open with the Create / Analyze / Plan / Approve four-intent grid. |
-| 4 | [`b2b/04-approval-prefill.png`](./b2b/04-approval-prefill.png) | §5.3 — approval prefill | on-device | `ApprovalPrefillCard` with `vendor` / `amount` / `risk` / `justification` prefilled by Bonsai-8B from the enriched 12-message vendor thread (Phase 7 `prefill-approval.ts` prompt). |
+| 4 | [`b2b/04-approval-prefill.png`](./b2b/04-approval-prefill.png) | §5.3 — approval prefill | on-device | `ApprovalPrefillCard` with `vendor` / `amount` / `risk` / `justification` prefilled by Bonsai-1.7B from the enriched 12-message vendor thread (Phase 7 `prefill-approval.ts` prompt). |
 | 5 | [`b2b/05-approval-card-pending.png`](./b2b/05-approval-card-pending.png) | §5.3 — approval lifecycle | on-device | `ApprovalCard` after submission, in the **Pending** state awaiting Eve's decision. |
 | 6 | [`b2b/06-artifact-draft.png`](./b2b/06-artifact-draft.png) | §5.4 — PRD draft | on-device | `ArtifactDraftCard` streaming a PRD draft with source pins back into `msg_eng_root`. |
 | 7 | [`b2b/07-artifact-workspace.png`](./b2b/07-artifact-workspace.png) | §5.4 — artifact editor | on-device | `ArtifactWorkspace` showing sections, version history, and diff view. |
 | 8 | [`b2b/08-ai-employee-panel.png`](./b2b/08-ai-employee-panel.png) | §5.4 — AI Employee | on-device | `AIEmployeePanel` showing Kara Ops AI with her budget, queued recipes, and recent runs. |
 | 9 | [`b2b/09-recipe-output-gate.png`](./b2b/09-recipe-output-gate.png) | §5 — output gate | on-device | `RecipeOutputGate` presenting the mandatory Accept / Edit / Discard review before a recipe writes into a KApp. |
 | 10 | [`b2b/10-connector-panel.png`](./b2b/10-connector-panel.png) | §5.4 — connector | on-device | `ConnectorPanel` showing the seeded Google Drive connector attached to `ch_vendor_management`. |
-| 11 | [`b2b/11-knowledge-graph.png`](./b2b/11-knowledge-graph.png) | §5 — knowledge | on-device | `KnowledgeGraphPanel` (right-rail "Knowledge" tab) on `#vendor-management` after pressing **Extract**. Phase 7 routes this through `runExtractKnowledge` (LLM-driven, `ai:extract-knowledge` IPC) so each card is an entity Bonsai-8B identified — `decision` / `owner` / `risk` / `requirement` / `deadline` — with a best-effort source-message link and a confidence badge. The legacy regex extractor (`POST /api/channels/{id}/knowledge/extract`) is kept as the offline fallback. |
+| 11 | [`b2b/11-knowledge-graph.png`](./b2b/11-knowledge-graph.png) | §5 — knowledge | on-device | `KnowledgeGraphPanel` (right-rail "Knowledge" tab) on `#vendor-management` after pressing **Extract**. Phase 7 routes this through `runExtractKnowledge` (LLM-driven, `ai:extract-knowledge` IPC) so each card is an entity Bonsai-1.7B identified — `decision` / `owner` / `risk` / `requirement` / `deadline` — with a best-effort source-message link and a confidence badge. The legacy regex extractor (`POST /api/channels/{id}/knowledge/extract`) is kept as the offline fallback. |
 | 12 | [`b2b/12-policy-admin.png`](./b2b/12-policy-admin.png) | §6 — policy | on-device | `PolicyAdminPanel` showing per-workspace AI compute rules (server compute denied, egress budget, redaction required). |
 
 ## On-device LLM demonstration
 
 | # | File | What it shows |
 |---|------|---------------|
-| 1 | [`local-model-status.png`](./local-model-status.png) | `DeviceCapabilityPanel` reporting the `bonsai-8b` alias loaded through Ollama (or MockAdapter fallback when the daemon is absent). |
-| 2 | [`privacy-strip-on-device.png`](./privacy-strip-on-device.png) | Close-up of a single privacy strip confirming `compute: on-device`, `model: bonsai-8b`, `egress: 0 B`. |
+| 1 | [`local-model-status.png`](./local-model-status.png) | `DeviceCapabilityPanel` reporting the `bonsai-1.7b` alias loaded through llama-server (or Ollama / MockAdapter fallback when neither runtime is reachable). |
+| 2 | [`privacy-strip-on-device.png`](./privacy-strip-on-device.png) | Close-up of a single privacy strip confirming `compute: on-device`, `model: bonsai-1.7b`, `egress: 0 B`. |
 | 3 | [`egress-summary-zero.png`](./egress-summary-zero.png) | `EgressSummaryPanel` aggregating per-session totals and showing **0 B** (all local compute). |
 
 All B2C and B2B screenshots in this directory show the privacy strip /
 header reporting `on-device` and `0 B egress`. The 2026-04-30 pass
 re-captured the shots listed in **Captured in this pass** above against
-the live Bonsai-8B weights pulled via
+the live Bonsai-1.7B weights pulled via
 `./scripts/setup-models.sh` through Ollama; the rest still come from
 the renderer's deterministic mock outputs. The three standalone shots
 in this section call out the on-device posture as a standalone
@@ -112,75 +113,54 @@ live model so far).
 
 ## On-device LLM performance
 
-Live numbers, 2026-04-30, against the **PrismML Bonsai-8B-Q1_0** GGUF
-served through the PrismML `llama.cpp` fork. Host: AMD EPYC 7763,
-8 vCPU (no NUMA split, AVX2 + FMA + BMI2), 31 GiB RAM, 0 swap,
-CPU-only (no GPU / Metal / NPU).
+The demo now ships against **Bonsai-1.7B** (`prism-ml/Bonsai-1.7B-gguf`,
+single ~1.0 GB GGUF, no per-arch quant split) served by `llama-server`
+from the PrismML `llama.cpp` fork. The smaller 1.7B parameter count
+lets every interactive surface (smart-reply, translation, morning
+digest, conversation summary) clear the
+[`docs/cpu-perf-tuning.md` short-assistant floor of 5 tok/s](../docs/cpu-perf-tuning.md#11-minimum-usable-thresholds)
+on commodity CPUs without a GPU / Metal / NPU.
 
-**Artifact size.** Bonsai-8B-Q1_0 is **~1.16 GB on disk** (1 105 MiB
-GGUF, ~1.2 GB resident at startup before KV-cache growth) — this is
-the canonical x86 CPU-friendly target the demo documents. Stock
-Ollama 0.22.x cannot load the Q1_0 tensors (the bundled `llama.cpp`
-does not implement the Q1_0 tensor type); the demo runs `llama-server`
-from [`PrismML-Eng/llama.cpp`](https://github.com/PrismML-Eng/llama.cpp)
-(`prism` branch) behind a tiny Ollama-API translator so the Electron
-shell's `OllamaAdapter` still works (full path in
-[How to reproduce → step 4](#how-to-reproduce)).
+**Artifact size.** `Bonsai-1.7B.gguf` is **~1.0 GB on disk** and
+~1.1 GB resident at startup before KV-cache growth. Ollama 0.22.x
+can load this artifact directly; the PrismML `llama-server` build
+remains the recommended runtime because it speaks the Bonsai GGUF
+format natively and supports SSE streaming end-to-end.
 
-**Sustained generation rate (warm):**
+**Reference numbers (historical, Bonsai-8B-Q1_0 on the same EPYC
+7763 reference box):** `pp64` 14.82 tok/s, `tg32` 11.71 tok/s. The
+1.7B swap is expected to clear those numbers comfortably (4-5×
+fewer parameters on the same hardware); fresh `llama-bench`
+numbers will land alongside the next demo capture pass.
 
-| PrismML `llama-bench`, `-t 6`, CPU-only      | tok/s     |
-| -------------------------------------------- | --------- |
-| `pp64`  (prompt processing, 64 input tokens) | **14.82** |
-| `tg32`  (token generation, 32 output tokens) | **11.71** |
+**Wall-time targets for the redesigned demo** (assuming the same
+EPYC reference box and tg32 ≥ 30 tok/s on Bonsai-1.7B):
 
-**Wall-time implications** (extrapolated from `tg32 = 11.71 tok/s`):
+| Surface shape                         | tokens produced | target wall-time |
+| ------------------------------------- | --------------- | ---------------- |
+| 3-bullet summary (~50 tokens)         |  ~50            | ~2 s             |
+| EN → VI one-line translation (64-cap) |   64            | ~2 s             |
+| 256-token draft email                 |  256            | ~9 s             |
 
-| Surface shape                         | tokens produced | wall-time |
-| ------------------------------------- | --------------- | --------- |
-| 3-bullet summary (~50 tokens)         |  ~50            | ~4 s      |
-| EN → ES one-line translation (64-cap) |   64            | ~5 s      |
-| 256-token draft email                 |  256            | ~22 s     |
+The `num_ctx 1024` default in
+[`models/Modelfile.bonsai1_7b`](../models/Modelfile.bonsai1_7b) is
+the CPU-friendly choice for the 1.7B model class: attention cost
+scales linearly with `-c`, and the prompt library
+([`PROMPT_THREAD_CAP=15`, `PROMPT_MESSAGE_CAP=120`](../frontend/electron/inference/prompts/shared.ts))
+is tuned to fit comfortably inside a 1024-token window.
 
-Q1_0 has a real x86 SIMD kernel in the PrismML fork
-(`ggml/src/ggml-cpu/arch/x86/quants.c:555`, AVX2 + FMA), so on
-commodity AMD/Intel CPUs it lands comfortably above the
-[`docs/cpu-perf-tuning.md` short-assistant floor of 5 tok/s](../docs/cpu-perf-tuning.md#11-minimum-usable-thresholds).
-Classifier / router surfaces (20+ tok/s minimum) should drop to
-the 4B variant `Bonsai-4B-Q1_0` (~20.7 tok/s on the same VM) or run
-on GPU / Metal / NPU.
-
-**For comparison — why not Q2_0 on x86?** Same VM, same `llama-bench`,
-same PrismML fork: `Ternary-Bonsai-8B-Q2_0.gguf` lands at
-**0.71 tok/s** prompt-eval and **0.60 tok/s** generation — ~25×
-slower than Q1_0 — because PrismML wrote a NEON SIMD kernel for
-Q2_0 but never wrote an x86 SIMD kernel; on x86 it falls through to
-a scalar generic path. Full kernel attribution in
-[`docs/cpu-perf-tuning.md` → Why Q2_0 is slow on x86](../docs/cpu-perf-tuning.md#why-q2_0-is-slow-on-x86).
-On ARM / Apple Silicon, Q2_0 is the fastest path — set
-`MODEL_QUANT=q2_0` and download the file from
-https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf.
-
-The `num_ctx 2048` default in `models/Modelfile.bonsai8b` is the
-CPU-friendly choice: attention cost scales linearly with `-c`, so a
-4× context window directly inflates per-token cost without buying
-anything for the 256–1024-token KChat task prompts.
-
-**Calibration note.** Older anchor numbers ("~0.3 tok/s on an 8 GB
-shared 8-core VM") in prior passes of this file were measured
-against the Q2_0 file, which falls through to a scalar generic path
-on x86. After diagnosing the kernel-coverage gap (see the
-`docs/cpu-perf-tuning.md` link above), the demo's canonical x86
-default is now `Bonsai-8B-Q1_0.gguf`, which runs at ~11.7 tok/s on
-the same EPYC reference box — a ~25× improvement at half the disk
-footprint, with no host-class change.
+**Calibration note.** Older anchor numbers in prior passes of this
+file were measured against the previous 8B-class artifacts (Q1_0 /
+Q2_0). The demo no longer ships a per-arch quant split: the same
+`Bonsai-1.7B.gguf` runs on x86 CPU, ARM CPU, and Apple Silicon.
 
 ## Bilingual chat capture (B2C redesign)
 
 The redesigned B2C surface (PR #50) needs eight new screenshots that
 the next capture pass will produce. Steps are reproducible against
-either `MockAdapter` (deterministic — no Ollama required) or the
-live `bonsai-8b` Ollama path.
+either `MockAdapter` (deterministic — no Ollama / llama-server
+required) or the live `bonsai-1.7b` path served through llama-server
+or Ollama.
 
 Pre-conditions (one-time):
 
@@ -195,12 +175,12 @@ of `B2CLayout`, so the app opens directly into the chat.
 | # | Filename (target) | What to capture | Notes |
 |---|-------------------|-----------------|-------|
 | 1 | `b2c/13-bilingual-chat-overview.png` | Full `ch_dm_alice_minh` chat with several visible bubbles, each rendering its two-panel translation card. | Scroll up so at least one EN bubble and one VI bubble are visible side-by-side. |
-| 2 | `b2c/14-translation-card-vi-to-en.png` | Close-up of a single Vietnamese bubble (e.g. `msg_minh_2`) translated into English. The English panel must be primary; the Vietnamese panel muted. | Highlight the SLM attribution pill (`on-device · bonsai-8b · 0 B egress`). |
+| 2 | `b2c/14-translation-card-vi-to-en.png` | Close-up of a single Vietnamese bubble (e.g. `msg_minh_2`) translated into English. The English panel must be primary; the Vietnamese panel muted. | Highlight the SLM attribution pill (`on-device · bonsai-1.7b · 0 B egress`). |
 | 3 | `b2c/15-translation-card-en-to-vi.png` | Close-up of an Alice (English) bubble translated into Vietnamese (the partner side). Original English panel is primary; Vietnamese translation is muted secondary. | Demonstrates context-aware emphasis. |
 | 4 | `b2c/16-smart-reply-bilingual.png` | After a Vietnamese bubble lands, focus the composer so `SmartReplyBar` renders 2–3 English suggestions. | The mock adapter ships the canned three-line smart-reply output; the live model produces variations. |
 | 5 | `b2c/17-privacy-strip-bilingual.png` | Expanded `PrivacyStrip` on a Vietnamese-bubble translation card, showing all 8 elements (compute location, model, sources, egress, confidence, why-suggested, accept/edit/discard, linked origin). | Confirms 0 B egress for the translate task. |
 | 6 | `b2c/18-conversation-summary.png` | Right-rail **Summary** tab after the bilingual `summarize` call returns: bullet list in English, with the privacy strip and source pin to the chat. | The panel runs once on mount and caches per-channel; refresh by switching tabs and back. |
-| 7 | `b2c/19-device-capability-panel.png` | `DeviceCapabilityPanel` showing `bonsai-8b` loaded (or "fallback to mock" when Ollama is offline). | Same composition as `10-device-capability-panel.png` but pin it on the redesigned surface. |
+| 7 | `b2c/19-device-capability-panel.png` | `DeviceCapabilityPanel` showing `bonsai-1.7b` loaded (or "fallback to mock" when neither runtime is reachable). | Same composition as `10-device-capability-panel.png` but pin it on the redesigned surface. |
 | 8 | `b2c/20-metrics-dashboard-translate.png` | `MetricsDashboard` (Stats tab) after letting the chat translate every visible bubble — it should show a non-trivial `translate` run count and `0 B` egress. | Capture *after* the batch translate has finished so latency / token columns are populated. |
 
 Once captured, append these eight rows to the B2C flows table above
@@ -226,64 +206,46 @@ the same follow-up.
    npm run electron:dev
    ```
 
-3. **Wire a real local model — required for B2B captures**:
+3. **Wire a real local model (recommended) — llama-server**
+   (preferred runtime; talks the Bonsai GGUF format natively and
+   the Electron bootstrap probes it first):
 
    ```bash
-   ./scripts/setup-models.sh                # pulls bonsai-8b via Ollama
-   ollama serve &                            # leave running in another shell
-   export OLLAMA_BASE_URL=http://localhost:11434
-   ```
-
-   Phase 7 redesigned every B2B AI surface to route through the
-   on-device Bonsai-8B-Q1_0 model. Without Ollama the bootstrap
-   falls back to `MockAdapter` and every B2B panel renders an
-   obvious `[MOCK]`-prefixed placeholder — fine for B2C captures
-   and tests, but the B2B screenshots in this directory are meant
-   to show real LLM output. Recapture them under a live daemon
-   when refreshing the demo set.
-
-4. **Optional — wire the live `Bonsai-8B-Q1_0.gguf` GGUF (Prism
-   quant)**: the Q1_0 quant is **not** in mainline `llama.cpp` and
-   Ollama 0.22.0 cannot load it; use the PrismML fork plus a tiny
-   Ollama-API shim:
-
-   ```bash
-   # 1. Build the PrismML fork's llama-server (one-time):
-   git clone -b prism https://github.com/PrismML-Eng/llama.cpp \
-     ~/prismml-llama.cpp
-   cd ~/prismml-llama.cpp
-   cmake -B build -DGGML_NATIVE=ON -DLLAMA_CURL=OFF \
-     -DCMAKE_BUILD_TYPE=Release
+   git clone -b prism https://github.com/kennguy3n/llama.cpp \
+     ~/llama.cpp
+   cd ~/llama.cpp
+   cmake -B build -DCMAKE_BUILD_TYPE=Release
    cmake --build build -j8 --target llama-server
 
-   # Verify CPU features (need at least avx2 + fma for the x86
-   # SIMD Q1_0 kernel; without it generation falls back to scalar):
-   lscpu | egrep "Model name|avx|avx2|avx512|sse4|fma"
+   curl -L -o ~/Bonsai-1.7B.gguf \
+     https://huggingface.co/prism-ml/Bonsai-1.7B-gguf/resolve/main/Bonsai-1.7B.gguf
 
-   # 2. Start llama-server bound to the Q1_0 GGUF:
    ./build/bin/llama-server \
-     -m /path/to/Bonsai-8B-Q1_0.gguf \
-     -c 1024 -t 6 -tb 6 --host 127.0.0.1 --port 8800 --parallel 1 \
-     --mlock --no-mmap
+     -m ~/Bonsai-1.7B.gguf \
+     -c 2048 --host 127.0.0.1 --port 8080
 
-   # 3. Run an Ollama-API shim that translates /api/generate
-   #    -> llama-server's /completion (sample lives outside this
-   #    repo; see PR #38 description for the bridge sketch).
-
-   # 4. Launch the Electron shell pointed at the shim:
-   cd frontend
-   OLLAMA_BASE_URL=http://127.0.0.1:11434 \
-     MODEL_NAME=bonsai-8b \
-     MODEL_QUANT=q1_0 \
-     npm run electron:dev
+   # In another shell:
+   cd slm-chat-demo/frontend
+   LLAMACPP_BASE_URL=http://127.0.0.1:8080 npm run electron:dev
    ```
 
-   The `llama-server` flags above are the demo defaults; see
-   [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
-   full host-class matrix, the thread-count sweep methodology, the
-   decision threshold for falling back to `Bonsai-4B-Q1_0` or a GPU
-   path, and the per-arch quant choice (Q1_0 on x86, Q2_0 on ARM via
-   `MODEL_QUANT=q2_0`).
+4. **Alternative — Ollama**: the Electron bootstrap falls back to
+   Ollama on `http://localhost:11434` when llama-server is not
+   reachable.
+
+   ```bash
+   ./scripts/setup-models.sh                # pulls bonsai-1.7b via Ollama
+   ollama serve &                            # leave running in another shell
+   export OLLAMA_BASE_URL=http://localhost:11434
+   cd frontend && npm run electron:dev
+   ```
+
+   Without either runtime, the bootstrap falls back to
+   `MockAdapter` and every B2B panel renders an obvious
+   `[MOCK]`-prefixed placeholder — fine for B2C captures and
+   tests, but the B2B screenshots in this directory are meant to
+   show real LLM output. Recapture them under a live runtime when
+   refreshing the demo set.
 
 ### B2C flow (screenshots 1-12)
 

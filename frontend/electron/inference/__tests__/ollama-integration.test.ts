@@ -5,7 +5,7 @@
 // `OllamaAdapter` end-to-end: ping → list models → status. It is
 // intentionally read-only — it never pulls or evicts a model, so it
 // is safe to run on a developer machine that already has
-// Bonsai-8B configured via `./scripts/setup-models.sh`.
+// Bonsai-1.7B configured via `./scripts/setup-models.sh`.
 //
 // When the daemon is *not* reachable (the default in CI), the suite
 // is skipped via `describe.skipIf(...)` so it never blocks PRs.
@@ -56,17 +56,17 @@ describe.skipIf(!process.env.OLLAMA_INTEGRATION)('OllamaAdapter (live daemon)', 
     const models = await ad.listModels();
     expect(Array.isArray(models)).toBe(true);
     // We don't assert a specific model name here because the developer
-    // may have pulled `hf.co/prism-ml/Ternary-Bonsai-8B-gguf`, the
-    // `bonsai-8b` alias, or both. The important thing for the
+    // may have pulled `hf.co/prism-ml/Bonsai-1.7B-gguf`, the
+    // `bonsai-1.7b` alias, or both. The important thing for the
     // smoke test is that `/api/tags` returns a parseable list at all.
   });
 
   it('reports a structured ModelStatus regardless of load state', async () => {
     if (!reachable) return;
-    const ad = new OllamaAdapter({ baseURL, model: 'bonsai-8b' });
+    const ad = new OllamaAdapter({ baseURL, model: 'bonsai-1.7b' });
     const s = await ad.status();
     expect(typeof s.loaded).toBe('boolean');
-    expect(s.model).toBe('bonsai-8b');
+    expect(s.model).toBe('bonsai-1.7b');
     expect(['running', 'stopped']).toContain(s.sidecar);
     expect(s.ramUsageMB).toBeGreaterThanOrEqual(0);
   });

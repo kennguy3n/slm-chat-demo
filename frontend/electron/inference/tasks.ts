@@ -307,7 +307,7 @@ export function buildThreadSummary(
   const messages = req.messages;
   const limited = messages.slice(0, THREAD_SUMMARY_MAX_MESSAGES);
   // Prompt construction lives in `prompts/summarize.ts` so the
-  // Bonsai-8B-tuned envelope (concise instructions, refusal
+  // Bonsai-1.7B-tuned envelope (concise instructions, refusal
   // contract, capped per-message length) can evolve without churn
   // in this orchestrator.
   const prompt = buildSummarizePrompt({
@@ -326,9 +326,9 @@ export function buildThreadSummary(
     excerpt: truncateForPrompt(m.content, 160),
   }));
 
-  let model = 'bonsai-8b';
+  let model = 'bonsai-1.7b';
   let tier: ThreadSummaryResponse['tier'] = 'local';
-  let reason = 'Thread summary routed to on-device Bonsai-8B.';
+  let reason = 'Thread summary routed to on-device Bonsai-1.7B.';
   const decision = router.decide({ taskType: 'summarize', prompt });
   if (decision.allow) {
     model = decision.model;
@@ -521,7 +521,7 @@ export async function runPrefillApproval(
   const sourceMessageIds = collectApprovalSources(fields, limited);
 
   const tier: Tier = decision.tier ?? 'local';
-  const reason = decision.reason || `Routed prefill_approval to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-8B'}.`;
+  const reason = decision.reason || `Routed prefill_approval to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-1.7B'}.`;
 
   return {
     threadId: req.threadId,
@@ -651,8 +651,8 @@ export function buildDraftArtifact(
   // still wins when the confidential-server tier is wired in and the
   // dispatcher asks for it explicitly.
   let tier: Tier = 'local';
-  let model = 'bonsai-8b';
-  let reason = `Drafting a ${req.artifactType} routed to on-device Bonsai-8B.`;
+  let model = 'bonsai-1.7b';
+  let reason = `Drafting a ${req.artifactType} routed to on-device Bonsai-1.7B.`;
 
   const decision = router.decide({
     taskType: 'draft_artifact',
@@ -696,11 +696,50 @@ const UNREAD_SUMMARY_MAX_MESSAGES = 20;
 // is summarised in full.
 const PER_CHAT_MESSAGE_TAIL = 5;
 
+// ISO 639-1 → English language name lookup for the bilingual summary
+// prompt. The frontend stores `partnerLanguage` as a 2-letter ISO
+// code (e.g. `vi`), but the smaller Bonsai-1.7B model produces
+// noticeably better summaries when the language is named explicitly
+// rather than referenced by its code. Unknown codes pass through
+// unchanged so an operator-supplied full name still works.
+const LANGUAGE_CODE_NAMES: Record<string, string> = {
+  en: 'English',
+  vi: 'Vietnamese',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  it: 'Italian',
+  pt: 'Portuguese',
+  ja: 'Japanese',
+  ko: 'Korean',
+  zh: 'Chinese',
+  ru: 'Russian',
+  ar: 'Arabic',
+  hi: 'Hindi',
+  th: 'Thai',
+  id: 'Indonesian',
+  nl: 'Dutch',
+  pl: 'Polish',
+  tr: 'Turkish',
+  sv: 'Swedish',
+};
+
+export function languageNameFromCode(code: string): string {
+  if (!code) return code;
+  const trimmed = code.trim();
+  // Already a multi-character word? Treat as a full language name.
+  if (trimmed.length > 3 || !/^[a-z]{2,3}(-[a-z0-9]+)?$/i.test(trimmed)) {
+    return trimmed;
+  }
+  const base = trimmed.toLowerCase().split('-')[0]!;
+  return LANGUAGE_CODE_NAMES[base] ?? trimmed;
+}
+
 export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResponse {
   const sources: UnreadSummaryResponse['sources'] = [];
   const isBilingual = Boolean(req.bilingualPartnerLanguage);
-  const viewerLang = req.viewerLanguage?.trim() || 'English';
-  const partnerLang = req.bilingualPartnerLanguage?.trim() ?? '';
+  const viewerLang = languageNameFromCode(req.viewerLanguage?.trim() || 'English');
+  const partnerLang = languageNameFromCode(req.bilingualPartnerLanguage?.trim() ?? '');
 
   let prompt = '';
   if (isBilingual) {
@@ -735,7 +774,7 @@ export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResp
   }
   return {
     prompt,
-    model: 'bonsai-8b',
+    model: 'bonsai-1.7b',
     sources,
     computeLocation: 'on_device',
     dataEgressBytes: 0,
@@ -780,7 +819,7 @@ export async function runPrefillForm(
   const parsed = parseFormFields(resp.output, fields);
   const sourceMessageIds = collectFormSources(parsed, limited);
   const tier: Tier = decision.tier ?? 'local';
-  const reason = decision.reason || `Routed prefill_form to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-8B'}.`;
+  const reason = decision.reason || `Routed prefill_form to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-1.7B'}.`;
 
   return {
     threadId: req.threadId,
