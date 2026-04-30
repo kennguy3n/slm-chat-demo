@@ -75,6 +75,36 @@ describe('bootstrapInference', () => {
     expect(dec.model).toBe('custom-alias');
   });
 
+  describe('MODEL_QUANT override', () => {
+    const ORIGINAL_QUANT = process.env.MODEL_QUANT;
+    afterEach(() => {
+      if (ORIGINAL_QUANT === undefined) delete process.env.MODEL_QUANT;
+      else process.env.MODEL_QUANT = ORIGINAL_QUANT;
+    });
+
+    it('defaults defaultQuant to q2_0 when MODEL_QUANT is unset', async () => {
+      delete process.env.MODEL_QUANT;
+      const stack = await bootstrapInference({
+        fetchImpl: makeFetch({ pingOk: true, tagModels: ['ternary-bonsai-8b'] }),
+      });
+      expect(stack.defaultQuant).toBe('q2_0');
+    });
+
+    it('honours MODEL_QUANT and propagates it to the Ollama adapter status()', async () => {
+      process.env.MODEL_QUANT = 'q4_k_m';
+      const stack = await bootstrapInference({
+        fetchImpl: makeFetch({ pingOk: true, tagModels: ['ternary-bonsai-8b'] }),
+      });
+      expect(stack.defaultQuant).toBe('q4_k_m');
+      // The status provider must report the configured quant, not a
+      // hardcoded value — otherwise DeviceCapabilityPanel shows the
+      // wrong label when an operator runs a non-default GGUF.
+      expect(stack.status).toBeDefined();
+      const s = await stack.status!.status();
+      expect(s.quant).toBe('q4_k_m');
+    });
+  });
+
   describe('confidential server probe', () => {
     const ORIGINAL_POLICY = process.env.CONFIDENTIAL_SERVER_POLICY;
     afterEach(() => {
