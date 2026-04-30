@@ -170,6 +170,13 @@ export async function runExtractTasks(
   };
 }
 
+// Strip `[source:id1,id2]` / `[source: id1, id2]` provenance markers from a
+// task line. The markers are emitted by the mock adapter (and, in the
+// future, any adapter that wants to annotate which seeded message a
+// task came from) so the UI can wire provenance. They must not leak
+// into the user-visible task title.
+const SOURCE_MARKER_RE = /\s*\[source:[^\]]*\]/gi;
+
 export function parseExtractedTasks(out: string): ExtractedTask[] {
   if (detectInsufficient(out)) return [];
   const tasks: ExtractedTask[] = [];
@@ -177,6 +184,7 @@ export function parseExtractedTasks(out: string): ExtractedTask[] {
     let line = raw.trim();
     if (!line) continue;
     line = line.replace(/^[-*•·\s\t]+/, '');
+    line = line.replace(SOURCE_MARKER_RE, '').trim();
     if (!line) continue;
     const parts = line.split('|').map((p) => p.trim());
     if (parts.length >= 2) {

@@ -74,24 +74,39 @@ export async function bootstrapInference(
   const ollama = new OllamaAdapter({ baseURL, fetchImpl, model: modelName });
   const mock = new MockAdapter();
 
-  let local: typeof ollama | MockAdapter = mock;
-  let status: StatusProvider | undefined;
-  let loader: Loader | undefined;
-  let source: InferenceStack['source'] = 'mock';
+  // Always prefer the Ollama adapter at runtime so every request hits
+  // the real SLM weights. The ping below is informational only — it
+  // drives the "Model ready" vs "Starting" label in the
+  // DeviceCapabilityPanel but does NOT gate routing. If the daemon is
+  // unreachable mid-request the router surfaces the error instead of
+  // silently falling back to the MockAdapter, because the demo's
+  // privacy strip promises on-device SLM output.
+  const local: typeof ollama | MockAdapter = ollama;
+  let status: StatusProvider | undefined = ollama;
+  let loader: Loader | undefined = ollama;
+  let source: InferenceStack['source'] = 'ollama';
 
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 500);
+  const timer = setTimeout(() => ac.abort(), 5000);
   try {
     await ollama.ping(ac.signal);
-    local = ollama;
-    status = ollama;
-    loader = ollama;
-    source = 'ollama';
-  } catch {
-    // ollama unreachable — keep the mock adapter
+    console.log(`[bootstrap] on-device adapter ready: Ollama @ ${baseURL} (model=${modelName})`);
+  } catch (err) {
+    // Ping failed but keep ollama wired anyway — the translate
+    // request will retry and either succeed (if the daemon comes up)
+    // or surface the error to the user. We flip `source` to 'mock'
+    // only so the DeviceCapabilityPanel shows a degraded state while
+    // the first ping is failing.
+    status = undefined;
+    loader = undefined;
+    source = 'mock';
+    console.log(
+      `[bootstrap] Ollama ping failed at ${baseURL}: ${(err as Error).message}. Adapter still wired — requests will retry on demand.`,
+    );
   } finally {
     clearTimeout(timer);
   }
+  void mock; // MockAdapter is kept for unit tests only — never routed in production.
 
   const router = new InferenceRouter(local, mock, {
     policyAllowsServer,

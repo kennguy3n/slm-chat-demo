@@ -29,6 +29,7 @@ func TestSeededChannelsHaveEnoughMessages(t *testing.T) {
 
 	channels := []string{
 		"ch_dm_alice_bob",
+		"ch_dm_alice_minh",
 		"ch_family",
 		"ch_neighborhood",
 		"ch_general",
@@ -44,8 +45,17 @@ func TestSeededChannelsHaveEnoughMessages(t *testing.T) {
 				total += len(m.ListThreadMessages(msg.ID)) - 1
 			}
 		}
-		if total < 5 {
-			t.Errorf("channel %q: expected at least 5 total messages (top + threaded), got %d", id, total)
+		// The bilingual VI↔EN DM keeps a tight 4-message
+		// back-and-forth so the real SLM can finish translating
+		// every bubble in under ~3 minutes on CPU. Every other
+		// seeded channel still carries the 5-message minimum the
+		// PROPOSAL.md §5 demo flows depend on.
+		minMessages := 5
+		if id == "ch_dm_alice_minh" {
+			minMessages = 4
+		}
+		if total < minMessages {
+			t.Errorf("channel %q: expected at least %d total messages (top + threaded), got %d", id, minMessages, total)
 		}
 	}
 }
@@ -111,6 +121,24 @@ func TestB2CChannelsCoverDemoFlows(t *testing.T) {
 	dmJoined := strings.Join(contents(dm), "\n")
 	if !strings.Contains(dmJoined, "restaurante") && !strings.Contains(dmJoined, "siempre") {
 		t.Errorf("ch_dm_alice_bob missing the Spanish line used by the translation demo")
+	}
+
+	// English ↔ Vietnamese translation demo has its own channel. Needs
+	// enough back-and-forth to demonstrate the SLM handling both
+	// directions across several turns.
+	vi := m.ListChannelMessages("ch_dm_alice_minh")
+	if len(vi) < 4 {
+		t.Fatalf("expected at least 4 messages in ch_dm_alice_minh, got %d", len(vi))
+	}
+	viJoined := strings.Join(contents(vi), "\n")
+	// At least one distinctively Vietnamese phrase (diacritics) and at
+	// least one distinctively English phrase so the Translate affordance
+	// has meaningful work on both sides.
+	if !strings.Contains(viJoined, "phở") && !strings.Contains(viJoined, "người") {
+		t.Errorf("ch_dm_alice_minh missing a Vietnamese line with diacritics")
+	}
+	if !strings.Contains(viJoined, "Sounds") && !strings.Contains(viJoined, "I'd love") && !strings.Contains(viJoined, "see you") {
+		t.Errorf("ch_dm_alice_minh missing a distinctively English line")
 	}
 }
 

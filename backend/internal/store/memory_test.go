@@ -13,11 +13,11 @@ func TestSeedPopulatesUsersAndWorkspaces(t *testing.T) {
 	store.Seed(m)
 
 	users := m.ListUsers()
-	if len(users) != 5 {
-		t.Fatalf("expected 5 seeded users, got %d", len(users))
+	if len(users) != 6 {
+		t.Fatalf("expected 6 seeded users, got %d", len(users))
 	}
 
-	wantUsers := []string{"user_alice", "user_bob", "user_carol", "user_dave", "user_eve"}
+	wantUsers := []string{"user_alice", "user_bob", "user_carol", "user_dave", "user_eve", "user_minh"}
 	for _, id := range wantUsers {
 		if _, ok := m.GetUser(id); !ok {
 			t.Errorf("expected user %q to be seeded", id)

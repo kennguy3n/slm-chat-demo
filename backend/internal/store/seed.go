@@ -20,6 +20,7 @@ func Seed(m *Memory) {
 		{ID: "user_carol", DisplayName: "Carol Kim", Email: "carol@example.com", AvatarColor: "#16a34a", Active: true},
 		{ID: "user_dave", DisplayName: "Dave Wilson", Email: "dave@example.com", AvatarColor: "#f97316", Active: true},
 		{ID: "user_eve", DisplayName: "Eve Johnson", Email: "eve@example.com", AvatarColor: "#dc2626", Active: true},
+		{ID: "user_minh", DisplayName: "Minh Nguyen", Email: "minh@example.com", AvatarColor: "#e11d48", Active: true},
 	}
 	for _, u := range users {
 		m.PutUser(u)
@@ -56,6 +57,19 @@ func Seed(m *Memory) {
 			Kind:        models.ChannelDM,
 			Context:     models.ContextB2C,
 			MemberIDs:   []string{"user_alice", "user_bob"},
+		},
+		{
+			// Demo channel for the English ↔ Vietnamese translation
+			// flow. Alice and Minh alternate languages so the Translate
+			// affordance has meaningful work to do on every bubble.
+			ID:              "ch_dm_alice_minh",
+			WorkspaceID:     personal.ID,
+			DomainID:        "dom_personal",
+			Name:            "Minh Nguyen",
+			Kind:            models.ChannelDM,
+			Context:         models.ContextB2C,
+			MemberIDs:       []string{"user_alice", "user_minh"},
+			PartnerLanguage: "vi",
 		},
 		{
 			ID:          "ch_family",
@@ -386,6 +400,16 @@ func seedMessages(m *Memory, base time.Time) {
 	addMsg(m, "msg_dm_7", "ch_dm_alice_bob", "", "user_bob", "no stress, I'll grab the booth and order us water", base.Add(-2*time.Hour-29*time.Minute))
 	addMsg(m, "msg_dm_8", "ch_dm_alice_bob", "", "user_alice", "¿nos vemos a las siete en el restaurante de siempre?", base.Add(-2*time.Hour-20*time.Minute))
 	addMsg(m, "msg_dm_9", "ch_dm_alice_bob", "", "user_bob", "sí! 7pm confirmed — Carol is in too, she'll meet us there", base.Add(-2*time.Hour-18*time.Minute))
+
+	// B2C — Alice ↔ Minh (English / Vietnamese). Back-and-forth so the
+	// SLM Translate affordance is exercised on every bubble. Topics:
+	// dinner plans, a small technical question, a casual check-in. The
+	// messages alternate source language so the target-language toggle
+	// flips on every line.
+	addMsg(m, "msg_vi_1", "ch_dm_alice_minh", "", "user_minh", "Chào Alice, tối mai bạn rảnh đi ăn phở không?", base.Add(-4*time.Hour))
+	addMsg(m, "msg_vi_2", "ch_dm_alice_minh", "", "user_alice", "Hi Minh! I'd love to — 7pm at that pho place on the corner?", base.Add(-4*time.Hour+3*time.Minute))
+	addMsg(m, "msg_vi_3", "ch_dm_alice_minh", "", "user_minh", "Ok, mình đặt bàn cho hai người.", base.Add(-4*time.Hour+6*time.Minute))
+	addMsg(m, "msg_vi_4", "ch_dm_alice_minh", "", "user_alice", "Sounds perfect — see you at 7!", base.Add(-4*time.Hour+9*time.Minute))
 
 	// B2C — Family group. Drives two demo flows:
 	//  - Morning Catch-up digest (PROPOSAL 5.1) needs multiple days of

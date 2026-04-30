@@ -56,9 +56,11 @@ describe('MockAdapter', () => {
       expect(resp.output).toMatch(/Acme Logs/);
     });
 
-    it('extract_tasks output references seeded message IDs for source attribution', async () => {
+    it('extract_tasks output references seeded message IDs via [source:...] markers', async () => {
       const resp = await adapter.run({ taskType: 'extract_tasks', prompt: '' });
-      expect(resp.output).toMatch(/msg_fam_1/);
+      // Markers must use the no-space convention so CitationRenderer
+      // (`/\[source:[a-zA-Z0-9_\-:.,]+\]/`) can parse them.
+      expect(resp.output).toMatch(/\[source:msg_fam_1\]/);
       // At least two distinct source-message references so the demo
       // isn't showing a single pin for every task.
       const matches = resp.output.match(/msg_fam_\d+/g) ?? [];
@@ -66,6 +68,19 @@ describe('MockAdapter', () => {
       expect(distinct.size).toBeGreaterThanOrEqual(2);
       expect(resp.output).toMatch(/Friday/);
       expect(resp.output).toMatch(/sunscreen/);
+    });
+
+    it('parseExtractedTasks strips [source:...] markers from task titles', async () => {
+      const { parseExtractedTasks } = await import('./tasks.js');
+      const resp = await adapter.run({ taskType: 'extract_tasks', prompt: '' });
+      const tasks = parseExtractedTasks(resp.output);
+      expect(tasks.length).toBeGreaterThanOrEqual(5);
+      for (const t of tasks) {
+        expect(t.title).not.toMatch(/\[source:/i);
+        expect(t.title.length).toBeGreaterThan(0);
+      }
+      // Sanity-check a specific title survives cleanly.
+      expect(tasks.some((t) => t.title === 'Add sunscreen to shopping list')).toBe(true);
     });
 
     it('smart_reply returns 2-3 distinct suggestions on separate lines', async () => {

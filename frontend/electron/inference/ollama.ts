@@ -3,6 +3,7 @@
 // daemon over its HTTP API. Reports OnDevice=true since the daemon
 // runs on the same host as the Electron main process.
 
+import http from 'node:http';
 import type {
   Adapter,
   InferenceRequest,
@@ -49,11 +50,12 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
   baseURL: string;
   model: string;
   private fetchImpl: typeof fetch;
+  private fetchInjected: boolean;
 
   constructor(opts: OllamaAdapterOptions = {}) {
     this.baseURL = (opts.baseURL || DefaultOllamaBaseURL).replace(/\/$/, '');
     this.model = opts.model || 'ternary-bonsai-8b';
-    // Allow tests to inject a fake fetch.
+    this.fetchInjected = Boolean(opts.fetchImpl);
     this.fetchImpl = opts.fetchImpl || ((...a) => fetch(...(a as Parameters<typeof fetch>)));
   }
 
@@ -62,30 +64,27 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
   }
 
   async run(req: InferenceRequest, signal?: AbortSignal): Promise<InferenceResponse> {
+    // We always use streaming under the hood — a ternary-bonsai-8B
+    // translation takes ~30–90 s on CPU, and Electron's fetch will
+    // abort a non-streaming response long before the model finishes.
+    // Streaming keeps bytes flowing so the connection never idles.
     const model = req.model || this.model;
-    const body: OllamaGenerateRequest = {
-      model,
-      prompt: req.prompt ?? '',
-      stream: false,
-    };
-    const res = await this.fetchImpl(`${this.baseURL}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`ollama: HTTP ${res.status}: ${text.trim()}`);
+    const t0 = Date.now();
+    let output = '';
+    let tokens = 0;
+    for await (const chunk of this.stream(req, signal)) {
+      if (chunk.error) throw new Error(`ollama: ${chunk.error}`);
+      if (chunk.delta) {
+        output += chunk.delta;
+        tokens += 1;
+      }
     }
-    const frame = (await res.json()) as OllamaGenerateResponse;
-    if (frame.error) throw new Error(`ollama: ${frame.error}`);
     return {
       taskType: req.taskType,
       model,
-      output: frame.response ?? '',
-      tokensUsed: frame.eval_count ?? 0,
-      latencyMs: Math.floor((frame.total_duration ?? 0) / 1_000_000),
+      output,
+      tokensUsed: tokens,
+      latencyMs: Date.now() - t0,
       onDevice: true,
     };
   }
@@ -100,6 +99,26 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
       prompt: req.prompt ?? '',
       stream: true,
     };
+
+    // Tests inject fetchImpl directly — keep using fetch in that path.
+    if (this.fetchInjected) {
+      yield* this.fetchStream(body, signal);
+      return;
+    }
+
+    // Production path: use node:http directly. Node's fetch (undici)
+    // enforces a 5-minute bodyTimeout on slow streams even with keep-
+    // alive heartbeats, and Electron's main-process fetch inherits
+    // that. Using http.request gives us a raw socket with no body
+    // timer so ternary-bonsai-8B's 1–2 minute inference can stream
+    // cleanly.
+    yield* this.httpStream(body, signal);
+  }
+
+  private async *fetchStream(
+    body: OllamaGenerateRequest,
+    signal?: AbortSignal,
+  ): AsyncGenerator<StreamChunk, void, void> {
     const res = await this.fetchImpl(`${this.baseURL}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -147,6 +166,114 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
       }
     } finally {
       reader.releaseLock?.();
+    }
+  }
+
+  private async *httpStream(
+    body: OllamaGenerateRequest,
+    signal?: AbortSignal,
+  ): AsyncGenerator<StreamChunk, void, void> {
+    const url = new URL(`${this.baseURL}/api/generate`);
+    const payload = Buffer.from(JSON.stringify(body));
+    const queue: (StreamChunk | { type: 'end' } | { type: 'error'; err: Error })[] = [];
+    let waiter: (() => void) | null = null;
+
+    const notify = () => {
+      const w = waiter;
+      waiter = null;
+      if (w) w();
+    };
+
+    const request = http.request(
+      {
+        host: url.hostname,
+        port: url.port ? Number(url.port) : 80,
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': payload.byteLength.toString(),
+          Connection: 'close',
+        },
+        // Disable Node's default socket idle timeout (~0 = off).
+        timeout: 0,
+      },
+      (res) => {
+        res.setEncoding('utf8');
+        let buffer = '';
+        res.on('data', (chunk: string) => {
+          buffer += chunk;
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const raw of lines) {
+            const line = raw.trim();
+            if (!line) continue;
+            let frame: OllamaGenerateResponse;
+            try {
+              frame = JSON.parse(line) as OllamaGenerateResponse;
+            } catch {
+              continue;
+            }
+            if (frame.error) {
+              queue.push({ error: frame.error, done: true });
+              notify();
+              continue;
+            }
+            if (frame.response) {
+              queue.push({ delta: frame.response, done: false });
+              notify();
+            }
+            if (frame.done) {
+              queue.push({ done: true });
+              notify();
+            }
+          }
+        });
+        res.on('end', () => {
+          queue.push({ type: 'end' });
+          notify();
+        });
+        res.on('error', (err: Error) => {
+          queue.push({ type: 'error', err });
+          notify();
+        });
+      },
+    );
+    request.setSocketKeepAlive(true, 1000);
+    request.on('error', (err: Error) => {
+      queue.push({ type: 'error', err });
+      notify();
+    });
+
+    if (signal) {
+      if (signal.aborted) {
+        request.destroy(new Error('aborted'));
+      } else {
+        signal.addEventListener('abort', () => request.destroy(new Error('aborted')), { once: true });
+      }
+    }
+
+    request.write(payload);
+    request.end();
+
+    while (true) {
+      if (queue.length === 0) {
+        await new Promise<void>((resolve) => {
+          waiter = resolve;
+        });
+        continue;
+      }
+      const item = queue.shift()!;
+      if ('type' in item) {
+        if (item.type === 'end') return;
+        throw item.err;
+      }
+      if (item.error) {
+        yield item;
+        return;
+      }
+      yield item;
+      if (item.done) return;
     }
   }
 

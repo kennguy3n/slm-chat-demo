@@ -29,4 +29,9 @@ export interface Channel {
   kind: ChannelKind;
   context: ContextMode;
   memberIds: string[];
+  // In DM/bilingual channels, the "other side" language of the
+  // conversation. When present, the MessageBubble auto-translates in
+  // both directions so both sides of the conversation show a paired
+  // translation card.
+  partnerLanguage?: string;
 }
