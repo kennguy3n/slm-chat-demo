@@ -148,6 +148,51 @@ describe('OllamaAdapter.status', () => {
     expect(s.model).toBe('ternary-bonsai-8b');
   });
 
+  it('returns the configured quant label in every status() path (loaded, not-loaded, daemon-refused)', async () => {
+    // Loaded path — quant comes from the constructor option, not hardcoded.
+    const okFetch = vi.fn().mockResolvedValue(
+      jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
+    );
+    const loaded = await new OllamaAdapter({
+      model: 'ternary-bonsai-8b',
+      quant: 'q2_0',
+      fetchImpl: okFetch as unknown as typeof fetch,
+    }).status();
+    expect(loaded.loaded).toBe(true);
+    expect(loaded.quant).toBe('q2_0');
+
+    // Not-loaded (daemon running but model missing) path.
+    const emptyFetch = vi.fn().mockResolvedValue(jsonResponse({ models: [] }));
+    const notLoaded = await new OllamaAdapter({
+      model: 'ternary-bonsai-8b',
+      quant: 'q2_0',
+      fetchImpl: emptyFetch as unknown as typeof fetch,
+    }).status();
+    expect(notLoaded.loaded).toBe(false);
+    expect(notLoaded.sidecar).toBe('running');
+    expect(notLoaded.quant).toBe('q2_0');
+
+    // Daemon-refused path.
+    const refusedFetch = vi.fn().mockResolvedValue(new Response('', { status: 500 }));
+    const refused = await new OllamaAdapter({
+      model: 'ternary-bonsai-8b',
+      quant: 'q2_0',
+      fetchImpl: refusedFetch as unknown as typeof fetch,
+    }).status();
+    expect(refused.loaded).toBe(false);
+    expect(refused.sidecar).toBe('stopped');
+    expect(refused.quant).toBe('q2_0');
+  });
+
+  it('defaults quant to q4_k_m when the constructor option is omitted (back-compat)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ models: [{ name: 'ternary-bonsai-8b', size: 5 * 1024 * 1024 * 1024 }] }),
+    );
+    const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    const s = await ad.status();
+    expect(s.quant).toBe('q4_k_m');
+  });
+
   it('matches the adapter model when an Ollama tag suffix is present', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({

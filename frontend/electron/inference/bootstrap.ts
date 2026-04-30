@@ -79,7 +79,12 @@ export async function bootstrapInference(
   const policyAllowsServer =
     (process.env.CONFIDENTIAL_SERVER_POLICY ?? '').toLowerCase() === 'allow';
 
-  const ollama = new OllamaAdapter({ baseURL, fetchImpl, model: modelName });
+  const ollama = new OllamaAdapter({
+    baseURL,
+    fetchImpl,
+    model: modelName,
+    quant: modelQuant,
+  });
   const mock = new MockAdapter();
 
   // Always prefer the Ollama adapter at runtime so every request hits
