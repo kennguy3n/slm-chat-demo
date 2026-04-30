@@ -272,7 +272,13 @@ export function ChatSurface({ channel, users, currentUserId }: Props) {
         {isLoading && <div role="status">Loading messages…</div>}
         {isError && <div role="alert">Could not load messages.</div>}
         {!isLoading && !isError && (
-          <MessageList messages={data ?? []} users={users} emptyLabel="This chat has no messages yet." />
+          <MessageList
+            messages={data ?? []}
+            users={users}
+            emptyLabel="This chat has no messages yet."
+            preferredLanguage="en"
+            partnerLanguage={channel.partnerLanguage}
+          />
         )}
         {(isStreaming || digest || streamErr) && (
           <div className="chat-surface__digest" data-testid="chat-surface-digest">

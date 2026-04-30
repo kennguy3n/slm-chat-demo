@@ -27,15 +27,13 @@ function ndjsonStream(lines: string[]): Response {
 }
 
 describe('OllamaAdapter.run', () => {
-  it('POSTs to /api/generate with stream=false and parses the response', async () => {
+  it('streams /api/generate and concatenates the response', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({
-        model: 'ternary-bonsai-8b',
-        response: 'hello world',
-        done: true,
-        eval_count: 5,
-        total_duration: 1_000_000,
-      }),
+      ndjsonStream([
+        JSON.stringify({ model: 'ternary-bonsai-8b', response: 'hello ', done: false }),
+        JSON.stringify({ model: 'ternary-bonsai-8b', response: 'world', done: false }),
+        JSON.stringify({ model: 'ternary-bonsai-8b', response: '', done: true, eval_count: 2 }),
+      ]),
     );
     const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
 
@@ -45,11 +43,10 @@ describe('OllamaAdapter.run', () => {
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toContain('/api/generate');
     const body = JSON.parse((init as RequestInit).body as string);
-    expect(body).toMatchObject({ model: 'ternary-bonsai-8b', prompt: 'hi', stream: false });
+    expect(body).toMatchObject({ model: 'ternary-bonsai-8b', prompt: 'hi', stream: true });
 
     expect(resp.output).toBe('hello world');
-    expect(resp.tokensUsed).toBe(5);
-    expect(resp.latencyMs).toBe(1);
+    expect(resp.tokensUsed).toBe(2);
     expect(resp.onDevice).toBe(true);
   });
 
@@ -63,7 +60,7 @@ describe('OllamaAdapter.run', () => {
 
   it('surfaces inline error frames', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ error: 'model not found' }),
+      ndjsonStream([JSON.stringify({ error: 'model not found' })]),
     );
     const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
     await expect(ad.run({ taskType: 'summarize', prompt: 'hi' })).rejects.toThrow(/model not found/);

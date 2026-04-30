@@ -164,12 +164,12 @@ func TestUsersListReturnsFullDirectory(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body.Users) != 5 {
-		t.Fatalf("expected 5 seeded users, got %d", len(body.Users))
+	if len(body.Users) != 6 {
+		t.Fatalf("expected 6 seeded users, got %d", len(body.Users))
 	}
 	wantIDs := map[string]bool{
 		"user_alice": false, "user_bob": false, "user_carol": false,
-		"user_dave": false, "user_eve": false,
+		"user_dave": false, "user_eve": false, "user_minh": false,
 	}
 	for _, u := range body.Users {
 		if _, ok := wantIDs[u.ID]; ok {

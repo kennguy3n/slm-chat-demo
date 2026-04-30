@@ -24,12 +24,23 @@ const sample: TranslateResponse = {
   dataEgressBytes: 0,
 };
 
+const sampleVi: TranslateResponse = {
+  messageId: 'msg_vi_1',
+  channelId: 'ch_dm_alice_minh',
+  original: 'Chào Alice, tối mai bạn rảnh đi ăn phở không?',
+  translated: "Hi Alice, are you free to grab phở tomorrow night?",
+  targetLanguage: 'en',
+  model: 'ternary-bonsai-8b',
+  computeLocation: 'on_device',
+  dataEgressBytes: 0,
+};
+
 describe('TranslationCaption', () => {
   beforeEach(() => {
     vi.mocked(fetchTranslate).mockReset();
   });
 
-  it('renders the translated text when autoFetch=true', async () => {
+  it('renders a two-panel card with original on top, divider, then translation', async () => {
     vi.mocked(fetchTranslate).mockResolvedValueOnce(sample);
     renderWithProviders(
       <TranslationCaption messageId="msg_fam_1" targetLanguage="es" />,
@@ -39,21 +50,39 @@ describe('TranslationCaption', () => {
         'Formulario de excursión vence el viernes',
       );
     });
+    expect(screen.getByTestId('translation-original')).toHaveTextContent(
+      'Field trip form due Friday',
+    );
+    // Divider is rendered (hr element) — structural separator between panels.
+    const card = screen.getByTestId('translation-caption');
+    expect(card.querySelector('hr')).not.toBeNull();
+    // Bottom panel labels the target language in human-readable form.
+    expect(card.textContent).toMatch(/Spanish/);
   });
 
-  it('toggles between translated and original when the user taps the toggle', async () => {
+  it('renders the on-device attribution pill inside the card', async () => {
     vi.mocked(fetchTranslate).mockResolvedValueOnce(sample);
     renderWithProviders(
       <TranslationCaption messageId="msg_fam_1" targetLanguage="es" />,
     );
-    await waitFor(() => screen.getByTestId('translation-toggle'));
-    await userEvent.click(screen.getByTestId('translation-toggle'));
-    expect(screen.getByTestId('translation-body')).toHaveTextContent(
-      'Field trip form due Friday',
+    const pill = await screen.findByTestId('translation-pill');
+    expect(pill).toHaveTextContent(/SLM/);
+    expect(pill).toHaveTextContent(/on-device/);
+    expect(pill).toHaveTextContent(/ternary-bonsai-8b/);
+    expect(pill).toHaveTextContent(/0 B/);
+  });
+
+  it('handles Vietnamese target language with diacritics intact', async () => {
+    vi.mocked(fetchTranslate).mockResolvedValueOnce(sampleVi);
+    renderWithProviders(
+      <TranslationCaption messageId="msg_vi_1" targetLanguage="en" />,
     );
-    await userEvent.click(screen.getByTestId('translation-toggle'));
+    await waitFor(() => screen.getByTestId('translation-body'));
+    expect(screen.getByTestId('translation-original')).toHaveTextContent(
+      'Chào Alice, tối mai bạn rảnh đi ăn phở không?',
+    );
     expect(screen.getByTestId('translation-body')).toHaveTextContent(
-      'Formulario de excursión vence el viernes',
+      /phở/,
     );
   });
 
@@ -68,7 +97,7 @@ describe('TranslationCaption', () => {
     expect(fetchTranslate).toHaveBeenCalledOnce();
   });
 
-  it('renders a PrivacyStrip with on-device / 0 egress when enabled', async () => {
+  it('renders a full PrivacyStrip below the card when enabled', async () => {
     vi.mocked(fetchTranslate).mockResolvedValueOnce(sample);
     renderWithProviders(
       <TranslationCaption messageId="msg_fam_1" targetLanguage="es" showPrivacyStrip />,
@@ -86,5 +115,21 @@ describe('TranslationCaption', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(/network down/i);
     });
+  });
+
+  it('falls back to originalFallback when API response lacks original text', async () => {
+    vi.mocked(fetchTranslate).mockResolvedValueOnce({
+      ...sample,
+      original: '',
+    });
+    renderWithProviders(
+      <TranslationCaption
+        messageId="msg_fam_1"
+        targetLanguage="es"
+        originalFallback="Field trip form due Friday (local)"
+      />,
+    );
+    const original = await screen.findByTestId('translation-original');
+    expect(original).toHaveTextContent('Field trip form due Friday (local)');
   });
 });

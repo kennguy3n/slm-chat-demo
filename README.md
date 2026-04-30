@@ -68,6 +68,29 @@ works — every API helper falls back to the legacy HTTP endpoints when
 `window.electronAI` is undefined, which is also how the Vitest suite
 runs.
 
+## Demo screenshots
+
+Annotated screenshots of every PROPOSAL.md §5 demo flow live in
+[`demo/`](./demo/README.md). Each screenshot maps to one of the four
+flows (Morning Catch-up, Task Extraction, Approval Prefill, PRD Draft)
+and shows the on-device privacy strip (`compute: on-device`,
+`model: ternary-bonsai-8b`, `egress: 0 B`) where applicable.
+
+Representative captures:
+
+- [`demo/b2c/03-family-task-extraction.png`](./demo/b2c/03-family-task-extraction.png)
+  — enriched Family Group thread + `TaskCreatedPill`.
+- [`demo/b2c/08-event-rsvp.png`](./demo/b2c/08-event-rsvp.png)
+  — Neighborhood chat showing the multi-event enriched seed (block
+  party, garage sale, lost pet, volunteer request) and the
+  `EventRSVPCard`.
+- [`demo/b2b/04-approval-prefill.png`](./demo/b2b/04-approval-prefill.png)
+  — `ApprovalPrefillCard` with vendor / amount / risk / justification
+  drawn from the enriched `ch_vendor_management` thread.
+
+See [`demo/README.md`](./demo/README.md) for the full index and
+step-by-step reproduction instructions for every flow.
+
 ### Optional: run with a real local model (Ollama)
 
 The Electron main process auto-detects an Ollama daemon on
@@ -238,6 +261,10 @@ slm-chat-demo/
 │   ├── tsconfig.json
 │   ├── tsconfig.electron.json
 │   └── vite.config.ts
+├── demo/                        # Annotated PROPOSAL §5 demo screenshots
+│   ├── README.md                (index: B2C / B2B tables + how-to-reproduce)
+│   ├── b2c/                     (B2C flow captures: DM, family, neighborhood)
+│   └── b2b/                     (B2B flow captures: vendor, engineering, general)
 ├── PROPOSAL.md
 ├── ARCHITECTURE.md
 ├── PHASES.md

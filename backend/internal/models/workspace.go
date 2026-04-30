@@ -48,4 +48,11 @@ type Channel struct {
 	Kind        ChannelKind `json:"kind"`
 	Context     Context     `json:"context"`
 	MemberIDs   []string    `json:"memberIds"`
+	// PartnerLanguage marks a bilingual channel. When set, the frontend
+	// renders translation cards in both directions: messages in the
+	// partner language translate into the viewer's preferred language,
+	// and messages already in the viewer's preferred language translate
+	// into the partner language, so both sides of the conversation are
+	// readable to both parties.
+	PartnerLanguage string `json:"partnerLanguage,omitempty"`
 }

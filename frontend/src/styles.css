@@ -1178,3 +1178,141 @@ button {
 .memory-page__row-text {
   flex: 1 1 auto;
 }
+
+/* ---------- Translation card (two-panel) --------------------------- */
+
+.msg-bubble__translate {
+  margin-top: 4px;
+  padding: 2px 10px;
+  font-size: 11px;
+  color: #3730a3;
+  background: transparent;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  cursor: pointer;
+  align-self: flex-start;
+  width: fit-content;
+}
+
+.msg-bubble__translate:hover {
+  background: #eef2ff;
+}
+
+.msg-bubble__translate--hide {
+  margin-top: 6px;
+  color: #6366f1;
+  border-color: #e0e7ff;
+}
+
+.translation-caption__trigger {
+  margin-top: 4px;
+  padding: 2px 10px;
+  font-size: 11px;
+  color: #3730a3;
+  background: transparent;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  cursor: pointer;
+  align-self: flex-start;
+  width: fit-content;
+}
+
+.translation-caption--loading,
+.translation-caption--error {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #475569;
+  background: #f1f5f9;
+  border-radius: 8px;
+}
+
+.translation-caption--error {
+  color: #9f1239;
+  background: #fee2e2;
+}
+
+.translation-card {
+  margin-top: 4px;
+  padding: 0;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+  max-width: 560px;
+}
+
+.translation-card__panel {
+  padding: 14px 18px;
+}
+
+.translation-card__panel--original {
+  padding-bottom: 12px;
+}
+
+.translation-card__panel--translated {
+  padding-top: 12px;
+  padding-bottom: 14px;
+}
+
+.translation-card__label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6366f1;
+  margin-bottom: 4px;
+}
+
+.translation-card__body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #0f172a;
+  font-weight: 500;
+}
+
+.translation-card__body--translated {
+  color: #111827;
+}
+
+.translation-card__divider {
+  border: none;
+  border-top: 1px solid #c7d2fe;
+  margin: 0 14px;
+  opacity: 0.85;
+}
+
+.translation-card__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 3px 8px 3px 4px;
+  background: #ffffff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #1e1b4b;
+  font-weight: 500;
+}
+
+.translation-card__pill-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  background: #f97316;
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.translation-card__pill-text {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
