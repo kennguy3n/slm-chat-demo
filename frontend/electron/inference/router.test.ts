@@ -110,10 +110,10 @@ describe('InferenceRouter', () => {
   it('passes the configured default through to the adapter on run()', async () => {
     const local = new StubAdapter('local-stub');
     const router = new InferenceRouter(local, null, {
-      defaultModel: 'ternary-bonsai-8b-alt',
+      defaultModel: 'bonsai-8b-alt',
     });
     await router.run({ taskType: 'draft_artifact', prompt: 'spec' });
-    expect(local.lastReq?.model).toBe('ternary-bonsai-8b-alt');
+    expect(local.lastReq?.model).toBe('bonsai-8b-alt');
   });
 
   describe('confidential server tier', () => {

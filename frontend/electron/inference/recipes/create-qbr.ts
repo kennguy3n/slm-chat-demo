@@ -1,7 +1,7 @@
 // create_qbr recipe — wraps buildDraftArtifact from tasks.ts with
 // artifactType 'QBR'. The helper summarises wins, gaps, asks, and the
 // next-quarter plan from a work thread on the on-device
-// Ternary-Bonsai-8B model; the renderer streams the body via
+// Bonsai-8B model; the renderer streams the body via
 // `ai:stream` using the returned prompt + source list.
 
 import { buildDraftArtifact } from '../tasks.js';

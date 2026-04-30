@@ -296,7 +296,7 @@ export async function runTripPlanner(
         },
         privacy: {
           computeLocation: 'on_device',
-          modelName: model || 'ternary-bonsai-8b',
+          modelName: model || 'bonsai-8b',
           tier,
           reason: routeReason || `Routed trip planner to ${tier.toUpperCase()}.`,
           dataEgressBytes: 0,
@@ -345,7 +345,7 @@ export async function runTripPlanner(
       rawOutput,
       privacy: {
         computeLocation: 'on_device',
-        modelName: model || 'ternary-bonsai-8b',
+        modelName: model || 'bonsai-8b',
         tier,
         reason:
           routeReason ||

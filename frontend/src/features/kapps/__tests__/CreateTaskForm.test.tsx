@@ -29,7 +29,7 @@ describe('CreateTaskForm', () => {
           task: {
             id: 't1',
             channelId: 'ch_general',
-            title: 'Wire Ternary-Bonsai-8B',
+            title: 'Wire Bonsai-8B',
             status: 'open',
             aiGenerated: false,
           },
@@ -45,7 +45,7 @@ describe('CreateTaskForm', () => {
         onCreated={onCreated}
       />,
     );
-    await userEvent.type(screen.getByTestId('create-task-title'), 'Wire Ternary-Bonsai-8B');
+    await userEvent.type(screen.getByTestId('create-task-title'), 'Wire Bonsai-8B');
     await userEvent.type(screen.getByTestId('create-task-owner'), 'user_alice');
     await userEvent.click(screen.getByTestId('create-task-submit'));
 
@@ -56,7 +56,7 @@ describe('CreateTaskForm', () => {
     expect(body).toEqual(
       expect.objectContaining({
         channelId: 'ch_general',
-        title: 'Wire Ternary-Bonsai-8B',
+        title: 'Wire Bonsai-8B',
         owner: 'user_alice',
         sourceThreadId: 'thr_x',
         aiGenerated: false,

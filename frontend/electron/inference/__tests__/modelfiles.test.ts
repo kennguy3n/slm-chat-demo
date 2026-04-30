@@ -1,7 +1,7 @@
 // Modelfile existence + content sanity tests.
 //
 // The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults
-// the model name to `ternary-bonsai-8b` (a single on-device model),
+// the model name to `bonsai-8b` (a single on-device model),
 // and the repo-level `scripts/setup-models.sh` creates that exact
 // alias from the Modelfile under `models/`. If those files drift apart
 // the installation flow documented in `README.md` silently breaks, so
@@ -30,16 +30,16 @@ function fromTag(contents: string): string | null {
 }
 
 describe('models/ Modelfiles', () => {
-  it('ships a single Modelfile.bonsai8b that points at the Ternary-Bonsai-8B GGUF repo', () => {
+  it('ships a single Modelfile.bonsai8b that points at the Bonsai-8B GGUF repo', () => {
     const body = readModelfile('Modelfile.bonsai8b');
     const base = fromTag(body);
     expect(base).toBeTruthy();
-    // Lock the default to the Ternary-Bonsai-8B HuggingFace GGUF repo
+    // Lock the default to the Bonsai-8B HuggingFace GGUF repo
     // (via Ollama's `hf.co/<user>/<repo>` shorthand), or to a local
     // `.gguf` file fallback for environments where the shorthand is
     // unsupported.
     expect(base!.toLowerCase()).toMatch(
-      /^(hf\.co\/prism-ml\/ternary-bonsai-8b-gguf|\.\/.*\.gguf|\/.*\.gguf)/,
+      /^(hf\.co\/prism-ml\/bonsai-8b-gguf|\.\/.*\.gguf|\/.*\.gguf)/,
     );
     expect(body).toMatch(/^PARAMETER\s+temperature\s/m);
     expect(body).toMatch(/^PARAMETER\s+num_ctx\s/m);
@@ -57,11 +57,11 @@ describe('models/ Modelfiles', () => {
     expect(existsSync(path.join(modelsDir, 'Modelfile.e4b'))).toBe(false);
   });
 
-  it('ships a models/README.md that documents the ternary-bonsai-8b alias', () => {
+  it('ships a models/README.md that documents the bonsai-8b alias', () => {
     const readmePath = path.join(modelsDir, 'README.md');
     expect(existsSync(readmePath)).toBe(true);
     const body = readFileSync(readmePath, 'utf8');
-    expect(body).toContain('ternary-bonsai-8b');
+    expect(body).toContain('bonsai-8b');
     expect(body).toContain('Modelfile.bonsai8b');
     // Legacy names should have been purged.
     expect(body.toLowerCase()).not.toContain('gemma');
@@ -74,7 +74,7 @@ describe('models/ Modelfiles', () => {
     expect(body.startsWith('#!')).toBe(true);
     expect(body).toContain('models/Modelfile.bonsai8b');
     // Bootstrap default — the alias the script must create.
-    expect(body).toContain('ternary-bonsai-8b');
+    expect(body).toContain('bonsai-8b');
     // Honours `MODEL_NAME` for operator overrides.
     expect(body).toMatch(/MODEL_NAME/);
     // Legacy names should have been purged.

@@ -9,7 +9,7 @@ import type { UnreadSummaryResponse } from '../../../types/ai';
 
 const fakeDigest: UnreadSummaryResponse = {
   prompt: 'Summarize…',
-  model: 'ternary-bonsai-8b',
+  model: 'bonsai-8b',
   sources: [
     { id: 's1', channelId: 'ch1', sender: 'alice', excerpt: 'field-trip Friday' },
     { id: 's2', channelId: 'ch2', sender: 'bob', excerpt: 'sunscreen needed' },

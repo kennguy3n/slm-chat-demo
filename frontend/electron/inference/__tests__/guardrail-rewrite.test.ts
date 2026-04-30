@@ -14,7 +14,7 @@ import type {
 
 class CannedAdapter implements Adapter {
   public lastReq: InferenceRequest | null = null;
-  constructor(public output: string, public modelLabel = 'ternary-bonsai-8b') {}
+  constructor(public output: string, public modelLabel = 'bonsai-8b') {}
   name() {
     return 'canned';
   }
@@ -35,8 +35,8 @@ class CannedAdapter implements Adapter {
 }
 
 function makeRouter(output: string): InferenceRouter {
-  const local = new CannedAdapter(output, 'ternary-bonsai-8b');
-  const mock = new CannedAdapter(output, 'ternary-bonsai-8b');
+  const local = new CannedAdapter(output, 'bonsai-8b');
+  const mock = new CannedAdapter(output, 'bonsai-8b');
   return new InferenceRouter(local, mock);
 }
 

@@ -46,9 +46,10 @@ export interface OllamaAdapterOptions {
   fetchImpl?: typeof fetch;
   // Quantisation label reported via status(). This is the value the
   // DeviceCapabilityPanel surfaces as the active quant; it should
-  // match whatever GGUF is actually loaded (e.g. 'q2_0' for the
-  // PrismML ternary build, 'q4_k_m' for a mainline llama.cpp build).
-  // Defaults to 'q4_k_m' for backwards compatibility.
+  // match whatever GGUF is actually loaded (e.g. 'q1_0' for the
+  // PrismML Bonsai-8B-Q1_0 build, 'q2_0' for the ARM/Apple-Silicon
+  // Ternary-Bonsai-8B-Q2_0 file, 'q4_k_m' for a mainline llama.cpp
+  // build). Defaults to 'q4_k_m' for backwards compatibility.
   quant?: string;
 }
 
@@ -61,7 +62,7 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
 
   constructor(opts: OllamaAdapterOptions = {}) {
     this.baseURL = (opts.baseURL || DefaultOllamaBaseURL).replace(/\/$/, '');
-    this.model = opts.model || 'ternary-bonsai-8b';
+    this.model = opts.model || 'bonsai-8b';
     this.quant = opts.quant || 'q4_k_m';
     this.fetchInjected = Boolean(opts.fetchImpl);
     this.fetchImpl = opts.fetchImpl || ((...a) => fetch(...(a as Parameters<typeof fetch>)));
@@ -72,8 +73,9 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
   }
 
   async run(req: InferenceRequest, signal?: AbortSignal): Promise<InferenceResponse> {
-    // We always use streaming under the hood — a ternary-bonsai-8B
-    // translation takes ~30–90 s on CPU, and Electron's fetch will
+    // We always use streaming under the hood — a Bonsai-8B-Q1_0
+    // translation takes a handful of seconds on CPU (~22 s for a
+    // 256-token draft on 8 vCPU EPYC), and Electron's fetch will
     // abort a non-streaming response long before the model finishes.
     // Streaming keeps bytes flowing so the connection never idles.
     const model = req.model || this.model;
@@ -118,8 +120,9 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     // enforces a 5-minute bodyTimeout on slow streams even with keep-
     // alive heartbeats, and Electron's main-process fetch inherits
     // that. Using http.request gives us a raw socket with no body
-    // timer so ternary-bonsai-8B's 1–2 minute inference can stream
-    // cleanly.
+    // timer so longer streams (e.g. Q2_0 on ARM, or any quant on a
+    // weaker host) can keep flowing without the body timeout firing.
+
     yield* this.httpStream(body, signal);
   }
 
@@ -316,7 +319,7 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     // Report only on the model this adapter represents — finding any
     // other model in /api/ps does NOT mean this adapter's model is
     // loaded. Strip Ollama's optional `:tag` suffix (e.g.
-    // "ternary-bonsai-8b:q4_k_m") on BOTH sides of the comparison: the
+    // "bonsai-8b:q4_k_m") on BOTH sides of the comparison: the
     // operator may set MODEL_NAME to a tagged name and the daemon may
     // report a different tag, but matching bare-vs-bare lets us track
     // the model regardless of quantisation.

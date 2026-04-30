@@ -2,14 +2,14 @@
 
 KChat SLM Demo is an **Electron desktop app** that proves the AI features
 inside KChat can run on-device using a quantized local small language
-model — **Ternary-Bonsai-8B** ([prism-ml/Ternary-Bonsai-8B-gguf](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf))
+model — **Bonsai-8B** ([prism-ml/Bonsai-8B-gguf](https://huggingface.co/prism-ml/Bonsai-8B-gguf))
 served through Ollama. The Electron **main process** owns all inference
 and talks directly to the local Ollama daemon (or `MockAdapter` when
 Ollama isn't running). A small Go **data API** provides chats, threads,
 workspaces and seeded KApp cards. No AI traffic ever leaves the device.
 
 The router distinguishes exactly two destinations: a single on-device
-`local` adapter (the Ternary-Bonsai-8B model) and a policy-gated
+`local` adapter (the Bonsai-8B model) and a policy-gated
 `server` adapter for confidential-server tasks. Operators can override
 the on-device alias via the `MODEL_NAME` env var without touching any
 code.
@@ -37,7 +37,7 @@ For the full product thesis, architecture, phasing, and progress, see:
 | ----------- | ------------------------------------------------------------------------------ |
 | Shell       | Electron 31 (main + preload + renderer), TypeScript                            |
 | Renderer    | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL      |
-| Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` (default model: `ternary-bonsai-8b`) and an `InferenceRouter` that picks `local` vs. `server` per task. |
+| Inference   | Electron main process (`frontend/electron/inference/`): TS port of the Go adapter contract with `MockAdapter`, `OllamaAdapter` (default model: `bonsai-8b`) and an `InferenceRouter` that picks `local` vs. `server` per task. |
 | IPC         | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `smartReply`, `translate`, `extractTasks`, `summarizeThread`, `extractKAppTasks`, `unreadSummary`, `prefillApproval`, `draftArtifact`, `familyChecklist`, `shoppingNudges`, `eventRSVP`, `tripPlan`, `guardrailCheck`, `recipeRun` (Phase 4 generic AI-Employee recipe runner), `modelStatus`, `loadModel`, `unloadModel`, `route`. |
 | Local memory | `features/memory/memoryStore.ts` — IndexedDB (`kchat-slm-memory` / `facts`) with an in-memory fallback. The AI never auto-writes; users add / edit / remove facts from the AI Memory page. 0 B egress. |
 | Data API    | Go 1.25 + chi router + chi/cors, in-memory store, standard `net/http/httptest` |
@@ -74,7 +74,7 @@ Annotated screenshots of every PROPOSAL.md §5 demo flow live in
 [`demo/`](./demo/README.md). Each screenshot maps to one of the four
 flows (Morning Catch-up, Task Extraction, Approval Prefill, PRD Draft)
 and shows the on-device privacy strip (`compute: on-device`,
-`model: ternary-bonsai-8b`, `egress: 0 B`) where applicable.
+`model: bonsai-8b`, `egress: 0 B`) where applicable.
 
 Representative captures:
 
@@ -96,28 +96,37 @@ step-by-step reproduction instructions for every flow.
 The Electron main process auto-detects an Ollama daemon on
 `http://localhost:11434` (or `OLLAMA_BASE_URL`). When it's reachable,
 the inference router wires a single Ollama adapter bound to
-`MODEL_NAME` (default `ternary-bonsai-8b`); otherwise it falls back
+`MODEL_NAME` (default `bonsai-8b`); otherwise it falls back
 to the bundled `MockAdapter` so the demo always works without a model
 present.
 
 The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults
-`MODEL_NAME` to `ternary-bonsai-8b`. That name is an *alias*, not the
+`MODEL_NAME` to `bonsai-8b`. That name is an *alias*, not the
 upstream Ollama tag — the `models/` directory ships a single
 [`Modelfile.bonsai8b`](./models/Modelfile.bonsai8b) whose `FROM` line
-points at the **Q2_0 ternary GGUF**
-([`Ternary-Bonsai-8B-Q2_0.gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/blob/main/Ternary-Bonsai-8B-Q2_0.gguf),
-~2 GB on disk) from the
-[`prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf)
+points at the **Q1_0 GGUF**
+([`Bonsai-8B-Q1_0.gguf`](https://huggingface.co/prism-ml/Bonsai-8B-gguf/blob/main/Bonsai-8B-Q1_0.gguf),
+~1.16 GB on disk) from the
+[`prism-ml/Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Bonsai-8B-gguf)
 HuggingFace repo. Ollama's `hf.co/<user>/<repo>:<quant>` shorthand
-rejects `Q2_0` (its tag resolver returns `"not a valid quantization
-scheme"`), so the Modelfile references the file by local path and
-the setup script downloads it directly.
+does not recognise `Q1_0` as a valid quantisation tag, so the
+Modelfile references the file by local path and the setup script
+downloads it directly.
+
+Why `Q1_0` and not `Q2_0`? PrismML's `llama.cpp` fork ships a real
+x86 SIMD kernel (AVX2/FMA) for Q1_0 but no x86 SIMD kernel for Q2_0,
+so on commodity AMD/Intel CPUs Q1_0 runs ~25× faster (~11.7 tok/s
+on 8 vCPU EPYC vs ~0.45 tok/s for Q2_0). On ARM / Apple Silicon, the
+`Ternary-Bonsai-8B-Q2_0.gguf` file is the faster path — set
+`MODEL_QUANT=q2_0` and update the Modelfile. Full kernel attribution
+and per-arch guidance in
+[`docs/cpu-perf-tuning.md` → Why Q2_0 is slow on x86](./docs/cpu-perf-tuning.md#why-q2_0-is-slow-on-x86).
 
 The fastest way to set the alias up is the bundled script:
 
 ```bash
-# Downloads Ternary-Bonsai-8B-Q2_0.gguf (~2 GB) into models/ if not
-# already present, then creates the ternary-bonsai-8b alias the
+# Downloads Bonsai-8B-Q1_0.gguf (~1.16 GB) into models/ if not
+# already present, then creates the bonsai-8b alias the
 # bootstrap looks for.
 ./scripts/setup-models.sh
 
@@ -131,16 +140,16 @@ cd frontend && npm run electron:dev
 To set up the alias by hand:
 
 ```bash
-curl -L -o models/Ternary-Bonsai-8B-Q2_0.gguf \
-  https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/resolve/main/Ternary-Bonsai-8B-Q2_0.gguf
-ollama create ternary-bonsai-8b -f models/Modelfile.bonsai8b
+curl -L -o models/Bonsai-8B-Q1_0.gguf \
+  https://huggingface.co/prism-ml/Bonsai-8B-gguf/resolve/main/Bonsai-8B-Q1_0.gguf
+ollama create bonsai-8b -f models/Modelfile.bonsai8b
 ```
 
 > **Heads-up:** stock Ollama 0.22.x can `create` the alias from this
 > file but **cannot run inference** against it (the bundled
-> `llama.cpp` SIGSEGVs while loading the ternary tensors). The
-> CPU-only demo path uses the PrismML `llama.cpp` fork behind an
-> Ollama-API shim — see
+> `llama.cpp` does not implement the Q1_0 tensor type). The CPU-only
+> demo path uses the PrismML `llama.cpp` fork behind an Ollama-API
+> shim — see
 > [`docs/cpu-perf-tuning.md`](./docs/cpu-perf-tuning.md) and
 > [`demo/README.md` → step 4](./demo/README.md#how-to-reproduce).
 
@@ -356,7 +365,7 @@ go test ./...
 
 - **Single on-device routing tier** — `bootstrap.ts` creates one
   `OllamaAdapter` instance (`MODEL_NAME`, defaulting to
-  `ternary-bonsai-8b`), pings the Ollama daemon, and falls back to
+  `bonsai-8b`), pings the Ollama daemon, and falls back to
   the mock adapter when the model is not pulled. The
   `InferenceRouter` `decide()` reports the real model so the privacy
   strip and `model:status` (`model`, `loaded`) reflect what actually

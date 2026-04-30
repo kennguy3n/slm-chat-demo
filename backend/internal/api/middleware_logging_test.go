@@ -18,7 +18,7 @@ func TestSanitizeLogFieldsStripsSensitiveKeys(t *testing.T) {
 		"content": "Hi all, please join the call at 3pm.",
 		"text":    "Acme will close the deal next week.",
 		"fields":  map[string]any{"vendor": "Acme", "amount": 1000},
-		"model":   "ternary-bonsai-8b",
+		"model":   "bonsai-8b",
 	}
 	out := api.SanitizeLogFields(in)
 	if out == nil {
@@ -35,7 +35,7 @@ func TestSanitizeLogFieldsStripsSensitiveKeys(t *testing.T) {
 	if out["status"] != "in_progress" {
 		t.Errorf("status should pass through, got %v", out["status"])
 	}
-	if out["model"] != "ternary-bonsai-8b" {
+	if out["model"] != "bonsai-8b" {
 		t.Errorf("model should pass through, got %v", out["model"])
 	}
 }

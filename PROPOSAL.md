@@ -96,18 +96,18 @@ workspace policy allow it.
 
 | Tier      | Model                                      | Devices                                                   | Workloads                                                              |
 | --------- | ------------------------------------------ | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| On-device | `prism-ml/Ternary-Bonsai-8B-gguf`          | Laptops, desktops, and high-end phones                    | Every non-server workload — a single 8B ternary-weight model handles summaries, drafts, reasoning, and task extraction. |
+| On-device | `prism-ml/Bonsai-8B-gguf` (Q1_0; Q2_0 from `prism-ml/Ternary-Bonsai-8B-gguf` on ARM / Apple Silicon) | Laptops, desktops, and high-end phones                    | Every non-server workload — a single 8B model handles summaries, drafts, reasoning, and task extraction. |
 | Server    | Confidential server runtime (Phase 6)      | Explicit workspace policy only                            | Corpora larger than local context or workspace-approved heavy runs.    |
 
 The demo assumes every KChat user has enough local compute to run the
-Ternary-Bonsai-8B GGUF through Ollama. The inference router exposes a
+Bonsai-8B GGUF through Ollama. The inference router exposes a
 single on-device tier (`local`) and a policy-gated `server` tier; the
 alias the on-device adapter binds to is controlled by the `MODEL_NAME`
-env var (default `ternary-bonsai-8b`).
+env var (default `bonsai-8b`).
 
 ### Workload routing table
 
-| Workload                              | On-device (Ternary-Bonsai-8B) | Server (confidential, policy-gated) |
+| Workload                              | On-device (Bonsai-8B) | Server (confidential, policy-gated) |
 | ------------------------------------- | :---------------------------: | :---------------------------------: |
 | Smart reply                           | ✓ primary                     | —                                    |
 | Inline translation                    | ✓ primary                     | —                                    |
@@ -129,7 +129,7 @@ env var (default `ternary-bonsai-8b`).
 
 The local scheduler follows a strict, auditable decision tree:
 
-1. If the workload fits on-device → dispatch to the **Ternary-Bonsai-8B local adapter**.
+1. If the workload fits on-device → dispatch to the **Bonsai-8B local adapter**.
 2. Else, if the **workspace policy permits** server compute → **tokenize
    and redact** the inputs, then dispatch to the **confidential server**.
 3. Else → **refuse** and surface the reason in the privacy strip.
@@ -162,7 +162,7 @@ different *use*), then B2C-specific AI, then B2B-specific AI.
 
 | Feature                  | Description                                                                                           | Local model role                                           |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Morning catch-up         | "N things need attention" digest across personal, family, community chats since last active.         | On-device (Ternary-Bonsai-8B) summarizes per thread.       |
+| Morning catch-up         | "N things need attention" digest across personal, family, community chats since last active.         | On-device (Bonsai-8B) summarizes per thread.       |
 | Smart reply              | 2–3 contextual reply suggestions inline in the composer.                                              | On-device generates candidates.                            |
 | Inline translation       | Messages in a non-preferred language render with a "Translated" caption and a tap-to-see-original.    | On-device translates, including long passages.             |
 | Task extraction          | Detects actionable items in incoming messages ("submit form", "bring X") and offers task cards.      | On-device parses; user confirms before any task is created. |
@@ -258,7 +258,7 @@ allowed to surface.
 | Element                  | Purpose                                                                 |
 | ------------------------ | ----------------------------------------------------------------------- |
 | Compute location         | On-device / confidential server.                                        |
-| Model name               | `ternary-bonsai-8b` (on-device default) or a named confidential server. |
+| Model name               | `bonsai-8b` (on-device default) or a named confidential server. |
 | Sources used             | Messages, files, connector items, memories referenced.                  |
 | Data egress              | Bytes that left the device (0 for on-device).                           |
 | Confidence / missing info| Model-reported confidence and any gaps ("owner unknown", "date ambiguous"). |
@@ -277,10 +277,10 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
 1. User opens the B2C context.
 2. A banner reads **"6 things need attention"**.
 3. User taps **Catch me up**.
-4. The scheduler picks the **on-device Ternary-Bonsai-8B** adapter.
+4. The scheduler picks the **on-device Bonsai-8B** adapter.
 5. The digest renders inline: 2 deadlines, 1 shopping item, 1 RSVP, 1
    reply needed — each with a back-link to the originating message.
-6. The privacy strip shows: **on-device**, model **ternary-bonsai-8b**, **0 bytes
+6. The privacy strip shows: **on-device**, model **bonsai-8b**, **0 bytes
    egress**.
 7. User accepts actions individually (or in bulk). Each accepted action
    creates a task card, an RSVP card, or a shopping entry.
@@ -303,7 +303,7 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
 1. User opens `#vendor-management` in the workspace.
 2. An existing thread describes a vendor issue with pricing and risk notes.
 3. User opens the Action Launcher and picks **Request Approval**.
-4. The **on-device Ternary-Bonsai-8B** prefills the approval card: **vendor**, **amount**,
+4. The **on-device Bonsai-8B** prefills the approval card: **vendor**, **amount**,
    **justification**, **risk**, and **sources** (linked thread messages
    and one connector doc).
 5. User reviews, edits one field, and submits.
@@ -317,7 +317,7 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
 1. User opens the Action Launcher and picks **Create → PRD**.
 2. The **Brief Builder** opens: user selects the source thread, a linked
    Drive folder, a PRD template, and a tone.
-3. The scheduler picks **on-device Ternary-Bonsai-8B** (policy allows server, but local is
+3. The scheduler picks **on-device Bonsai-8B** (policy allows server, but local is
    sufficient for this corpus).
 4. Nina PM streams the draft: 5 sections, inline citations to thread
    messages and Drive files, a confidence score per section, and a list
@@ -356,7 +356,9 @@ leaves the device.
   - PRD draft workspace (Brief Builder + Artifact v1).
   - AI Employee queue (mocked execution, real UI and governance).
 - **Local AI**
-  - On-device route backed by `prism-ml/Ternary-Bonsai-8B-gguf` (alias `ternary-bonsai-8b`);
+  - On-device route backed by `prism-ml/Bonsai-8B-gguf` (alias `bonsai-8b`,
+    Q1_0 default on x86; ARM / Apple Silicon callers can switch to
+    `prism-ml/Ternary-Bonsai-8B-gguf` Q2_0 via `MODEL_QUANT=q2_0`);
     operators can override `MODEL_NAME` to point at a different pulled
     alias without touching any code.
   - Streaming output in the chat surface.

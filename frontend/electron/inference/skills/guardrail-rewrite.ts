@@ -2,7 +2,7 @@
 // composer message for PII (phone numbers, emails, US-style SSNs),
 // aggressive / inappropriate tone, and unverified factual claims, and
 // proposes a rewritten version with the risky parts called out. Runs
-// on the on-device Ternary-Bonsai-8B model because the check is short
+// on the on-device Bonsai-8B model because the check is short
 // and latency-sensitive (the user is waiting to send the message).
 // Honours the INSUFFICIENT contract: if the
 // model cannot determine risk level, the renderer treats the message
@@ -198,7 +198,7 @@ export async function runGuardrailRewrite(
     decision.tier && decision.tier !== 'server' ? decision.tier : undefined;
   const tier: 'local' =
     decisionTier ?? guardrailRewriteSkill.preferredTier;
-  const routeReason = decision.reason || 'Routed guardrail review to on-device Ternary-Bonsai-8B.';
+  const routeReason = decision.reason || 'Routed guardrail review to on-device Bonsai-8B.';
 
   if (detectInsufficient(resp.output)) {
     // Treat INSUFFICIENT as "no opinion" — return whatever the regex
@@ -219,7 +219,7 @@ export async function runGuardrailRewrite(
       rawOutput: resp.output,
       privacy: {
         computeLocation: 'on_device',
-        modelName: resp.model || 'ternary-bonsai-8b',
+        modelName: resp.model || 'bonsai-8b',
         tier,
         reason: routeReason,
         dataEgressBytes: 0,
@@ -254,7 +254,7 @@ export async function runGuardrailRewrite(
     rawOutput: resp.output,
     privacy: {
       computeLocation: 'on_device',
-      modelName: resp.model || 'ternary-bonsai-8b',
+      modelName: resp.model || 'bonsai-8b',
       tier,
       reason: routeReason,
       dataEgressBytes: 0,

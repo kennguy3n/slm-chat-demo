@@ -14,30 +14,30 @@ the enriched seed data (`backend/internal/store/seed.go`).
 > **Note on coverage.** Most screenshots are captured from the Vite
 > renderer served at `http://localhost:5173/` (the same React app the
 > Electron shell loads). The 2026-04-30 pass also re-captured a set of
-> shots against the **real** Ternary-Bonsai-8B weights pulled through
-> `./scripts/setup-models.sh` (→ `hf.co/prism-ml/Ternary-Bonsai-8B-gguf`
+> shots against the **real** Bonsai-8B weights pulled through
+> `./scripts/setup-models.sh` (→ `hf.co/prism-ml/Bonsai-8B-gguf`
 > → Ollama → the Electron shell's `OllamaAdapter`) — those shots show
-> the `ternary-bonsai-8b · idle` chip in the top-right header instead
+> the `bonsai-8b · idle` chip in the top-right header instead
 > of the mock badge, and pending in-flight LLM calls render the
 > `Translating on-device…` and `Drafting on-device replies…` markers
 > visible in several frames. A subset of screens require a fully
 > streamed AI result whose wall-time does not fit a single capture
 > window — those entries remain marked **(pending)** below. The
 > accompanying demo flow is still reproducible by hand using the
-> **How to reproduce** instructions. Live `Ternary-Bonsai-8B-Q2_0`
+> **How to reproduce** instructions. Live `Bonsai-8B-Q1_0`
 > benchmark numbers for this VM class (AMD EPYC 7763, 8 vCPU,
 > 31 GiB RAM, CPU-only) are in
 > [On-device LLM performance](#on-device-llm-performance) below; see
 > [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
-> host-class expectations.
+> host-class expectations and the per-arch (x86 vs ARM) quant choice.
 >
 > Captured in this pass (real on-device model loaded, 2026-04-30):
 >
 > - Standalone: `local-model-status`.
-> - B2C (header chip shows `ternary-bonsai-8b · idle`,
+> - B2C (header chip shows `bonsai-8b · idle`,
 >   `Translating on-device…` markers visible):
 >   `08-event-rsvp`, `12-metrics-dashboard`.
-> - B2B (header chip shows `ternary-bonsai-8b · idle`):
+> - B2B (header chip shows `bonsai-8b · idle`):
 >   `01-workspace-navigation`, `08-ai-employee-panel`,
 >   `10-connector-panel`, `11-knowledge-graph`, `12-policy-admin`.
 >
@@ -50,10 +50,11 @@ the enriched seed data (`backend/internal/store/seed.go`).
 >   `04-approval-prefill`, `05-approval-card-pending`,
 >   `06-artifact-draft`.
 >
-> Pending (need a manual capture pass — these surfaces require a fully
-> completed live AI stream whose wall-time does not fit a single
-> capture window at the sub-1 tok/s rate Q2_0 ternary kernels deliver
-> on x86 CPU today): `b2c/02`, `b2c/05`, `b2c/07`, `b2c/09`,
+> Pending (need a manual capture pass — originally pending because
+> the prior Q2_0 default ran below the CPU-fallback floor on x86;
+> Bonsai-8B-Q1_0 lands at ~11.7 tok/s on the same VM, so these
+> surfaces should be re-captured against the live model in a future
+> pass): `b2c/02`, `b2c/05`, `b2c/07`, `b2c/09`,
 > `b2c/10`, `b2c/11`, `b2b/07`, `b2b/09`,
 > `privacy-strip-on-device.png`, `egress-summary-zero.png`.
 
@@ -103,14 +104,14 @@ Source workspace: **Acme Corp** (`ws_acme`) with two domains —
 
 | # | File | What it shows |
 |---|------|---------------|
-| 1 | [`local-model-status.png`](./local-model-status.png) | `DeviceCapabilityPanel` reporting the `ternary-bonsai-8b` alias loaded through Ollama (or MockAdapter fallback when the daemon is absent). |
-| 2 | [`privacy-strip-on-device.png`](./privacy-strip-on-device.png) | Close-up of a single privacy strip confirming `compute: on-device`, `model: ternary-bonsai-8b`, `egress: 0 B`. |
+| 1 | [`local-model-status.png`](./local-model-status.png) | `DeviceCapabilityPanel` reporting the `bonsai-8b` alias loaded through Ollama (or MockAdapter fallback when the daemon is absent). |
+| 2 | [`privacy-strip-on-device.png`](./privacy-strip-on-device.png) | Close-up of a single privacy strip confirming `compute: on-device`, `model: bonsai-8b`, `egress: 0 B`. |
 | 3 | [`egress-summary-zero.png`](./egress-summary-zero.png) | `EgressSummaryPanel` aggregating per-session totals and showing **0 B** (all local compute). |
 
 All B2C and B2B screenshots in this directory show the privacy strip /
 header reporting `on-device` and `0 B egress`. The 2026-04-30 pass
 re-captured the shots listed in **Captured in this pass** above against
-the live Ternary-Bonsai-8B weights pulled via
+the live Bonsai-8B weights pulled via
 `./scripts/setup-models.sh` through Ollama; the rest still come from
 the renderer's deterministic mock outputs. The three standalone shots
 in this section call out the on-device posture as a standalone
@@ -119,50 +120,54 @@ live model so far).
 
 ## On-device LLM performance
 
-Live numbers, 2026-04-30, against the **PrismML Ternary-Bonsai-8B-Q2_0**
-GGUF served through the PrismML `llama.cpp` fork. Host: AMD EPYC 7763,
+Live numbers, 2026-04-30, against the **PrismML Bonsai-8B-Q1_0** GGUF
+served through the PrismML `llama.cpp` fork. Host: AMD EPYC 7763,
 8 vCPU (no NUMA split, AVX2 + FMA + BMI2), 31 GiB RAM, 0 swap,
 CPU-only (no GPU / Metal / NPU).
 
-**Artifact size.** Ternary-Bonsai-8B-Q2_0 is **~2 GB on disk**
-(2.03 GiB / 2 081 MB GGUF, ~2.1 GB resident at startup before
-KV-cache growth) — this is the canonical CPU-friendly target the
-demo documents. Stock Ollama 0.22.x cannot load the Q2_0 ternary
-tensors (load fails with a SIGSEGV inside the bundled `llama.cpp`);
-the demo runs `llama-server` from
-[`PrismML-Eng/llama.cpp`](https://github.com/PrismML-Eng/llama.cpp)
+**Artifact size.** Bonsai-8B-Q1_0 is **~1.16 GB on disk** (1 105 MiB
+GGUF, ~1.2 GB resident at startup before KV-cache growth) — this is
+the canonical x86 CPU-friendly target the demo documents. Stock
+Ollama 0.22.x cannot load the Q1_0 tensors (the bundled `llama.cpp`
+does not implement the Q1_0 tensor type); the demo runs `llama-server`
+from [`PrismML-Eng/llama.cpp`](https://github.com/PrismML-Eng/llama.cpp)
 (`prism` branch) behind a tiny Ollama-API translator so the Electron
 shell's `OllamaAdapter` still works (full path in
 [How to reproduce → step 4](#how-to-reproduce)).
 
 **Sustained generation rate (warm):**
 
-| PrismML `llama-bench`, `-t 4`, CPU-only      | tok/s    |
-| -------------------------------------------- | -------- |
-| `pp64`  (prompt processing, 64 input tokens) | **0.51** |
-| `tg32`  (token generation, 32 output tokens) | **0.45** |
+| PrismML `llama-bench`, `-t 6`, CPU-only      | tok/s     |
+| -------------------------------------------- | --------- |
+| `pp64`  (prompt processing, 64 input tokens) | **14.82** |
+| `tg32`  (token generation, 32 output tokens) | **11.71** |
 
-**Wall-time implications** (extrapolated from `tg32 = 0.45 tok/s`):
+**Wall-time implications** (extrapolated from `tg32 = 11.71 tok/s`):
 
 | Surface shape                         | tokens produced | wall-time |
 | ------------------------------------- | --------------- | --------- |
-| 3-bullet summary (~50 tokens)         |  ~50            | ~110 s    |
-| EN → ES one-line translation (64-cap) |   64            | ~140 s    |
-| 256-token draft email                 |  256            | ~570 s    |
+| 3-bullet summary (~50 tokens)         |  ~50            | ~4 s      |
+| EN → ES one-line translation (64-cap) |   64            | ~5 s      |
+| 256-token draft email                 |  256            | ~22 s     |
 
-The Q2_0 ternary kernels in the PrismML fork are **not yet
-x86-optimised** — the published throughput targets for this quant
-are against ARM / Apple-Silicon SIMD paths. On a CPU-only x86 host
-you should expect Q2_0 generation to land in the **0.3 – 1 tok/s**
-band, well below the
-[`docs/cpu-perf-tuning.md` CPU-fallback floor of 2 tok/s](../docs/cpu-perf-tuning.md#11-minimum-usable-thresholds).
-That is why the streaming demo surfaces (`b2c/02`, `b2c/05`,
-`b2c/07`, `b2c/09`–`11`, `b2b/07`, `b2b/09`,
-`privacy-strip-on-device.png`, `egress-summary-zero.png`) are flagged
-**(pending)** rather than re-captured against the live Q2_0 model on
-this host class — they need GPU / Metal / NPU or a smaller CPU-only
-model (see
-[`docs/cpu-perf-tuning.md` § 10](../docs/cpu-perf-tuning.md#10-model-alternatives-for-cpu-only)).
+Q1_0 has a real x86 SIMD kernel in the PrismML fork
+(`ggml/src/ggml-cpu/arch/x86/quants.c:555`, AVX2 + FMA), so on
+commodity AMD/Intel CPUs it lands comfortably above the
+[`docs/cpu-perf-tuning.md` short-assistant floor of 5 tok/s](../docs/cpu-perf-tuning.md#11-minimum-usable-thresholds).
+Classifier / router surfaces (20+ tok/s minimum) should drop to
+the 4B variant `Bonsai-4B-Q1_0` (~20.7 tok/s on the same VM) or run
+on GPU / Metal / NPU.
+
+**For comparison — why not Q2_0 on x86?** Same VM, same `llama-bench`,
+same PrismML fork: `Ternary-Bonsai-8B-Q2_0.gguf` lands at
+**0.71 tok/s** prompt-eval and **0.60 tok/s** generation — ~25×
+slower than Q1_0 — because PrismML wrote a NEON SIMD kernel for
+Q2_0 but never wrote an x86 SIMD kernel; on x86 it falls through to
+a scalar generic path. Full kernel attribution in
+[`docs/cpu-perf-tuning.md` → Why Q2_0 is slow on x86](../docs/cpu-perf-tuning.md#why-q2_0-is-slow-on-x86).
+On ARM / Apple Silicon, Q2_0 is the fastest path — set
+`MODEL_QUANT=q2_0` and download the file from
+https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf.
 
 The `num_ctx 2048` default in `models/Modelfile.bonsai8b` is the
 CPU-friendly choice: attention cost scales linearly with `-c`, so a
@@ -171,13 +176,12 @@ anything for the 256–1024-token KChat task prompts.
 
 **Calibration note.** Older anchor numbers ("~0.3 tok/s on an 8 GB
 shared 8-core VM") in prior passes of this file were measured
-against the same Q2_0 quant on a much weaker host class. The
-2026-04-30 numbers above (~0.45 tok/s on a dedicated EPYC 7763 8 vCPU
-box) are the same order of magnitude — which confirms the diagnosis
-that the Q2_0 ternary kernels are not yet optimised for x86. If your
-box is slower than ~2 tok/s after following
-[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md), switch to a
-smaller model.
+against the Q2_0 file, which falls through to a scalar generic path
+on x86. After diagnosing the kernel-coverage gap (see the
+`docs/cpu-perf-tuning.md` link above), the demo's canonical x86
+default is now `Bonsai-8B-Q1_0.gguf`, which runs at ~11.7 tok/s on
+the same EPYC reference box — a ~25× improvement at half the disk
+footprint, with no host-class change.
 
 ## How to reproduce
 
@@ -199,17 +203,17 @@ smaller model.
 3. **Optional — wire a real local model**:
 
    ```bash
-   ./scripts/setup-models.sh                # pulls ternary-bonsai-8b via Ollama
+   ./scripts/setup-models.sh                # pulls bonsai-8b via Ollama
    ```
 
    Without Ollama, the bootstrap falls back to `MockAdapter`; the
    pre-2026-04-30 screenshots below were produced against the mock so
    the outputs are deterministic.
 
-4. **Optional — wire the live `Ternary-Bonsai-8B-Q2_0.gguf` GGUF
-   (Prism quant)**: the Q2_0 ternary quant is **not** in mainline
-   `llama.cpp` and Ollama 0.22.0 cannot load it; use the PrismML fork
-   plus a tiny Ollama-API shim:
+4. **Optional — wire the live `Bonsai-8B-Q1_0.gguf` GGUF (Prism
+   quant)**: the Q1_0 quant is **not** in mainline `llama.cpp` and
+   Ollama 0.22.0 cannot load it; use the PrismML fork plus a tiny
+   Ollama-API shim:
 
    ```bash
    # 1. Build the PrismML fork's llama-server (one-time):
@@ -220,13 +224,14 @@ smaller model.
      -DCMAKE_BUILD_TYPE=Release
    cmake --build build -j8 --target llama-server
 
-   # Verify CPU features (need at least avx2 + fma for decent performance):
+   # Verify CPU features (need at least avx2 + fma for the x86
+   # SIMD Q1_0 kernel; without it generation falls back to scalar):
    lscpu | egrep "Model name|avx|avx2|avx512|sse4|fma"
 
-   # 2. Start llama-server bound to the Q2_0 GGUF:
+   # 2. Start llama-server bound to the Q1_0 GGUF:
    ./build/bin/llama-server \
-     -m /path/to/Ternary-Bonsai-8B-Q2_0.gguf \
-     -c 1024 -t 4 -tb 4 --host 127.0.0.1 --port 8800 --parallel 1 \
+     -m /path/to/Bonsai-8B-Q1_0.gguf \
+     -c 1024 -t 6 -tb 6 --host 127.0.0.1 --port 8800 --parallel 1 \
      --mlock --no-mmap
 
    # 3. Run an Ollama-API shim that translates /api/generate
@@ -236,8 +241,8 @@ smaller model.
    # 4. Launch the Electron shell pointed at the shim:
    cd frontend
    OLLAMA_BASE_URL=http://127.0.0.1:11434 \
-     MODEL_NAME=ternary-bonsai-8b \
-     MODEL_QUANT=q2_0 \
+     MODEL_NAME=bonsai-8b \
+     MODEL_QUANT=q1_0 \
      npm run electron:dev
    ```
 
@@ -246,9 +251,9 @@ smaller model.
 
    - `-c 1024`: limits attention cost per token; use `-c 512` for even
      faster classification / routing tasks.
-   - `-t 4 -tb 4`: 4 threads is often faster than 8 on shared VMs due
-     to cache contention; benchmark with
-     `-t 1,2,4,6,8` (see the `llama-bench` matrix in the tuning guide).
+   - `-t 6 -tb 6`: 6 threads peaked on the reference 8 vCPU EPYC box
+     (see the thread sweep in `docs/cpu-perf-tuning.md`); always
+     re-run the sweep on your host before pinning `-t`.
    - `--mlock`: prevents the OS from paging model weights to swap.
    - `--no-mmap`: avoids slow page faults on VMs with slow virtual
      disk; test both with and without on your host.
@@ -261,18 +266,21 @@ smaller model.
    model:
 
    ```bash
-   ./build/bin/llama-bench \
-     -m /path/to/Ternary-Bonsai-8B-Q2_0.gguf \
-     -p 128 -n 128 -c 1024 -t 4
+   for t in 1 2 4 6 8; do
+     ./build/bin/llama-bench \
+       -m /path/to/Bonsai-8B-Q1_0.gguf \
+       -p 64 -n 32 -t $t -r 2
+   done
    ```
 
    See [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
    full tuning checklist (CPU feature probing, thread-count sweeps,
    KV-cache quant, swap monitoring, recommended fallback models).
-   **Decision threshold**: if generation stays under 1 tok/s after
-   tuning, the 8B model is the wrong choice for CPU-only deployment —
-   switch to a smaller model (Qwen3 0.6B Q4_K_M, Gemma 3 1B QAT Q4_0,
-   Qwen2.5 1.5B Q4_K_M) and reserve 8B for GPU / Metal / NPU paths.
+   **Decision threshold**: if generation stays under 5 tok/s on Q1_0
+   after tuning, drop to `Bonsai-4B-Q1_0` (~20 tok/s on 8 vCPU
+   EPYC) or move to GPU / Metal / NPU. On ARM / Apple Silicon, the
+   `Ternary-Bonsai-8B-Q2_0.gguf` file is the faster path — set
+   `MODEL_QUANT=q2_0` and update the Modelfile accordingly.
 
 ### B2C flow (screenshots 1-12)
 

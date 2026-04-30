@@ -14,7 +14,7 @@ import type {
 export class MockAdapter implements Adapter {
   model: string;
 
-  constructor(model = 'ternary-bonsai-8b') {
+  constructor(model = 'bonsai-8b') {
     this.model = model;
   }
 
@@ -157,10 +157,10 @@ export const SEEDED_TRANSLATIONS: Record<string, Record<string, string>> = {
   'yes please — extra peanut sauce if they have it.': {
     vi: 'Có nhé — thêm nước chấm đậu phộng nếu quán còn.',
   },
-  'nhân tiện: team mình đang đánh giá một mô hình 8b chạy trên máy. bạn đã thử ternary-bonsai-8b chưa?':
+  'nhân tiện: team mình đang đánh giá một mô hình 8b chạy trên máy. bạn đã thử bonsai-8b chưa?':
     {
       en:
-        "By the way: my team is evaluating an 8B on-device model. Have you tried ternary-bonsai-8b yet?",
+        "By the way: my team is evaluating an 8B on-device model. Have you tried bonsai-8b yet?",
     },
   "we're running it in this chat demo actually — latency under 300 ms on my laptop, quality is surprisingly good for summarisation and translation.":
     {

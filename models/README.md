@@ -1,17 +1,17 @@
 # Model definitions
 
 Ollama Modelfile that creates the local alias the app looks for by
-default (`ternary-bonsai-8b` — the value
+default (`bonsai-8b` — the value
 `frontend/electron/inference/bootstrap.ts` uses when `MODEL_NAME` is
 unset). The demo ships a single on-device model; all non-server
 inference routes through this alias.
 
-| Alias               | Modelfile             | Base GGUF                          | Size on disk | Tier  | Use case                            |
-|---------------------|-----------------------|------------------------------------|--------------|-------|-------------------------------------|
-| `ternary-bonsai-8b` | `Modelfile.bonsai8b`  | `Ternary-Bonsai-8B-Q2_0.gguf`      | ~2 GB        | local | Summaries, drafts, reasoning, tasks |
+| Alias       | Modelfile             | Base GGUF (x86 default)   | Size on disk | Tier  | Use case                            |
+|-------------|-----------------------|---------------------------|--------------|-------|-------------------------------------|
+| `bonsai-8b` | `Modelfile.bonsai8b`  | `Bonsai-8B-Q1_0.gguf`     | ~1.16 GB     | local | Summaries, drafts, reasoning, tasks |
 
-Source: [prism-ml/Ternary-Bonsai-8B-gguf](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf)
-→ [`Ternary-Bonsai-8B-Q2_0.gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/blob/main/Ternary-Bonsai-8B-Q2_0.gguf).
+Source: [prism-ml/Bonsai-8B-gguf](https://huggingface.co/prism-ml/Bonsai-8B-gguf)
+→ [`Bonsai-8B-Q1_0.gguf`](https://huggingface.co/prism-ml/Bonsai-8B-gguf/blob/main/Bonsai-8B-Q1_0.gguf).
 
 ## Quick setup
 
@@ -19,40 +19,59 @@ Source: [prism-ml/Ternary-Bonsai-8B-gguf](https://huggingface.co/prism-ml/Ternar
 ./scripts/setup-models.sh
 ```
 
-The script downloads `Ternary-Bonsai-8B-Q2_0.gguf` (~2 GB) from
+The script downloads `Bonsai-8B-Q1_0.gguf` (~1.16 GB) from
 HuggingFace into `models/` if it isn't already present, then creates
-the `ternary-bonsai-8b` Ollama alias from the Modelfile in this
-directory. After it runs, `ollama list` should show a row for
-`ternary-bonsai-8b:latest` at ~2 GB.
+the `bonsai-8b` Ollama alias from the Modelfile in this directory.
+After it runs, `ollama list` should show a row for `bonsai-8b:latest`
+at ~1.16 GB.
 
-Why the explicit Q2_0 file (not Ollama's `hf.co/<repo>:<quant>`
-shorthand)? Ollama's tag resolver does not recognise `Q2_0` as a
-valid quantisation scheme — it returns `"not a valid quantization
-scheme"` for both `Q2_0` and `q2_0`. The script and Modelfile
-therefore reference the file by local path so the canonical CPU
-artifact (~2 GB) is what lands in `ollama list`.
+Why the explicit Q1_0 file (not Ollama's `hf.co/<repo>:<quant>`
+shorthand)? Ollama's tag resolver does not recognise `Q1_0` as a
+valid quantisation scheme. The script and Modelfile therefore
+reference the file by local path so the canonical x86 CPU artifact
+(~1.16 GB) is what lands in `ollama list`.
+
+**Why Q1_0 instead of Q2_0?** PrismML's Q1_0 quant has a real x86
+SIMD kernel (AVX2/FMA) in their `llama.cpp` fork; Q2_0 does not — on
+x86 it falls back to scalar code and runs ~25× slower despite using
+less RAM. On AMD EPYC 7763 8 vCPU we measured **~11.7 tok/s** for
+Bonsai-8B-Q1_0 vs **~0.45–0.60 tok/s** for Ternary-Bonsai-8B-Q2_0.
+Full kernel attribution and per-arch guidance in
+[`docs/cpu-perf-tuning.md` → Why Q2_0 is slow on x86](../docs/cpu-perf-tuning.md#why-q2_0-is-slow-on-x86).
 
 **Important runtime caveat.** Stock Ollama 0.22.x can `create` an
-alias from the Q2_0 GGUF but **cannot run inference** against it
-(the bundled `llama.cpp` SIGSEGVs while loading the ternary
-tensors). The CPU-only demo path uses the PrismML `llama.cpp` fork
-behind an Ollama-API shim — see
+alias from the Q1_0 GGUF but **cannot run inference** against it
+(the bundled `llama.cpp` does not implement the Q1_0 tensor type).
+The CPU-only demo path uses the PrismML `llama.cpp` fork behind an
+Ollama-API shim — see
 [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) and
 [`demo/README.md` → step 4](../demo/README.md#how-to-reproduce).
 
 ### Using a different quant
 
-The HuggingFace repo also ships an F16 build (`Ternary-Bonsai-8B-F16.gguf`,
-~16 GB) that mainline `llama.cpp` and stock Ollama can run today. To
-use it (or any other quant), download the file and edit the `FROM`
-line in `models/Modelfile.bonsai8b`:
+The Bonsai HuggingFace repos ship a few alternatives that may suit
+non-x86 hosts or RAM-constrained boxes better:
+
+- **`Ternary-Bonsai-8B-Q2_0.gguf`** — ~2.18 GB; recommended on ARM /
+  Apple Silicon, where the PrismML fork's NEON kernel makes it the
+  fastest path. Source:
+  https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf
+- **`Bonsai-4B-Q1_0.gguf`** — ~0.57 GB; same x86 SIMD kernel as the
+  8B Q1_0 but half the parameter count, ~20.7 tok/s on the reference
+  EPYC box. Source: https://huggingface.co/prism-ml/Bonsai-4B-gguf
+- **`Ternary-Bonsai-8B-F16.gguf`** — ~16 GB; mainline `llama.cpp` and
+  stock Ollama can run this without the PrismML fork, useful for
+  smoke-testing the Ollama path itself.
+
+To switch, download the file and edit the `FROM` line in
+`models/Modelfile.bonsai8b`:
 
 ```bash
-# Example — pick the quant you want from the HuggingFace repo.
-curl -L -o models/Ternary-Bonsai-8B.Q4_K_M.gguf \
-  https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/resolve/main/Ternary-Bonsai-8B.Q4_K_M.gguf
+# Example — switch to the Q2_0 file for an Apple Silicon dev box.
+curl -L -o models/Ternary-Bonsai-8B-Q2_0.gguf \
+  https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/resolve/main/Ternary-Bonsai-8B-Q2_0.gguf
 # Then in models/Modelfile.bonsai8b:
-#   FROM ./Ternary-Bonsai-8B.Q4_K_M.gguf
+#   FROM ./Ternary-Bonsai-8B-Q2_0.gguf
 ./scripts/setup-models.sh
 ```
 
@@ -69,40 +88,42 @@ cd frontend && npm run electron:dev
 
 ## CPU performance
 
-The canonical CPU target is the **Q2_0 ternary GGUF** —
-`Ternary-Bonsai-8B-Q2_0.gguf`, **~2 GB on disk** (2.03 GiB), ~2.1 GB
-resident at startup before KV-cache growth. The Modelfile in this
-directory defaults to `num_ctx 2048` so CPU-only hosts don't pay the
-8K-context attention cost per token.
+The canonical x86 CPU target is the **Q1_0 GGUF** —
+`Bonsai-8B-Q1_0.gguf`, **~1.16 GB on disk**, ~1.2 GB resident at
+startup before KV-cache growth. The Modelfile in this directory
+defaults to `num_ctx 2048` so CPU-only hosts don't pay the 8K-context
+attention cost per token.
 
 **Measured rates (2026-04-30, AMD EPYC 7763 8 vCPU, 31 GiB RAM,
-CPU-only, PrismML fork `llama-bench`, `-t 4`):** prompt processing
-`pp64` ~**0.51 tok/s**, token generation `tg32` ~**0.45 tok/s**. Full
-context in
-[`demo/README.md` → On-device LLM performance](../demo/README.md#on-device-llm-performance).
-That is **below** the tuning guide's CPU-fallback floor (2 tok/s) —
-the Q2_0 ternary kernels in the PrismML fork are not yet
-x86-optimised, so any streamed-text surface needs ARM with the
-ternary kernels enabled, Apple Silicon (Metal), or a GPU / NPU path.
+CPU-only, PrismML fork `llama-bench`, `-t 6`, warm):** prompt
+processing `pp64` ~**14.8 tok/s**, token generation `tg32` ~**11.7
+tok/s**. Full context and per-arch comparison in
+[`demo/README.md` → On-device LLM performance](../demo/README.md#on-device-llm-performance)
+and
+[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md).
 
-For CPU-only deployments, prefer a smaller model. Good candidates
-(see [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
-full list including small-QAT alternatives):
+That clears the tuning guide's short-assistant 5 tok/s tier with
+headroom; classifier / router surfaces (20+ tok/s minimum) should
+either drop to `Bonsai-4B-Q1_0` (~20.7 tok/s on the same box) or run
+on GPU / Metal / NPU.
 
-- **Qwen3 0.6B Q4_K_M** — router / classifier.
-- **Qwen2.5 1.5B Q4_K_M** — default CPU chat / summarisation.
+For comparison, `Ternary-Bonsai-8B-Q2_0` on the same x86 host runs
+at ~0.45–0.60 tok/s — below the CPU-fallback floor — because its
+kernel falls back to scalar code on x86. See
+[`docs/cpu-perf-tuning.md` → Why Q2_0 is slow on x86](../docs/cpu-perf-tuning.md#why-q2_0-is-slow-on-x86)
+for the full attribution.
 
 The `MODEL_NAME` and `MODEL_QUANT` env vars (consumed by
 `frontend/electron/inference/bootstrap.ts`) let you switch models
 without code changes:
 
 ```bash
-MODEL_NAME=qwen2.5-1.5b MODEL_QUANT=q4_k_m npm run electron:dev
+MODEL_NAME=bonsai-4b MODEL_QUANT=q1_0 npm run electron:dev
+# or, for an Apple Silicon dev box:
+MODEL_QUANT=q2_0 npm run electron:dev
 ```
 
-Reserve the 8B model for hosts with GPU, Apple Silicon (Metal), or an
-NPU — it is not a reasonable default on x86 CPU-only boxes. See
-[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the full
-diagnostic checklist (CPU feature probing, thread-count sweeps,
+See [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
+full diagnostic checklist (CPU feature probing, thread-count sweeps,
 context reduction, `--mlock` / `--no-mmap`, swap monitoring, KV-cache
 quantisation, expected token rates, and minimum usable thresholds).
