@@ -6,19 +6,26 @@
 #
 # Source: https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf
 #
-# Ollama supports the `hf.co/<user>/<repo>` shorthand for HuggingFace
-# GGUF repositories. If `ollama pull hf.co/prism-ml/Ternary-Bonsai-8B-gguf`
-# fails on older Ollama builds, `scripts/setup-models.sh` falls back to
-# downloading the GGUF file directly and referencing it via a local
-# `FROM ./<file>.gguf` path.
+# The canonical artifact is the Q2_0 ternary GGUF (~2 GB on disk).
+# Ollama's `hf.co/<user>/<repo>:<quant>` shorthand does NOT accept
+# `Q2_0` (its tag resolver rejects ternary quants), so the Modelfile
+# references the file by local path. `scripts/setup-models.sh`
+# downloads `Ternary-Bonsai-8B-Q2_0.gguf` next to this Modelfile if
+# it isn't already present.
 #
 # Usage:
 #   ./scripts/setup-models.sh
 # or, manually:
-#   ollama pull hf.co/prism-ml/Ternary-Bonsai-8B-gguf
+#   curl -L -o models/Ternary-Bonsai-8B-Q2_0.gguf \
+#     https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/resolve/main/Ternary-Bonsai-8B-Q2_0.gguf
 #   ollama create ternary-bonsai-8b -f models/Modelfile.bonsai8b
+#
+# Note: stock Ollama 0.22.x can `create` an alias from this file but
+# CANNOT run inference against it (the bundled `llama.cpp` SIGSEGVs
+# while loading the ternary tensors). The CPU-only demo path uses the
+# PrismML `llama.cpp` fork — see `docs/cpu-perf-tuning.md`.
 
-FROM hf.co/prism-ml/Ternary-Bonsai-8B-gguf
+FROM ./Ternary-Bonsai-8B-Q2_0.gguf
 
 PARAMETER temperature 0.7
 PARAMETER top_p 0.9

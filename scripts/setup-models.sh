@@ -32,6 +32,15 @@ if ! ollama list >/dev/null 2>&1; then
 fi
 
 MODELFILE="$REPO_ROOT/models/Modelfile.bonsai8b"
+MODELS_DIR="$REPO_ROOT/models"
+
+# Canonical CPU artifact — Q2_0 ternary GGUF (~2 GB on disk).
+# Ollama's `hf.co/<user>/<repo>:<quant>` shorthand rejects `Q2_0`
+# (returns "not a valid quantization scheme"), so we download the
+# file directly and reference it from the Modelfile via a local
+# `FROM ./Ternary-Bonsai-8B-Q2_0.gguf` path.
+Q2_FILENAME="Ternary-Bonsai-8B-Q2_0.gguf"
+Q2_URL="https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/resolve/main/${Q2_FILENAME}"
 
 # Extract the FROM tag from the Modelfile so this script stays in sync
 # automatically when the Modelfile is updated.
@@ -42,10 +51,40 @@ if [[ -z "$base" ]]; then
   exit 1
 fi
 
-# If the Modelfile points at a local GGUF file we skip the `ollama pull`
-# step — `ollama create` will package the file directly.
+# If the Modelfile points at a local GGUF file, ensure it exists in
+# `$MODELS_DIR` before handing off to `ollama create`. For the
+# canonical Q2_0 artifact we download it from HuggingFace if missing.
 if [[ "$base" == .* || "$base" == /* ]]; then
-  echo "1/2  Base model is a local GGUF path: $base (skipping pull)"
+  # Resolve the local path relative to the Modelfile directory (the
+  # same way `ollama create` does).
+  if [[ "$base" == /* ]]; then
+    local_path="$base"
+  else
+    local_path="$MODELS_DIR/${base#./}"
+  fi
+
+  base_filename="$(basename "$local_path")"
+
+  if [[ -f "$local_path" ]]; then
+    echo "1/2  Base GGUF already present: $local_path (skipping download)"
+  elif [[ "$base_filename" == "$Q2_FILENAME" ]]; then
+    echo "1/2  Downloading base GGUF: $Q2_FILENAME (~2 GB) from HuggingFace"
+    mkdir -p "$(dirname "$local_path")"
+    if command -v curl >/dev/null 2>&1; then
+      curl -L -o "$local_path" "$Q2_URL"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -O "$local_path" "$Q2_URL"
+    else
+      echo "ERROR: neither 'curl' nor 'wget' is installed; cannot download $Q2_FILENAME" >&2
+      echo "Install one of them, or download manually:" >&2
+      echo "  $Q2_URL -> $local_path" >&2
+      exit 1
+    fi
+  else
+    echo "ERROR: Modelfile references local GGUF $local_path which does not exist" >&2
+    echo "Download the file manually and re-run this script." >&2
+    exit 1
+  fi
 else
   echo "1/2  Pulling base model: $base"
   # `ollama create` will pull the base on demand, but pulling explicitly
@@ -58,7 +97,13 @@ ollama create "$MODEL_ALIAS" -f "$MODELFILE"
 
 echo ""
 echo "Done! Verify with: ollama list"
-echo "You should see '$MODEL_ALIAS'."
+echo "You should see '$MODEL_ALIAS' (~2 GB if the Q2_0 GGUF was used)."
+echo ""
+echo "NOTE: stock Ollama 0.22.x can create the alias from a Q2_0 GGUF"
+echo "      but cannot RUN inference against it (the bundled llama.cpp"
+echo "      SIGSEGVs while loading ternary tensors). The CPU-only demo"
+echo "      path uses the PrismML llama.cpp fork behind an Ollama-API"
+echo "      shim — see demo/README.md step 4 and docs/cpu-perf-tuning.md."
 echo ""
 echo "Start the app:"
 echo "  cd frontend && npm run electron:dev"
