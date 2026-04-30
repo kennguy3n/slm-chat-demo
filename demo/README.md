@@ -151,10 +151,14 @@ has been re-captured against the live model so far).
      -DCMAKE_BUILD_TYPE=Release
    cmake --build build -j8 --target llama-server
 
+   # Verify CPU features (need at least avx2 + fma for decent performance):
+   lscpu | egrep "Model name|avx|avx2|avx512|sse4|fma"
+
    # 2. Start llama-server bound to the Q2_0 GGUF:
    ./build/bin/llama-server \
      -m /path/to/Ternary-Bonsai-8B-Q2_0.gguf \
-     -c 4096 -t 8 --host 127.0.0.1 --port 8800 --parallel 1
+     -c 1024 -t 4 -tb 4 --host 127.0.0.1 --port 8800 --parallel 1 \
+     --mlock --no-mmap
 
    # 3. Run an Ollama-API shim that translates /api/generate
    #    -> llama-server's /completion (sample lives outside this
@@ -164,8 +168,21 @@ has been re-captured against the live model so far).
    cd frontend
    OLLAMA_BASE_URL=http://127.0.0.1:11434 \
      MODEL_NAME=ternary-bonsai-8b \
+     MODEL_QUANT=q2_0 \
      npm run electron:dev
    ```
+
+   llama-server flag notes (see [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md)
+   for the full matrix):
+
+   - `-c 1024`: limits attention cost per token; use `-c 512` for even
+     faster classification / routing tasks.
+   - `-t 4 -tb 4`: 4 threads is often faster than 8 on shared VMs due
+     to cache contention; benchmark with
+     `-t 1,2,4,6,8` (see the `llama-bench` matrix in the tuning guide).
+   - `--mlock`: prevents the OS from paging model weights to swap.
+   - `--no-mmap`: avoids slow page faults on VMs with slow virtual
+     disk; test both with and without on your host.
 
    On a CPU-only host the Q2_0 quant runs around 0.3 tok/s, so
    surfaces that need a fully-streamed AI result (smart-reply,
@@ -173,7 +190,22 @@ has been re-captured against the live model so far).
    long output) take 5–17 minutes per call. The shots flagged
    `(pending)` above could not be captured inside a reasonable window
    on this 8-core box; run on Apple Silicon (NEON / Metal) or a
-   discrete GPU to capture them.
+   discrete GPU to capture them. Benchmark your box before blaming
+   the model:
+
+   ```bash
+   ./build/bin/llama-bench \
+     -m /path/to/Ternary-Bonsai-8B-Q2_0.gguf \
+     -p 128 -n 128 -c 1024 -t 4
+   ```
+
+   See [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
+   full tuning checklist (CPU feature probing, thread-count sweeps,
+   KV-cache quant, swap monitoring, recommended fallback models).
+   **Decision threshold**: if generation stays under 1 tok/s after
+   tuning, the 8B model is the wrong choice for CPU-only deployment —
+   switch to a smaller model (Qwen3 0.6B Q4_K_M, Gemma 3 1B QAT Q4_0,
+   Qwen2.5 1.5B Q4_K_M) and reserve 8B for GPU / Metal / NPU paths.
 
 ### B2C flow (screenshots 1-12)
 
