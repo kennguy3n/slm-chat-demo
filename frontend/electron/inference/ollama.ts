@@ -230,35 +230,59 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
       (res) => {
         res.setEncoding('utf8');
         let buffer = '';
+        const statusCode = res.statusCode ?? 0;
+        const parseFrame = (raw: string) => {
+          const line = raw.trim();
+          if (!line) return;
+          let frame: OllamaGenerateResponse;
+          try {
+            frame = JSON.parse(line) as OllamaGenerateResponse;
+          } catch {
+            return;
+          }
+          if (frame.error) {
+            queue.push({ error: frame.error, done: true });
+            notify();
+            return;
+          }
+          if (frame.response) {
+            queue.push({ delta: frame.response, done: false });
+            notify();
+          }
+          if (frame.done) {
+            queue.push({ done: true });
+            notify();
+          }
+        };
         res.on('data', (chunk: string) => {
           buffer += chunk;
           const lines = buffer.split('\n');
           buffer = lines.pop() ?? '';
-          for (const raw of lines) {
-            const line = raw.trim();
-            if (!line) continue;
-            let frame: OllamaGenerateResponse;
-            try {
-              frame = JSON.parse(line) as OllamaGenerateResponse;
-            } catch {
-              continue;
-            }
-            if (frame.error) {
-              queue.push({ error: frame.error, done: true });
-              notify();
-              continue;
-            }
-            if (frame.response) {
-              queue.push({ delta: frame.response, done: false });
-              notify();
-            }
-            if (frame.done) {
-              queue.push({ done: true });
+          for (const raw of lines) parseFrame(raw);
+        });
+        res.on('end', () => {
+          // Ollama sends single-line error responses (e.g. HTTP 404
+          // `{"error":"model 'X' not found"}`) without a trailing
+          // newline, so the buffer-driven loop above never sees them.
+          // Flush whatever's left so error chunks reach the consumer.
+          if (buffer.length > 0) {
+            parseFrame(buffer);
+            buffer = '';
+          }
+          // Non-200 responses with no parseable body still need to
+          // surface as an error to avoid silently degrading the
+          // translate / summarize pipeline (`output: ''` would
+          // otherwise look like a successful empty completion).
+          if (statusCode >= 400) {
+            const empty = queue.length === 0;
+            if (empty) {
+              queue.push({
+                error: `HTTP ${statusCode}`,
+                done: true,
+              });
               notify();
             }
           }
-        });
-        res.on('end', () => {
           queue.push({ type: 'end' });
           notify();
         });
