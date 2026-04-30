@@ -6,11 +6,12 @@ default (`ternary-bonsai-8b` — the value
 unset). The demo ships a single on-device model; all non-server
 inference routes through this alias.
 
-| Alias               | Modelfile             | Base model                                          | Tier  | Use case                            |
-|---------------------|-----------------------|-----------------------------------------------------|-------|-------------------------------------|
-| `ternary-bonsai-8b` | `Modelfile.bonsai8b`  | `hf.co/prism-ml/Ternary-Bonsai-8B-gguf`             | local | Summaries, drafts, reasoning, tasks |
+| Alias               | Modelfile             | Base GGUF                          | Size on disk | Tier  | Use case                            |
+|---------------------|-----------------------|------------------------------------|--------------|-------|-------------------------------------|
+| `ternary-bonsai-8b` | `Modelfile.bonsai8b`  | `Ternary-Bonsai-8B-Q2_0.gguf`      | ~2 GB        | local | Summaries, drafts, reasoning, tasks |
 
-Source: [prism-ml/Ternary-Bonsai-8B-gguf](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf).
+Source: [prism-ml/Ternary-Bonsai-8B-gguf](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf)
+→ [`Ternary-Bonsai-8B-Q2_0.gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/blob/main/Ternary-Bonsai-8B-Q2_0.gguf).
 
 ## Quick setup
 
@@ -18,22 +19,33 @@ Source: [prism-ml/Ternary-Bonsai-8B-gguf](https://huggingface.co/prism-ml/Ternar
 ./scripts/setup-models.sh
 ```
 
-The script pulls the base model from HuggingFace (via Ollama's
-`hf.co/<user>/<repo>` shorthand), creates the alias, and prints a
-verification command. After it runs, `ollama list` should show:
+The script downloads `Ternary-Bonsai-8B-Q2_0.gguf` (~2 GB) from
+HuggingFace into `models/` if it isn't already present, then creates
+the `ternary-bonsai-8b` Ollama alias from the Modelfile in this
+directory. After it runs, `ollama list` should show a row for
+`ternary-bonsai-8b:latest` at ~2 GB.
 
-```
-ternary-bonsai-8b:latest                         ~5 GB
-hf.co/prism-ml/Ternary-Bonsai-8B-gguf:latest     ~5 GB
-```
+Why the explicit Q2_0 file (not Ollama's `hf.co/<repo>:<quant>`
+shorthand)? Ollama's tag resolver does not recognise `Q2_0` as a
+valid quantisation scheme — it returns `"not a valid quantization
+scheme"` for both `Q2_0` and `q2_0`. The script and Modelfile
+therefore reference the file by local path so the canonical CPU
+artifact (~2 GB) is what lands in `ollama list`.
 
-(Exact size depends on the GGUF quantisation published in the
-HuggingFace repo.)
+**Important runtime caveat.** Stock Ollama 0.22.x can `create` an
+alias from the Q2_0 GGUF but **cannot run inference** against it
+(the bundled `llama.cpp` SIGSEGVs while loading the ternary
+tensors). The CPU-only demo path uses the PrismML `llama.cpp` fork
+behind an Ollama-API shim — see
+[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) and
+[`demo/README.md` → step 4](../demo/README.md#how-to-reproduce).
 
-### Fallback: local GGUF file
+### Using a different quant
 
-If your Ollama build does not support the `hf.co/<user>/<repo>`
-shorthand, download the GGUF file directly and edit the `FROM` line:
+The HuggingFace repo also ships an F16 build (`Ternary-Bonsai-8B-F16.gguf`,
+~16 GB) that mainline `llama.cpp` and stock Ollama can run today. To
+use it (or any other quant), download the file and edit the `FROM`
+line in `models/Modelfile.bonsai8b`:
 
 ```bash
 # Example — pick the quant you want from the HuggingFace repo.
