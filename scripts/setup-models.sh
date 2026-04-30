@@ -70,16 +70,24 @@ if [[ "$base" == .* || "$base" == /* ]]; then
   elif [[ "$base_filename" == "$Q2_FILENAME" ]]; then
     echo "1/2  Downloading base GGUF: $Q2_FILENAME (~2 GB) from HuggingFace"
     mkdir -p "$(dirname "$local_path")"
+    # Download to a temp file and atomically rename on success so an
+    # interrupted run never leaves a partial GGUF that the next
+    # invocation would mistake for a complete download.
+    tmp_path="${local_path}.download.tmp"
+    cleanup_tmp() { rm -f "$tmp_path"; }
+    trap cleanup_tmp EXIT INT TERM
     if command -v curl >/dev/null 2>&1; then
-      curl -L -o "$local_path" "$Q2_URL"
+      curl -fL --retry 3 --retry-delay 2 -o "$tmp_path" "$Q2_URL"
     elif command -v wget >/dev/null 2>&1; then
-      wget -O "$local_path" "$Q2_URL"
+      wget --tries=3 -O "$tmp_path" "$Q2_URL"
     else
       echo "ERROR: neither 'curl' nor 'wget' is installed; cannot download $Q2_FILENAME" >&2
       echo "Install one of them, or download manually:" >&2
       echo "  $Q2_URL -> $local_path" >&2
       exit 1
     fi
+    mv "$tmp_path" "$local_path"
+    trap - EXIT INT TERM
   else
     echo "ERROR: Modelfile references local GGUF $local_path which does not exist" >&2
     echo "Download the file manually and re-run this script." >&2

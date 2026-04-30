@@ -101,19 +101,24 @@ to the bundled `MockAdapter` so the demo always works without a model
 present.
 
 The bootstrap (`frontend/electron/inference/bootstrap.ts`) defaults
-`MODEL_NAME` to `ternary-bonsai-8b`. That name is
-an *alias*, not the upstream Ollama tag — the `models/` directory
-ships a single [`Modelfile.bonsai8b`](./models/Modelfile.bonsai8b)
-that creates the alias on top of the
-[`hf.co/prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf)
-HuggingFace GGUF repo (served through Ollama's
-`FROM hf.co/<user>/<repo>` shorthand).
+`MODEL_NAME` to `ternary-bonsai-8b`. That name is an *alias*, not the
+upstream Ollama tag — the `models/` directory ships a single
+[`Modelfile.bonsai8b`](./models/Modelfile.bonsai8b) whose `FROM` line
+points at the **Q2_0 ternary GGUF**
+([`Ternary-Bonsai-8B-Q2_0.gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/blob/main/Ternary-Bonsai-8B-Q2_0.gguf),
+~2 GB on disk) from the
+[`prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf)
+HuggingFace repo. Ollama's `hf.co/<user>/<repo>:<quant>` shorthand
+rejects `Q2_0` (its tag resolver returns `"not a valid quantization
+scheme"`), so the Modelfile references the file by local path and
+the setup script downloads it directly.
 
 The fastest way to set the alias up is the bundled script:
 
 ```bash
-# Pulls hf.co/prism-ml/Ternary-Bonsai-8B-gguf and creates the
-# ternary-bonsai-8b alias the bootstrap looks for.
+# Downloads Ternary-Bonsai-8B-Q2_0.gguf (~2 GB) into models/ if not
+# already present, then creates the ternary-bonsai-8b alias the
+# bootstrap looks for.
 ./scripts/setup-models.sh
 
 # Make sure the daemon is running in the background.
@@ -126,13 +131,22 @@ cd frontend && npm run electron:dev
 To set up the alias by hand:
 
 ```bash
-ollama pull hf.co/prism-ml/Ternary-Bonsai-8B-gguf
+curl -L -o models/Ternary-Bonsai-8B-Q2_0.gguf \
+  https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/resolve/main/Ternary-Bonsai-8B-Q2_0.gguf
 ollama create ternary-bonsai-8b -f models/Modelfile.bonsai8b
 ```
 
-A single pull is enough to light up on-device routing. If you later
-pull a different model and want the router to use it without renaming
-anything, override at runtime:
+> **Heads-up:** stock Ollama 0.22.x can `create` the alias from this
+> file but **cannot run inference** against it (the bundled
+> `llama.cpp` SIGSEGVs while loading the ternary tensors). The
+> CPU-only demo path uses the PrismML `llama.cpp` fork behind an
+> Ollama-API shim — see
+> [`docs/cpu-perf-tuning.md`](./docs/cpu-perf-tuning.md) and
+> [`demo/README.md` → step 4](./demo/README.md#how-to-reproduce).
+
+A single setup run is enough to light up on-device routing. If you
+later pull a different model and want the router to use it without
+renaming anything, override at runtime:
 
 ```bash
 export MODEL_NAME=some-other-alias
