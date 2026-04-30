@@ -8,25 +8,30 @@ the enriched seed data (`backend/internal/store/seed.go`).
 - [B2C — personal memory & family / community flows](#b2c-flows)
 - [B2B — workspace & AI-employee flows](#b2b-flows)
 - [On-device LLM — privacy posture](#on-device-llm-demonstration)
+- [On-device LLM — measured performance](#on-device-llm-performance)
 - [How to reproduce each screenshot](#how-to-reproduce)
 
 > **Note on coverage.** Most screenshots are captured from the Vite
 > renderer served at `http://localhost:5173/` (the same React app the
 > Electron shell loads). The 2026-04-30 pass also re-captured a set of
-> shots against the **real** `Ternary-Bonsai-8B-Q2_0.gguf` wired
-> through the PrismML llama.cpp fork (`prism` branch) → an Ollama-API
-> shim → the Electron shell's `OllamaAdapter` — those shots show the
-> `ternary-bonsai-8b · idle` chip in the top-right header instead of
-> the mock badge, and pending in-flight LLM calls render the
+> shots against the **real** Ternary-Bonsai-8B weights pulled through
+> `./scripts/setup-models.sh` (→ `hf.co/prism-ml/Ternary-Bonsai-8B-gguf`
+> → Ollama → the Electron shell's `OllamaAdapter`) — those shots show
+> the `ternary-bonsai-8b · idle` chip in the top-right header instead
+> of the mock badge, and pending in-flight LLM calls render the
 > `Translating on-device…` and `Drafting on-device replies…` markers
 > visible in several frames. A subset of screens require a fully
-> streamed AI result that the model cannot finish within a reasonable
-> capture window on this 8-core CPU box (~0.3 tok/s on Q2_0 without
-> Apple Silicon NEON / Metal kernels) — those entries remain marked
-> **(pending)** below. The accompanying demo flow is still
-> reproducible by hand using the **How to reproduce** instructions.
+> streamed AI result whose wall-time does not fit a single capture
+> window — those entries remain marked **(pending)** below. The
+> accompanying demo flow is still reproducible by hand using the
+> **How to reproduce** instructions. Live `Ternary-Bonsai-8B-Q2_0`
+> benchmark numbers for this VM class (AMD EPYC 7763, 8 vCPU,
+> 31 GiB RAM, CPU-only) are in
+> [On-device LLM performance](#on-device-llm-performance) below; see
+> [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
+> host-class expectations.
 >
-> Captured in this pass (real Q2_0 model loaded, 2026-04-30):
+> Captured in this pass (real on-device model loaded, 2026-04-30):
 >
 > - Standalone: `local-model-status`.
 > - B2C (header chip shows `ternary-bonsai-8b · idle`,
@@ -46,9 +51,10 @@ the enriched seed data (`backend/internal/store/seed.go`).
 >   `06-artifact-draft`.
 >
 > Pending (need a manual capture pass — these surfaces require a fully
-> completed live AI stream from the Electron shell, which is too slow
-> on a CPU-only Q2_0 build to fit a single capture window): `b2c/02`,
-> `b2c/05`, `b2c/07`, `b2c/09`, `b2c/10`, `b2c/11`, `b2b/07`, `b2b/09`,
+> completed live AI stream whose wall-time does not fit a single
+> capture window at the sub-1 tok/s rate Q2_0 ternary kernels deliver
+> on x86 CPU today): `b2c/02`, `b2c/05`, `b2c/07`, `b2c/09`,
+> `b2c/10`, `b2c/11`, `b2b/07`, `b2b/09`,
 > `privacy-strip-on-device.png`, `egress-summary-zero.png`.
 
 ## B2C flows
@@ -104,11 +110,74 @@ Source workspace: **Acme Corp** (`ws_acme`) with two domains —
 All B2C and B2B screenshots in this directory show the privacy strip /
 header reporting `on-device` and `0 B egress`. The 2026-04-30 pass
 re-captured the shots listed in **Captured in this pass** above against
-the live `Ternary-Bonsai-8B-Q2_0.gguf` GGUF served from the PrismML
-llama.cpp fork; the rest still come from the renderer's deterministic
-mock outputs. The three standalone shots in this section call out the
-on-device posture as a standalone artefact (only `local-model-status`
-has been re-captured against the live model so far).
+the live Ternary-Bonsai-8B weights pulled via
+`./scripts/setup-models.sh` through Ollama; the rest still come from
+the renderer's deterministic mock outputs. The three standalone shots
+in this section call out the on-device posture as a standalone
+artefact (only `local-model-status` has been re-captured against the
+live model so far).
+
+## On-device LLM performance
+
+Live numbers, 2026-04-30, against the **PrismML Ternary-Bonsai-8B-Q2_0**
+GGUF served through the PrismML `llama.cpp` fork. Host: AMD EPYC 7763,
+8 vCPU (no NUMA split, AVX2 + FMA + BMI2), 31 GiB RAM, 0 swap,
+CPU-only (no GPU / Metal / NPU).
+
+**Artifact size.** Ternary-Bonsai-8B-Q2_0 is **~2 GB on disk**
+(2.03 GiB / 2 081 MB GGUF, ~2.1 GB resident at startup before
+KV-cache growth) — this is the canonical CPU-friendly target the
+demo documents. Stock Ollama 0.22.x cannot load the Q2_0 ternary
+tensors (load fails with a SIGSEGV inside the bundled `llama.cpp`);
+the demo runs `llama-server` from
+[`PrismML-Eng/llama.cpp`](https://github.com/PrismML-Eng/llama.cpp)
+(`prism` branch) behind a tiny Ollama-API translator so the Electron
+shell's `OllamaAdapter` still works (full path in
+[How to reproduce → step 4](#how-to-reproduce)).
+
+**Sustained generation rate (warm):**
+
+| PrismML `llama-bench`, `-t 4`, CPU-only      | tok/s    |
+| -------------------------------------------- | -------- |
+| `pp64`  (prompt processing, 64 input tokens) | **0.51** |
+| `tg32`  (token generation, 32 output tokens) | **0.45** |
+
+**Wall-time implications** (extrapolated from `tg32 = 0.45 tok/s`):
+
+| Surface shape                         | tokens produced | wall-time |
+| ------------------------------------- | --------------- | --------- |
+| 3-bullet summary (~50 tokens)         |  ~50            | ~110 s    |
+| EN → ES one-line translation (64-cap) |   64            | ~140 s    |
+| 256-token draft email                 |  256            | ~570 s    |
+
+The Q2_0 ternary kernels in the PrismML fork are **not yet
+x86-optimised** — the published throughput targets for this quant
+are against ARM / Apple-Silicon SIMD paths. On a CPU-only x86 host
+you should expect Q2_0 generation to land in the **0.3 – 1 tok/s**
+band, well below the
+[`docs/cpu-perf-tuning.md` CPU-fallback floor of 2 tok/s](../docs/cpu-perf-tuning.md#11-minimum-usable-thresholds).
+That is why the streaming demo surfaces (`b2c/02`, `b2c/05`,
+`b2c/07`, `b2c/09`–`11`, `b2b/07`, `b2b/09`,
+`privacy-strip-on-device.png`, `egress-summary-zero.png`) are flagged
+**(pending)** rather than re-captured against the live Q2_0 model on
+this host class — they need GPU / Metal / NPU or a smaller CPU-only
+model (see
+[`docs/cpu-perf-tuning.md` § 10](../docs/cpu-perf-tuning.md#10-model-alternatives-for-cpu-only)).
+
+The `num_ctx 2048` default in `models/Modelfile.bonsai8b` is the
+CPU-friendly choice: attention cost scales linearly with `-c`, so a
+4× context window directly inflates per-token cost without buying
+anything for the 256–1024-token KChat task prompts.
+
+**Calibration note.** Older anchor numbers ("~0.3 tok/s on an 8 GB
+shared 8-core VM") in prior passes of this file were measured
+against the same Q2_0 quant on a much weaker host class. The
+2026-04-30 numbers above (~0.45 tok/s on a dedicated EPYC 7763 8 vCPU
+box) are the same order of magnitude — which confirms the diagnosis
+that the Q2_0 ternary kernels are not yet optimised for x86. If your
+box is slower than ~2 tok/s after following
+[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md), switch to a
+smaller model.
 
 ## How to reproduce
 
@@ -184,14 +253,12 @@ has been re-captured against the live model so far).
    - `--no-mmap`: avoids slow page faults on VMs with slow virtual
      disk; test both with and without on your host.
 
-   On a CPU-only host the Q2_0 quant runs around 0.3 tok/s, so
-   surfaces that need a fully-streamed AI result (smart-reply,
-   morning-digest streaming text, knowledge-graph extraction with
-   long output) take 5–17 minutes per call. The shots flagged
-   `(pending)` above could not be captured inside a reasonable window
-   on this 8-core box; run on Apple Silicon (NEON / Metal) or a
-   discrete GPU to capture them. Benchmark your box before blaming
-   the model:
+   Wall-time for fully-streamed AI results depends heavily on host
+   class — see [On-device LLM performance](#on-device-llm-performance)
+   for measured numbers on the VM that ships with the demo, and
+   [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
+   full host-class matrix. Benchmark your box before blaming the
+   model:
 
    ```bash
    ./build/bin/llama-bench \

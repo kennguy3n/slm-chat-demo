@@ -1,11 +1,46 @@
-# CPU performance tuning — Ternary-Bonsai-8B-Q2_0 and friends
+# CPU performance tuning — Ternary-Bonsai-8B and friends
 
 This guide captures the diagnostic and tuning checklist used when the
 on-device SLM is running too slowly on a CPU-only host. The current
-baseline is `Ternary-Bonsai-8B-Q2_0.gguf` (PrismML ternary quant)
-running through the PrismML `llama.cpp` fork. On an 8GB shared 8-core
-VM the out-of-the-box rate is ~0.3 tok/s, which is **below the
-product threshold** for every KChat surface that streams text.
+baseline is the Ternary-Bonsai-8B GGUF pulled via
+`./scripts/setup-models.sh` from `hf.co/prism-ml/Ternary-Bonsai-8B-gguf`.
+
+**The canonical artifact.** `Ternary-Bonsai-8B-Q2_0.gguf` is **~2 GB**
+on disk (2.03 GiB / 2 081 MB). That is the CPU-friendly target this
+guide and the demo are written against. The Q2_0 ternary tensors are
+**not** loadable by mainline `llama.cpp` and stock Ollama 0.22.x
+cannot load them either (verified — the bundled runner SIGSEGVs
+during load); you must use the PrismML fork — see
+[Use the PrismML fork](#2-use-the-prismml-fork). All numbers in
+[Expected token rates](#9-expected-token-rates) and the live
+benchmarks below assume Q2_0 served through that fork.
+
+## Benchmarks on the reference VM
+
+Live `llama-bench` measurements, 2026-04-30, against the PrismML
+`llama.cpp` fork (`prism` branch) on AMD EPYC 7763, 8 vCPU, 31 GiB
+RAM, AVX2 + FMA, CPU-only:
+
+| Test (`-t 4 -ngl 0`)                         | tok/s    |
+| -------------------------------------------- | -------- |
+| `pp64`  (prompt processing, 64 input tokens) | **0.51** |
+| `tg32`  (token generation, 32 output tokens) | **0.45** |
+
+Resident RAM is **~2.1 GB** at startup before KV-cache growth, in
+line with the 2 GB on-disk size. If the file your Ollama install
+resolves the HF tag to is much larger than 2 GB, you have pulled the
+wrong build — fall back to the explicit Q2_0 download path in
+[`models/README.md`](../models/README.md#fallback-local-gguf-file).
+
+**Calibration note.** Earlier passes of this guide anchored on
+"~0.3 tok/s on an 8 GB shared 8-core VM running the Q2_0 quant". The
+2026-04-30 numbers above (~0.45 tok/s on a dedicated EPYC 7763 8 vCPU
+box) are the same order of magnitude, which confirms the
+long-standing diagnosis: the PrismML Q2_0 ternary kernels are **not
+yet x86-optimised** — the published throughput targets for this
+quant are against ARM / Apple-Silicon SIMD paths. Until those
+kernels land for x86, treat 0.3 – 1 tok/s as the realistic Q2_0 band
+on commodity x86 CPU.
 
 Use this guide to either:
 
@@ -149,17 +184,27 @@ summary generation often does not).
 
 ## 9. Expected token rates
 
-Ballpark figures for `Ternary-Bonsai-8B-Q2_0` under the recommended
-flags. Your mileage will vary with kernel version, NUMA topology,
+Ballpark figures under the recommended flags for the
+Ternary-Bonsai-8B-Q2_0 GGUF (~2 GB) served through the PrismML
+`llama.cpp` fork. Numbers depend on kernel version, NUMA topology,
 thermal envelope, and neighbour noise on shared hosts.
 
-| Class                                 | Expected `tg128` (tok/s) |
-| ------------------------------------- | ------------------------ |
-| Weak shared 2 vCPU                    | 0.2 – 1                  |
-| Decent 4 dedicated vCPU (AVX2 + FMA)  | 1 – 3                    |
-| Good 8 dedicated vCPU (AVX2 + FMA)    | 3 – 8                    |
-| Apple M-series (Metal)                | much higher              |
-| Discrete GPU (CUDA / ROCm)            | much higher              |
+| Class                                  | Q2_0 tok/s (PrismML fork) |
+| -------------------------------------- | ------------------------- |
+| Weak shared 2 vCPU x86                 | 0.2 – 0.6                 |
+| Decent 4 dedicated vCPU x86 (AVX2+FMA) | 0.4 – 0.8                 |
+| Good 8 dedicated vCPU x86 (AVX2+FMA)   | **~0.45 (measured)**      |
+| Apple M-series (Metal)                 | much higher               |
+| ARM server CPU with optimised kernels  | much higher               |
+| Discrete GPU (CUDA / ROCm)             | much higher               |
+
+The **~0.45 tok/s measured** row is the 2026-04-30 `llama-bench`
+result (`tg32`, `-t 4`, warm). All x86 rows are dominated by the
+fact that the Q2_0 ternary kernels in the PrismML fork are not yet
+SIMD-vectorised on x86; expect numbers in the **0.3 – 1 tok/s band**
+until they are. If you are on Apple Silicon or an ARM server with
+the ternary kernels enabled, re-measure — those paths are tuned and
+should land much higher.
 
 ## 10. Model alternatives for CPU-only
 
@@ -191,6 +236,12 @@ hit its minimum, switch models — do not ship the slower config.
 | Short assistant (smart reply)     |  5+ tok/s | Inline composer suggestions, streamed.       |
 | CPU fallback minimum (any tier)   |  2+ tok/s | Below this, UX perception breaks.            |
 
-**0.3 tok/s is below the CPU-fallback floor**, which is why the
-current 8B Q2_0 configuration on a shared 8-core VM is not a shippable
-baseline — use this guide to either tune up or switch models.
+**0.3 – 1 tok/s Q2_0 on commodity x86 CPU is below the CPU-fallback
+floor** — which is why neither the "Weak shared 2 vCPU" row nor the
+2026-04-30 reference VM (8 vCPU EPYC 7763 → ~0.45 tok/s) is a
+shippable baseline for any streaming surface. That is why streaming
+demo surfaces like `02 morning-catchup` and `b2c/07 smart-reply` are
+flagged **(pending)** in `demo/README.md` — they need GPU / Metal /
+NPU, ARM with optimised ternary kernels, or a smaller CPU-only model
+to hit their per-surface budgets. Use this guide to either tune up,
+switch hosts, or switch models.

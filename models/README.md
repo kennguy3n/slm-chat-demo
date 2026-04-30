@@ -69,13 +69,21 @@ cd frontend && npm run electron:dev
 
 ## CPU performance
 
-The ternary `Ternary-Bonsai-8B-Q2_0` quant used by the demo runs at
-**~0.3 tok/s on shared 8-core CPU VMs** — below the product threshold
-for every streaming AI surface (see
-[`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
-per-surface thresholds and the full tuning checklist). The Modelfile
-in this directory now defaults to `num_ctx 2048` so that CPU-only
-hosts don't pay the 8K-context attention cost per token.
+The canonical CPU target is the **Q2_0 ternary GGUF** —
+`Ternary-Bonsai-8B-Q2_0.gguf`, **~2 GB on disk** (2.03 GiB), ~2.1 GB
+resident at startup before KV-cache growth. The Modelfile in this
+directory defaults to `num_ctx 2048` so CPU-only hosts don't pay the
+8K-context attention cost per token.
+
+**Measured rates (2026-04-30, AMD EPYC 7763 8 vCPU, 31 GiB RAM,
+CPU-only, PrismML fork `llama-bench`, `-t 4`):** prompt processing
+`pp64` ~**0.51 tok/s**, token generation `tg32` ~**0.45 tok/s**. Full
+context in
+[`demo/README.md` → On-device LLM performance](../demo/README.md#on-device-llm-performance).
+That is **below** the tuning guide's CPU-fallback floor (2 tok/s) —
+the Q2_0 ternary kernels in the PrismML fork are not yet
+x86-optimised, so any streamed-text surface needs ARM with the
+ternary kernels enabled, Apple Silicon (Metal), or a GPU / NPU path.
 
 For CPU-only deployments, prefer a smaller model. Good candidates
 (see [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the
@@ -93,7 +101,7 @@ MODEL_NAME=qwen2.5-1.5b MODEL_QUANT=q4_k_m npm run electron:dev
 ```
 
 Reserve the 8B model for hosts with GPU, Apple Silicon (Metal), or an
-NPU — it is not a reasonable default on CPU-only boxes. See
+NPU — it is not a reasonable default on x86 CPU-only boxes. See
 [`docs/cpu-perf-tuning.md`](../docs/cpu-perf-tuning.md) for the full
 diagnostic checklist (CPU feature probing, thread-count sweeps,
 context reduction, `--mlock` / `--no-mmap`, swap monitoring, KV-cache
