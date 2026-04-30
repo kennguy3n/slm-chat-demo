@@ -3,40 +3,53 @@
 This directory collects screenshots of the KChat SLM Demo desktop app
 running the four demonstration flows described in
 [PROPOSAL.md](../PROPOSAL.md) §5. Each screenshot is captured against
-the enriched seed data (`backend/internal/store/seed.go`) and the
-bundled `MockAdapter` (`frontend/electron/inference/mock.ts`) so the
-demo is reproducible without a live Ollama daemon.
+the enriched seed data (`backend/internal/store/seed.go`).
 
 - [B2C — personal memory & family / community flows](#b2c-flows)
 - [B2B — workspace & AI-employee flows](#b2b-flows)
 - [On-device LLM — privacy posture](#on-device-llm-demonstration)
 - [How to reproduce each screenshot](#how-to-reproduce)
 
-> **Note on coverage.** Screenshots are captured from the Vite
+> **Note on coverage.** Most screenshots are captured from the Vite
 > renderer served at `http://localhost:5173/` (the same React app the
-> Electron shell loads). A subset of screens require a live Ollama
-> daemon or per-user mutation state that the automation harness does
-> not stage for every run — those entries are marked **(pending)**
-> below. The accompanying demo flow is still reproducible by hand
-> using the **How to reproduce** instructions.
+> Electron shell loads). The 2026-04-30 pass also re-captured a set of
+> shots against the **real** `Ternary-Bonsai-8B-Q2_0.gguf` wired
+> through the PrismML llama.cpp fork (`prism` branch) → an Ollama-API
+> shim → the Electron shell's `OllamaAdapter` — those shots show the
+> `ternary-bonsai-8b · idle` chip in the top-right header instead of
+> the mock badge, and pending in-flight LLM calls render the
+> `Translating on-device…` and `Drafting on-device replies…` markers
+> visible in several frames. A subset of screens require a fully
+> streamed AI result that the model cannot finish within a reasonable
+> capture window on this 8-core CPU box (~0.3 tok/s on Q2_0 without
+> Apple Silicon NEON / Metal kernels) — those entries remain marked
+> **(pending)** below. The accompanying demo flow is still
+> reproducible by hand using the **How to reproduce** instructions.
 >
-> Captured in this pass:
+> Captured in this pass (real Q2_0 model loaded, 2026-04-30):
+>
+> - Standalone: `local-model-status`.
+> - B2C (header chip shows `ternary-bonsai-8b · idle`,
+>   `Translating on-device…` markers visible):
+>   `08-event-rsvp`, `12-metrics-dashboard`.
+> - B2B (header chip shows `ternary-bonsai-8b · idle`):
+>   `01-workspace-navigation`, `08-ai-employee-panel`,
+>   `10-connector-panel`, `11-knowledge-graph`, `12-policy-admin`.
+>
+> Captured in earlier passes (Vite renderer):
 >
 > - B2C: `01-morning-catchup-banner`, `03-family-task-extraction`,
 >   `04-family-task-cards`, `06-translation-caption`,
->   `08-event-rsvp`, `12-metrics-dashboard`.
-> - B2B: `01-workspace-navigation`, `02-thread-summary`,
->   `03-action-launcher`, `04-approval-prefill`,
->   `05-approval-card-pending`, `06-artifact-draft`,
->   `08-ai-employee-panel`, `10-connector-panel`,
->   `11-knowledge-graph`, `12-policy-admin`.
+>   `13-vi-en-translation-auto`.
+> - B2B: `02-thread-summary`, `03-action-launcher`,
+>   `04-approval-prefill`, `05-approval-card-pending`,
+>   `06-artifact-draft`.
 >
-> Pending (need a manual capture pass — these surfaces require a live
-> AI stream from the Electron shell, which the renderer-only Vite
-> harness cannot fake): `b2c/02`, `b2c/05`, `b2c/07`, `b2c/09`,
-> `b2c/10`, `b2c/11`, `b2b/07`, `b2b/09`, and the three standalone
-> `local-model-status.png` / `privacy-strip-on-device.png` /
-> `egress-summary-zero.png` shots.
+> Pending (need a manual capture pass — these surfaces require a fully
+> completed live AI stream from the Electron shell, which is too slow
+> on a CPU-only Q2_0 build to fit a single capture window): `b2c/02`,
+> `b2c/05`, `b2c/07`, `b2c/09`, `b2c/10`, `b2c/11`, `b2b/07`, `b2b/09`,
+> `privacy-strip-on-device.png`, `egress-summary-zero.png`.
 
 ## B2C flows
 
@@ -88,10 +101,14 @@ Source workspace: **Acme Corp** (`ws_acme`) with two domains —
 | 2 | [`privacy-strip-on-device.png`](./privacy-strip-on-device.png) | Close-up of a single privacy strip confirming `compute: on-device`, `model: ternary-bonsai-8b`, `egress: 0 B`. |
 | 3 | [`egress-summary-zero.png`](./egress-summary-zero.png) | `EgressSummaryPanel` aggregating per-session totals and showing **0 B** (all local compute). |
 
-Every B2C and B2B screenshot above is captured against the
-`MockAdapter`-backed demo set, so the privacy strip in each shot
-reports `on-device` / `0 B egress`. The three dedicated shots in this
-section call that state out explicitly as a standalone artefact.
+All B2C and B2B screenshots in this directory show the privacy strip /
+header reporting `on-device` and `0 B egress`. The 2026-04-30 pass
+re-captured the shots listed in **Captured in this pass** above against
+the live `Ternary-Bonsai-8B-Q2_0.gguf` GGUF served from the PrismML
+llama.cpp fork; the rest still come from the renderer's deterministic
+mock outputs. The three standalone shots in this section call out the
+on-device posture as a standalone artefact (only `local-model-status`
+has been re-captured against the live model so far).
 
 ## How to reproduce
 
@@ -116,9 +133,47 @@ section call that state out explicitly as a standalone artefact.
    ./scripts/setup-models.sh                # pulls ternary-bonsai-8b via Ollama
    ```
 
-   Without Ollama, the bootstrap falls back to `MockAdapter`; all
-   screenshots below were produced against the mock so the outputs
-   are deterministic.
+   Without Ollama, the bootstrap falls back to `MockAdapter`; the
+   pre-2026-04-30 screenshots below were produced against the mock so
+   the outputs are deterministic.
+
+4. **Optional — wire the live `Ternary-Bonsai-8B-Q2_0.gguf` GGUF
+   (Prism quant)**: the Q2_0 ternary quant is **not** in mainline
+   `llama.cpp` and Ollama 0.22.0 cannot load it; use the PrismML fork
+   plus a tiny Ollama-API shim:
+
+   ```bash
+   # 1. Build the PrismML fork's llama-server (one-time):
+   git clone -b prism https://github.com/PrismML-Eng/llama.cpp \
+     ~/prismml-llama.cpp
+   cd ~/prismml-llama.cpp
+   cmake -B build -DGGML_NATIVE=ON -DLLAMA_CURL=OFF \
+     -DCMAKE_BUILD_TYPE=Release
+   cmake --build build -j8 --target llama-server
+
+   # 2. Start llama-server bound to the Q2_0 GGUF:
+   ./build/bin/llama-server \
+     -m /path/to/Ternary-Bonsai-8B-Q2_0.gguf \
+     -c 4096 -t 8 --host 127.0.0.1 --port 8800 --parallel 1
+
+   # 3. Run an Ollama-API shim that translates /api/generate
+   #    -> llama-server's /completion (sample lives outside this
+   #    repo; see PR #38 description for the bridge sketch).
+
+   # 4. Launch the Electron shell pointed at the shim:
+   cd frontend
+   OLLAMA_BASE_URL=http://127.0.0.1:11434 \
+     MODEL_NAME=ternary-bonsai-8b \
+     npm run electron:dev
+   ```
+
+   On a CPU-only host the Q2_0 quant runs around 0.3 tok/s, so
+   surfaces that need a fully-streamed AI result (smart-reply,
+   morning-digest streaming text, knowledge-graph extraction with
+   long output) take 5–17 minutes per call. The shots flagged
+   `(pending)` above could not be captured inside a reasonable window
+   on this 8-core box; run on Apple Silicon (NEON / Metal) or a
+   discrete GPU to capture them.
 
 ### B2C flow (screenshots 1-12)
 
