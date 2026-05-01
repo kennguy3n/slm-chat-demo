@@ -508,9 +508,12 @@ describe('runTranslateBatch (single-call optimisation)', () => {
     expect(resp.results[1]?.model).not.toBe('identity');
   });
 
-  it('strips per-line "(to xx)" prefixes from the batched response', async () => {
+  it('strips legacy "(to xx)" / label prefixes from per-item responses', async () => {
+    // Each item now goes through a separate `runTranslate` call, so
+    // the stub adapter returns the same "(to xx)" / label string for
+    // every call — `parseTranslateOutput` cleans both lines.
     const router = makeStubRouter({
-      translate: ['1. (to vi) Chào Alice', '2. (to en) Hi Minh'].join('\n'),
+      translate: 'Translation: "Chào Alice"',
     });
     const resp = await runTranslateBatch(router, {
       items: [
@@ -524,15 +527,15 @@ describe('runTranslateBatch (single-call optimisation)', () => {
         {
           messageId: 'm2',
           channelId: 'c1',
-          text: 'Chào Minh!',
-          targetLanguage: 'en',
-          sourceLanguage: 'vi',
+          text: 'Hi Minh!',
+          targetLanguage: 'vi',
+          sourceLanguage: 'en',
         },
       ],
     });
     expect(resp.results.map((r) => r.translated)).toEqual([
       'Chào Alice',
-      'Hi Minh',
+      'Chào Alice',
     ]);
   });
 });

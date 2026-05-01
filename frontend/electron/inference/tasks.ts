@@ -48,7 +48,6 @@ import {
   buildPrefillApprovalPrompt,
   buildDraftArtifactPrompt,
   buildTranslatePrompt,
-  buildTranslateBatchPrompt,
   parseConversationInsightsOutput,
   parseExtractTasksOutput,
   parsePrefillApprovalOutput,
@@ -177,58 +176,32 @@ export async function runTranslate(
   };
 }
 
-// runTranslateBatch issues one model call covering every message in
-// the batch — much faster than N independent `/api/generate` round
-// trips on CPU inference where each call pays the prompt-eval cost
-// up front. Items where source and target language match are
-// short-circuited via the per-item identity path in `runTranslate`
-// instead of being included in the LLM call (Bonsai-1.7B otherwise
-// hallucinates English-to-English "translations" that look like a
-// bug). The remaining items are bucketed into a single batched
-// prompt and the model output is run through `parseTranslateBatchOutput`
-// for index-keyed recovery.
+// runTranslateBatch translates every item in the request and returns
+// the results in input order. Implementation note: the previous
+// "single batched prompt" optimisation looked attractive on paper
+// (one prompt-eval cost instead of N) but in practice the 1.7B
+// Bonsai model is not strong enough at instruction-following to
+// consistently produce a clean `<N>. <translation>` list — it
+// frequently echoes the source text or the bracketed language
+// annotation back verbatim. Sequential per-item `runTranslate`
+// calls trade a bit of throughput for reliable, anchorable
+// translations (each call sees a clean single-item Qwen3 chat
+// template with explicit "from <SRC> to <DST>" framing).
+//
+// Performance: the demo's `llama-server` process is started with
+// `--parallel 1`, so even if we fanned out N parallel requests
+// they'd serialize anyway. With `cache_prompt: true` the system
+// instruction prefix is cached across calls and only the tail
+// (the per-item `Text: …`) re-tokenises, so per-item is much
+// closer to single-call cost than it was on the previous adapter.
 export async function runTranslateBatch(
   adapter: Adapter,
   req: TranslateBatchRequest,
 ): Promise<TranslateBatchResponse> {
   const items = req.items;
   if (items.length === 0) return { results: [] };
-
-  // Build a placeholder array sized to the input so we can write
-  // results back in order (some indices skipped via identity, others
-  // filled by the batched LLM call).
-  const results: TranslateResponse[] = new Array(items.length);
-
-  // Phase 1: fast-path identity responses for "translate X to X".
-  const llmIndices: number[] = [];
-  for (let i = 0; i < items.length; i += 1) {
-    const it = items[i]!;
-    const target = (it.targetLanguage ?? '').trim() || 'en';
-    const source = (it.sourceLanguage ?? '').trim();
-    if (source && source === target) {
-      results[i] = {
-        messageId: it.messageId,
-        channelId: it.channelId,
-        original: it.text,
-        translated: it.text,
-        targetLanguage: target,
-        model: 'identity',
-        computeLocation: 'on_device',
-        dataEgressBytes: 0,
-      };
-      continue;
-    }
-    llmIndices.push(i);
-  }
-
-  if (llmIndices.length === 0) return { results };
-
-  // Single-LLM-item batches still benefit from the per-item prompt
-  // (system + user split, language-pair anchoring) — defer to
-  // `runTranslate` rather than re-implementing the format here.
-  if (llmIndices.length === 1) {
-    const i = llmIndices[0]!;
-    const it = items[i]!;
+  const results: TranslateResponse[] = [];
+  for (const it of items) {
     const one = await runTranslate(adapter, {
       messageId: it.messageId,
       channelId: it.channelId,
@@ -236,45 +209,7 @@ export async function runTranslateBatch(
       targetLanguage: it.targetLanguage,
       sourceLanguage: it.sourceLanguage,
     });
-    results[i] = one;
-    return { results };
-  }
-
-  // Phase 2: batched LLM call for everything else.
-  const channelId = items[llmIndices[0]!]!.channelId;
-  const llmItems = llmIndices.map((i) => {
-    const it = items[i]!;
-    return {
-      text: truncateForPrompt(it.text, 400),
-      targetLanguage: it.targetLanguage,
-      sourceLanguage: it.sourceLanguage,
-    };
-  });
-  const { system, user } = buildTranslateBatchPrompt({ items: llmItems });
-  const resp = await adapter.run({
-    taskType: 'translate',
-    prompt: user,
-    system,
-    channelId,
-    maxTokens: Math.max(
-      256,
-      llmItems.reduce((s, it) => s + it.text.length, 0),
-    ),
-  });
-  const parsed = parseTranslateBatchOutput(resp.output, llmIndices.length);
-  for (let k = 0; k < llmIndices.length; k += 1) {
-    const i = llmIndices[k]!;
-    const it = items[i]!;
-    results[i] = {
-      messageId: it.messageId,
-      channelId: it.channelId,
-      original: it.text,
-      translated: parsed[k]?.trim() || it.text,
-      targetLanguage: it.targetLanguage,
-      model: resp.model,
-      computeLocation: 'on_device',
-      dataEgressBytes: 0,
-    };
+    results.push(one);
   }
   return { results };
 }
