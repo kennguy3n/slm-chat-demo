@@ -74,6 +74,11 @@ export function ConversationInsightsPanel({ channel = null }: Props) {
     if (!channel) return;
     runIdRef.current += 1;
     const myRunId = runIdRef.current;
+    // Clear any insights left over from a previous channel so a failed
+    // fetch on the new channel can't render the old channel's body
+    // alongside this channel's error message and privacy strip.
+    setInsights(null);
+    setGeneratedAt(null);
     setErr(null);
     setIsLoading(true);
     void fetchConversationInsights({
@@ -125,6 +130,13 @@ export function ConversationInsightsPanel({ channel = null }: Props) {
   }, [channel?.id]);
 
   const showInsights = !!insights && !isLoading;
+  // Confidence reflects how much of the structured output the parser
+  // recovered. Each of the four sections (topics, action items,
+  // decisions, sentiment) contributes 0.25 when populated, then we
+  // round to two decimals. Sparse extractions (e.g. only sentiment,
+  // typical of a one-message channel) come out around 0.25; a full
+  // four-section response yields 1.00.
+  const insightsConfidence = insights ? computeInsightsConfidence(insights) : 0;
 
   return (
     <section
@@ -259,7 +271,7 @@ export function ConversationInsightsPanel({ channel = null }: Props) {
                 label: id,
               })),
               dataEgressBytes: insights.dataEgressBytes,
-              confidence: 0.78,
+              confidence: insightsConfidence,
               whySuggested:
                 'On-device LLM extracted topics, action items, decisions, and tone from the recent conversation.',
               whyDetails: [
@@ -280,6 +292,20 @@ export function ConversationInsightsPanel({ channel = null }: Props) {
       )}
     </section>
   );
+}
+
+// computeInsightsConfidence maps how many of the four structured
+// sections the parser recovered onto a [0, 1] score for the privacy
+// strip's confidence badge. Sentiment counts as populated whenever it
+// is anything other than `unknown`; the other three sections count
+// when their array is non-empty.
+export function computeInsightsConfidence(insights: ConversationInsightsResponse): number {
+  let populated = 0;
+  if (insights.topics.length > 0) populated += 1;
+  if (insights.actionItems.length > 0) populated += 1;
+  if (insights.decisions.length > 0) populated += 1;
+  if (insights.sentiment !== 'unknown') populated += 1;
+  return Math.round((populated / 4) * 100) / 100;
 }
 
 interface SectionProps {
