@@ -37,6 +37,15 @@ export interface InferenceRequest {
   system?: string;
   channelId?: string;
   maxTokens?: number;
+  // Sampling temperature override. Most tasks happily run at the
+  // adapter default (≈0.2 for Bonsai-1.7B) but translation needs
+  // determinism: at any non-zero temperature a 1.7B model will
+  // occasionally produce free-form rewrites or wander off into
+  // English completion of a Vietnamese source. Per-task override
+  // lets the translate path pin temperature to 0 without affecting
+  // smart-reply / draft / summary generations that benefit from
+  // mild diversity.
+  temperature?: number;
   // Phase 6 — explicit tier selection so the dispatcher can ask for
   // server compute (e.g. user-toggled "Confidential Server" mode).
   // Omit or pass 'local' for on-device compute; pass 'server' to
