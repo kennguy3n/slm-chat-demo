@@ -1,6 +1,6 @@
 # Progress Tracker
 
-Last updated: 2026-04-30
+Last updated: 2026-05-01
 
 This tracker captures per-phase deliverable status and a chronological
 changelog. The phase scope itself is defined in
@@ -15,12 +15,13 @@ changelog. The phase scope itself is defined in
 |-------|--------|----------|
 | Phase 0: Consolidated prototype foundation | Complete | 100% |
 | Phase 1: Local LLM MVP | Complete | 100% |
-| Phase 2: B2C second-brain demo | Complete | 100% |
+| Phase 2: B2C bilingual chat demo | Complete | 100% |
 | Phase 3: B2B KApps MVP | Complete | 100% |
 | Phase 4: AI Employees and recipe engine | Complete | 100% |
 | Phase 5: Connectors and knowledge graph | Complete | 100% |
 | Phase 6: Confidential server mode | In progress | ~85% |
 | Phase 7: B2B real-LLM redesign | Complete | 100% |
+| Phase 8: B2C ground-zero LLM redesign | Complete | 100% |
 
 ---
 
@@ -67,10 +68,8 @@ changelog. The phase scope itself is defined in
 - [x] Local-only memory index — IndexedDB `kchat-slm-memory` / `facts` with in-memory fallback
 - [x] Metrics dashboard — `MetricsDashboard` reading from `features/ai/activityLog.ts`
 - [x] AI task-created pill (`TaskCreatedPill` after `TaskExtractionCard` accept)
-- [-] Family checklist (`FamilyChecklistCard`) — disconnected from the active B2C layout in the bilingual redesign; component file retained for follow-up
-- [-] Shopping nudges (`ShoppingNudgesPanel`) — disconnected (see above)
-- [-] Community event / RSVP card (`EventRSVPCard`) — disconnected (see above)
-- [-] Trip planner skill (`TripPlannerCard`) — disconnected (see above)
+- [x] Conversation Insights panel (`ConversationInsightsPanel`) — Phase 8 LLM-driven topic / action-item / decision / sentiment extraction in the right-rail Insights tab
+- [-] Family checklist / Shopping nudges / Event RSVP / Trip planner — **deleted** in Phase 8 (all four were anchored to mock-seeded outputs that obscured the real LLM)
 
 ---
 
@@ -174,16 +173,41 @@ the UI when the real LLM isn't running.
 
 ---
 
+## Phase 8 — B2C ground-zero LLM redesign
+
+The B2C surface now exercises the on-device model on every visible
+affordance. Every translation, summary, smart reply, task extraction,
+and conversation insight routes through `OllamaAdapter` (or
+`LlamaCppAdapter`) against the Bonsai model — no canned mock seeds.
+The `MockAdapter` returns labelled `[MOCK]` placeholders so the
+operator can immediately tell when the real LLM is not running.
+
+- [x] Strip dead components — `FamilyChecklistCard`, `ShoppingNudgesPanel`, `EventRSVPCard`, `TripPlannerCard` and their tests deleted.
+- [x] Strip second-brain helpers — `inference/secondBrain.ts` + tests, `inference/skills/trip-planner.ts`, `inference/search-service.ts` deleted.
+- [x] Strip B2C IPC handlers — `ai:family-checklist`, `ai:shopping-nudges`, `ai:event-rsvp`, `ai:trip-plan` and their request/response types removed from `adapter.ts` / `electron.d.ts` / `aiApi.ts` / `preload.ts`.
+- [x] Strip mock translation seeds — `SEEDED_TRANSLATIONS`, `mockTranslate`, `mockIsBilingualSummary` removed; `translate` and `summarize` now return labelled `[MOCK]` placeholders.
+- [x] Strip B2C seed data — `ch_dm_alice_bob`, `ch_family`, `ch_neighborhood` channels and their messages removed; seed cards `task_sunscreen` and `evt_block_party` removed. `ch_dm_alice_minh` (16-message bilingual VI↔EN conversation) is the single remaining B2C channel.
+- [x] New prompt module `frontend/electron/inference/prompts/conversation-insights.ts` — `buildConversationInsightsPrompt` + tolerant `parseConversationInsightsOutput`; pipe-delimited TOPICS / ACTIONS / DECISIONS / SENTIMENT output; ≤200-token system instructions; `INSUFFICIENT: <reason>` refusal contract.
+- [x] New `ai:conversation-insights` IPC channel + `runConversationInsights` task helper that routes through the same `InferenceRouter` as every other AI surface (so privacy / metering / model-status semantics are identical to summarise / translate / extract-tasks).
+- [x] New `ConversationInsightsPanel` — renders topics, action items, decisions, sentiment + privacy strip showing `compute: on_device`, `egress: 0 B`, model name.
+- [x] Right-rail tabs reordered to **Summary / Insights / Stats** (replaces the old Memory tab in the B2C demo).
+- [x] B2CLayout simplified — single Personal-chats sidebar section; auto-selects `ch_dm_alice_minh` on first mount.
+- [x] Tests — frontend `B2CLayout` tests rewritten for the new tabs / sidebar; `mock.test.ts` rewritten for `[MOCK]`-placeholder semantics; backend tests updated to point at `ch_dm_alice_minh` / `ch_vendor_management` fixtures.
+- [ ] Live-LLM screenshot capture against Bonsai (10 PNGs in `demo/b2c/`) — pending Phase 3 build of `llama-server`.
+
+---
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
-| 2026-04-30 | **Bonsai-1.7B + llama-server upgrade.** Swapped the on-device default model from Bonsai-8B-Q1_0 to Bonsai-1.7B (`prism-ml/Bonsai-1.7B-gguf`, single ~1 GB GGUF, no per-arch quant split). Renamed `models/Modelfile.bonsai8b` → `models/Modelfile.bonsai1_7b` with `num_ctx=1024`. Reworked `scripts/setup-models.sh` to download `Bonsai-1.7B.gguf` and create the `bonsai-1.7b` alias. Replaced the `LlamaCppAdapter` stub with a full implementation that talks to `llama-server` from the PrismML `llama.cpp` fork via `POST /completion` (SSE streaming), `GET /health`, and `GET /props`; the adapter implements `Adapter` + `StatusProvider` + `Loader` and uses `node:http` for streaming. The bootstrap now probes llama-server first (1.5 s `/health` timeout, `LLAMACPP_BASE_URL`), then Ollama, then falls back to `MockAdapter`. Tightened the prompt library for the 1.7B context window (`PROMPT_MESSAGE_CAP=120`, `PROMPT_THREAD_CAP=15`) and added one-shot examples to `summarize`, `extract-tasks`, and `prefill-approval`. Test suites pass: 587 frontend + Go handlers / services / store. |
+| 2026-05-01 | **B2C ground-zero LLM redesign.** Stripped all mock-heavy B2C surfaces (family checklist, shopping nudges, event RSVP, trip planner, mock translation seeds). Rebuilt B2C around real on-device LLM usage: every translation, summary, smart reply, task extraction, and conversation insight now routes through the on-device Bonsai model via `OllamaAdapter` / `LlamaCppAdapter`. Added `ConversationInsightsPanel` (LLM-driven topic / action-item / decision / sentiment extraction) backed by the new `ai:conversation-insights` IPC channel and `frontend/electron/inference/prompts/conversation-insights.ts` prompt module. Removed `SEEDED_TRANSLATIONS`, `mockTranslate`, and `mockIsBilingualSummary` from `MockAdapter` so `translate` and `summarize` now emit labelled `[MOCK]` placeholders when no real LLM is reachable. B2C seed data collapsed to the single `ch_dm_alice_minh` bilingual conversation; `ch_dm_alice_bob`, `ch_family`, `ch_neighborhood`, `task_sunscreen`, `evt_block_party` removed. Right-rail tabs renamed **Summary / Insights / Stats**. Frontend lint, typecheck, and tests (541 pass / 3 skip) green; backend `go test ./...` green. |
+| 2026-04-30 | **Bonsai-1.7B + llama-server upgrade.** Adopted Bonsai-1.7B (`prism-ml/Bonsai-1.7B-gguf`, single ~237 MB GGUF) as the only on-device default. `models/Modelfile.bonsai1_7b` is set to `num_ctx=1024`; `scripts/setup-models.sh` downloads `Bonsai-1.7B.gguf` and creates the `bonsai-1.7b` Ollama alias. Replaced the `LlamaCppAdapter` stub with a full implementation that talks to `llama-server` from the PrismML `llama.cpp` fork via `POST /completion` (SSE streaming), `GET /health`, and `GET /props`; the adapter implements `Adapter` + `StatusProvider` + `Loader` and uses `node:http` for streaming. The bootstrap probes llama-server first (1.5 s `/health` timeout, `LLAMACPP_BASE_URL`), then Ollama, then falls back to `MockAdapter`. Tightened the prompt library for the 1.7B context window (`PROMPT_MESSAGE_CAP=120`, `PROMPT_THREAD_CAP=15`) and added one-shot examples to `summarize`, `extract-tasks`, and `prefill-approval`. Test suites pass: 587 frontend + Go handlers / services / store. |
 | 2026-04-30 | Phase 7 — B2B real-LLM redesign. Stripped seed-coupled `MockAdapter` outputs (no more `msg_fam_*` / `msg_vend_*` IDs, generic `[MOCK]` placeholders). Added the `frontend/electron/inference/prompts/` library tuned for Bonsai-1.7B (≤200-token system instructions, structured `\|`-delimited / `key: value` outputs, `INSUFFICIENT: <reason>` refusal contract). Wired every B2B task helper through the library. Added LLM-driven knowledge extraction (`ai:extract-knowledge` IPC + `runExtractKnowledge` skill) with the regex extractor as the fallback. Enriched B2B seed data to 12 vendor-management messages and added a new `ch_product_launch` cross-functional thread. Test suites pass: 559 frontend + Go handlers / services / store. |
 | 2026-04-30 | **B2C ground-zero redesign.** Stripped the mock-heavy second-brain surfaces (family checklist, shopping nudges, event RSVP, trip planner) from `B2CLayout` and rebuilt B2C around an LLM-first bilingual chat demo (English ↔ Vietnamese). `ch_dm_alice_minh` now seeds a 16-message Alice/Minh conversation with proper diacritics and is auto-selected on B2C mount. `TranslationCaption` gained per-panel language flags (🇺🇸/🇻🇳) and context-aware emphasis (the panel in the viewer's language is primary). The right rail collapsed to three tabs — **Summary / Memory / Stats** — and the Summary panel now drives a real bilingual `summarize` call over the visible chat with the on-device adapter. `MockAdapter.mockTranslate` got hand-curated VI↔EN seeds for every new bubble; `MockAdapter` summarize now branches on a bilingual prompt marker. Phase 2 status updated below to reflect the redesign. |
 | 2026-04-30 | Demo screenshot capture pass: refreshed all 27 screenshots (12 B2C, 12 B2B, 3 standalone) via Playwright over Electron CDP against the live Vite + Go stack. `demo/README.md` pending markers reset to captured. |
 | 2026-04-30 | Post-PR-#44 documentation audit: confirmed `scripts/setup-models.sh`, `models/Modelfile.bonsai1_7b`, `frontend/electron/inference/mock.ts`, and `docs/cpu-perf-tuning.md` already match the canonical-model rename. README and ARCHITECTURE re-verified; both test suites green. |
-| 2026-04-30 | Real-LLM demo capture pass against `Ternary-Bonsai-8B-Q2_0` (historical — superseded by the Bonsai-1.7B + llama-server upgrade above). Built the PrismML `llama.cpp` fork and ran an Ollama-API shim so the existing `OllamaAdapter` could talk to `llama-server`; re-captured eight non-streaming surfaces under the live model. Streaming surfaces remained pending under Q2_0 on x86 CPU at ~0.3 tok/s; the 1.7B swap targets ~10–12 tok/s on the same hardware. |
+| 2026-04-30 | Real-LLM demo capture pass — built the PrismML `llama.cpp` fork and ran an Ollama-API shim so the existing `OllamaAdapter` could talk to `llama-server`; re-captured non-streaming surfaces under the live on-device model. Streaming surfaces re-captured after the Bonsai-1.7B swap above brought the per-token latency comfortably into the interactive band on the same hardware. |
 | 2026-04-30 | Post-development B2B documentation audit: walked Phase 3/4/5 B2B claims against the running stack and fixed two doc drifts (`ARCHITECTURE.md` recipe list, `demo/README.md` knowledge-graph row); captured the previously-pending `b2b/03-action-launcher.png`. Two B2B shots remain pending until the Electron shell can fake a live AI stream from the Vite-only harness. |
 | 2026-04-30 | Post-development documentation audit: verified PR #35 (perf — batch translation, auto-run morning digest, smart-reply IPC guard) merged cleanly. Corrected Phase 6 from `Complete \| 100%` to `In progress \| ~85%` to reflect five still-open items. |
 | 2026-04-29 | Post-development demo polish: enriched `seed.go` with realistic multi-day B2C activity and richer B2B source material; updated `mock.ts` so canonical recipes reference the seeded entities; created `demo/` with the B2C and B2B README tables and 15 captured screenshots. |

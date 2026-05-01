@@ -162,22 +162,23 @@ different *use*), then B2C-specific AI, then B2B-specific AI.
 
 ### 3.2 B2C AI functionalities
 
-The B2C surface is rebuilt as an LLM-first **bilingual chat demo**:
-Alice (English) and Minh (Vietnamese) chat in their native language
-and every bubble is translated on-device. The right rail collapses
-to three tabs that all exercise either the on-device LLM or
-on-device storage; the prior second-brain surfaces (family
-checklist / shopping nudge / community event / trip planner) are
-preserved as components but no longer mounted.
+The B2C surface is built around an LLM-first **bilingual chat
+demo**: Alice (English) and Minh (Vietnamese) chat in their native
+language and every bubble is translated on-device. The right rail
+collapses to three tabs that all exercise either the on-device LLM
+or on-device storage. The Phase 8 ground-zero pass deleted the
+prior mock-coupled second-brain surfaces (family checklist /
+shopping nudge / community event RSVP / trip planner) so every
+visible affordance is now a real on-device LLM call.
 
 | Feature                  | Description                                                                                           | Local model role                                           |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Inline bilingual translation | Two-panel translation card on every chat bubble — original on top, translation below, with per-language flag labels (🇺🇸 / 🇻🇳). The panel in the viewer's preferred language is the primary one; the partner-language panel is muted. | On-device per-message `translate` call, batched into a single IPC round-trip per visible bubble. |
-| Bilingual conversation summary | Right-rail "Summary" tab. Summarises the active bilingual chat in the viewer's language, calling out topics, action items, and decisions, and noting that the conversation spans two languages. | On-device (Bonsai-1.7B) summarises the visible message tail with a bilingual-aware prompt. |
-| Smart reply              | 2–3 contextual reply suggestions inline in the composer.                                              | On-device generates candidates.                            |
-| Task extraction          | Detects actionable items in incoming messages ("submit form", "bring X") and offers task cards.      | On-device parses; user confirms before any task is created. |
+| Inline bilingual translation | Two-panel translation card on every chat bubble — original on top, translation below, with per-language flag labels (🇺🇸 / 🇻🇳). The panel in the viewer's preferred language is the primary one; the partner-language panel is muted. | On-device per-message `translate` call against the real LLM, batched into a single IPC round-trip per visible bubble. |
+| Bilingual conversation summary | Right-rail "Summary" tab. Summarises the active bilingual chat in the viewer's language, calling out topics, action items, and decisions, and noting that the conversation spans two languages. | On-device LLM summarises the visible message tail with a bilingual-aware prompt. |
+| Conversation insights    | Right-rail "Insights" tab. Surfaces LLM-extracted topics, action items, decisions, and a sentiment label with a one-sentence rationale; every row carries a privacy strip. | On-device `conversation-insights` task — pipe-delimited TOPICS / ACTIONS / DECISIONS / SENTIMENT prompt with an `INSUFFICIENT` refusal contract. |
+| Smart reply              | 2–3 contextual reply suggestions inline in the composer.                                              | On-device LLM generates candidates from the recent message context. |
+| Task extraction          | Detects actionable items in incoming messages ("submit form", "bring X") and offers task cards.      | On-device LLM parses; user confirms before any task is created. |
 | Guardrails               | Blocks risky auto-send; every suggested reply, task, or translation requires human confirmation.    | On-device classifier; no server call.                      |
-| AI Memory / insights     | Remembers personal preferences and patterns locally. Right-rail "Memory" tab. The model never auto-writes — users add / edit / remove facts. | Stored on-device (IndexedDB); on-device retrieval when composing. |
 | Metrics dashboard        | Right-rail "Stats" tab — user-facing view of translation runs, tokens, latency, bytes egressed, models used. | On-device summary of the user's own local activity log.   |
 
 ### 3.3 B2B AI functionalities
@@ -279,7 +280,7 @@ allowed to surface.
 
 Four end-to-end flows are shipped in the demo to prove the thesis.
 
-### 5.1 B2C "Bilingual conversation summary"
+### 5.1 B2C "Bilingual conversation summary + insights"
 
 1. User opens the B2C context. The bilingual DM
    `ch_dm_alice_minh` (Alice 🇺🇸 ↔ Minh 🇻🇳) is auto-selected on
@@ -293,9 +294,16 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
    umbrella), and a brief note that the chat ran across two
    languages.
 4. Each line links back to the originating message in the chat.
-5. The same panel re-uses its cached result on subsequent
-   right-rail tab switches — no re-inference until the user
-   refreshes.
+5. Switching to the **Insights** tab fires
+   `ai:conversation-insights`. The on-device LLM returns a
+   pipe-delimited TOPICS / ACTIONS / DECISIONS / SENTIMENT block
+   that the parser projects onto the panel: top topics, owner-
+   tagged action items, captured decisions, and an overall
+   sentiment label with a one-sentence rationale. Every row carries
+   the privacy strip (compute, model, egress, source message).
+6. Both panels cache their finished output so subsequent right-
+   rail tab switches do not re-run inference until the user
+   explicitly refreshes.
 
 ### 5.2 B2C "Cross-language chat with real-time translation"
 
@@ -326,8 +334,8 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
 1. User opens `#vendor-management` in the workspace. The seeded
    thread contains 12 messages with explicit pricing, SOC 2
    compliance notes, single-region risk, and a final decision —
-   enough natural-language context for an 8B model to ground each
-   approval field.
+   enough natural-language context for the on-device Bonsai-1.7B
+   model to ground each approval field.
 2. User opens the Action Launcher and picks **Request Approval**.
 3. The **on-device Bonsai-1.7B** model receives a Phase 7
    prompt-library prompt (`prefill-approval.ts`) asking for

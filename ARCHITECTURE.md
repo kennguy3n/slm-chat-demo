@@ -158,14 +158,13 @@ frontend/
 │       ├── ollama.ts                 (HTTP client for the local daemon, NDJSON streaming)
 │       ├── llamacpp.ts               (LlamaCppAdapter — talks to PrismML llama-server via SSE /completion)
 │       ├── router.ts                 (PROPOSAL.md §2 scheduler — local / server)
-│       ├── tasks.ts                  (smart-reply / translate / extract-tasks helpers)
-│       ├── secondBrain.ts            (Phase 2: family checklist, shopping nudges, RSVP extraction)
+│       ├── tasks.ts                  (smart-reply / translate / extract-tasks / conversation-insights helpers)
 │       ├── skill-framework.ts        (declarative SkillDefinition + runSkill executor + INSUFFICIENT refusal contract)
-│       ├── search-service.ts         (SearchService interface + MockSearchService for trip planner)
 │       ├── confidential-server.ts    (Phase 6 — ConfidentialServerAdapter)
 │       ├── redaction.ts              (Phase 6 — RedactionEngine)
 │       ├── egress-tracker.ts         (Phase 6 — EgressTracker singleton)
-│       ├── skills/                   (Phase 2 — trip-planner, guardrail-rewrite)
+│       ├── skills/                   (guardrail-rewrite, extract-knowledge)
+│       ├── prompts/                  (Bonsai prompt library — summarize, extract-tasks, prefill-approval, draft-artifact, extract-knowledge, conversation-insights)
 │       ├── recipes/                  (Phase 4 — AI-Employee-scoped task wrappers)
 │       │   ├── registry.ts
 │       │   ├── summarize.ts
@@ -180,7 +179,7 @@ frontend/
     ├── app/                          (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar)
     ├── features/
     │   ├── chat/                     (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer, launcherDispatch, translate-utils)
-    │   ├── ai/                       (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, AIEmployeeModeBadge, activityLog, useEgressSummary, formatEgressBytes; FamilyChecklistCard / ShoppingNudgesPanel / EventRSVPCard / TripPlannerCard files retained but no longer mounted by the bilingual B2C layout)
+    │   ├── ai/                       (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, ConversationInsightsPanel, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, AIEmployeeModeBadge, activityLog, useEgressSummary, formatEgressBytes — the Phase 2 mock-only second-brain components (FamilyChecklistCard / ShoppingNudgesPanel / EventRSVPCard / TripPlannerCard) were deleted in Phase 8)
     │   ├── memory/                   (AIMemoryPage, memoryStore — Phase 2)
     │   ├── kapps/                    (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)
     │   ├── artifacts/                (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections — Phase 3)
@@ -281,13 +280,15 @@ model:
    (`computeLocation`, `modelName`, `tier`, `dataEgressBytes`,
    `sources`).
 
-Phase 2 ships two skills on top of the framework:
-`skills/trip-planner.ts` (memory + `MockSearchService` →
-day-by-day itinerary, on-device) and `skills/guardrail-rewrite.ts`
+The Skills Framework currently ships `skills/guardrail-rewrite.ts`
 (deterministic PII regex + SLM tone / unverified-claim review →
-optional rewrite, on-device). The existing `tasks.ts` and `secondBrain.ts`
-helpers honour the same `INSUFFICIENT` contract so the renderer can
-treat refusals uniformly.
+optional rewrite, on-device) and `skills/extract-knowledge.ts`
+(LLM-driven extraction of decisions / commitments / definitions /
+constraints into the local knowledge graph). The existing
+`tasks.ts` helpers (smart-reply, translate, summarize, extract-tasks,
+prefill-approval, draft-artifact, conversation-insights) honour the
+same `INSUFFICIENT` contract so the renderer can treat refusals
+uniformly.
 
 A session-scoped `frontend/src/features/ai/activityLog.ts` records
 `{ id, timestamp, skillId, model, tier, itemsProduced, egressBytes,
@@ -400,11 +401,14 @@ the IPC bridge and keep AI surfaces responsive on slow CPU hosts.
   "Conversation summary", and uses a per-channel cache key so
   switching back to the bilingual chat doesn't refetch.
 - **Bilingual B2C right rail.** `B2CLayout` collapsed its right-rail
-  tabs to **Summary / Memory / Stats** in the redesign; the older
-  family / shopping / event / trip components remain in
-  `features/ai/` but are no longer mounted. The bilingual DM
-  `ch_dm_alice_minh` is auto-selected on first mount of the layout
-  so the demo opens directly into the translation flow.
+  tabs to **Summary / Insights / Stats** in the Phase 8 redesign; the
+  older family / shopping / event / trip components were deleted and
+  the right-rail Memory tab was replaced with a new
+  `ConversationInsightsPanel` that calls `ai:conversation-insights`
+  (LLM-driven topic / action-item / decision / sentiment extraction
+  via `frontend/electron/inference/prompts/conversation-insights.ts`).
+  The bilingual DM `ch_dm_alice_minh` is auto-selected on first mount
+  of the layout so the demo opens directly into the translation flow.
 - **Smart-reply IPC guard.** `frontend/src/api/aiApi.ts` exposes
   `waitForElectronAI(timeoutMs = 400)`; `fetchSmartReply` awaits it
   rather than calling `getElectronAI()` synchronously, closing the
@@ -644,10 +648,7 @@ The preload script exposes `window.electronAI` to the renderer via
 | `ai:prefill-approval`  | `prefillApproval(req)`                    | `runPrefillApproval` (B2B thread → vendor / amount / risk / justification fields) |
 | `ai:prefill-form`      | `prefillForm(req)`                        | `runPrefillForm` (B2B thread → arbitrary intake form fields per template) |
 | `ai:draft-artifact`    | `draftArtifact(req)`                      | `buildDraftArtifact` (B2B thread → prompt + sources for streaming a PRD / RFC / Proposal / SOP / QBR section) |
-| `ai:family-checklist`  | `familyChecklist(req)`                    | `runFamilyChecklist` in `secondBrain.ts` (B2C family chat → titled checklist with optional event focus) |
-| `ai:shopping-nudges`   | `shoppingNudges(req)`                     | `runShoppingNudges` (B2C family chat + local shopping list → grounded item / reason pairs that dedupe against the existing list) |
-| `ai:event-rsvp`        | `eventRSVP(req)`                          | `runEventRSVP` (B2C community chat → up to 4 events with title / when / location / RSVP-by) |
-| `ai:trip-plan`         | `tripPlan(req)`                           | `runTripPlanner` in `skills/trip-planner.ts` — pulls weather / events / attractions from `MockSearchService`, reads `location` / `member` / `community-detail` AI Memory facts, and returns a structured day-by-day itinerary with per-item source attribution (on-device). |
+| `ai:conversation-insights` | `conversationInsights(req)` (Phase 8) | `runConversationInsights` in `tasks.ts` — drives the right-rail Insights tab. Builds the `conversation-insights.ts` prompt (pipe-delimited TOPICS / ACTIONS / DECISIONS / SENTIMENT, ≤200-token system span, `INSUFFICIENT: <reason>` refusal) and routes through the same `InferenceRouter` as every other task. Returns `{ topics, actionItems, decisions, sentiment, sentimentRationale, sourceMessageIds, model, tier, computeLocation, dataEgressBytes }`. Source messages are recovered by fuzzy ≥4-character-token overlap against the conversation slice we forwarded. |
 | `ai:guardrail-check`   | `guardrailCheck(req)`                     | `runGuardrailRewrite` in `skills/guardrail-rewrite.ts` — combines a deterministic PII regex pre-pass with an SLM tone / unverified-claim review and returns `{ safe, findings, rewrite?, rationale }` (on-device). |
 | `ai:recipe:run`        | `recipeRun(req)` (Phase 4)                | `runRecipe` in `electron/ipc-handlers.ts` — generic AI-Employee recipe dispatcher. Takes `{ recipeId, aiEmployeeId, channelId, threadId?, messages, allowedRecipes? }`, looks the recipe up in `RECIPE_REGISTRY` (`electron/inference/recipes/`), refuses when the AI Employee is not authorised for the recipe, and returns a uniform `RecipeResult` (`status: 'ok' | 'refused'`, `output`, `model`, `tier`, `reason`). Canonical recipes registered today (six, self-registered through `recipes/index.ts`): `summarize`, `extract_tasks`, `draft_prd`, `draft_proposal`, `create_qbr`, `prefill_approval`. |
 | `ai:extract-knowledge` | `extractKnowledge(req)` (Phase 7)         | `runExtractKnowledge` in `skills/extract-knowledge.ts` — calls the router with `taskType: extract_tasks`, parses Bonsai-1.7B output (`<kind> \| <description> \| <actor> \| <due>` rows), and projects each row onto the existing `KnowledgeEntity` shape (`decision` / `owner` / `risk` / `requirement` / `deadline`). Refusal contract: `INSUFFICIENT: <reason>` returns an empty entity list. The renderer's `frontend/src/api/knowledgeApi.ts` prefers this IPC bridge and falls back to the regex extractor at `POST /api/channels/{id}/knowledge/extract` when `window.electronAI` is unavailable or the LLM call fails. |
@@ -685,8 +686,12 @@ The preload script exposes `window.electronAI` to the renderer via
   targetLanguage)` while the batch is in flight so the per-bubble
   hook does not also fire its own `ai:translate` call, then writes
   each `TranslateResponse` into the cache on success.
-- `ai:extract-tasks` extracts actionable items (task / reminder /
-  shopping) from a B2C message + its surrounding context.
+- `ai:extract-tasks` extracts actionable items (task / reminder)
+  from a B2C message + its surrounding context.
+- `ai:conversation-insights` builds a structured snapshot of the
+  recent conversation tail — top topics, action items, decisions,
+  and the overall sentiment with a one-sentence rationale — for the
+  right-rail Insights tab.
 - `ai:summarize-thread` builds the summarize prompt + source list for a
   thread (no double inference; the renderer can then call `ai:stream`
   with the prompt). Tier hint included.
@@ -773,7 +778,7 @@ model runs locally via a sidecar process; the renderer never touches
 the daemon directly — every AI call goes through the main process,
 which is the single integration point for swapping in `llama.cpp`,
 Unsloth Studio, or a confidential server runtime in later phases.
-Works on any laptop with enough RAM for a ~1 GB GGUF model and does
+Works on any laptop with enough RAM for a ~237 MB GGUF model and does
 not depend on browser GPU support.
 
 ### 4.1c Bonsai-1.7B prompt library (Phase 7)

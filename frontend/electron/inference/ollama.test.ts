@@ -156,33 +156,33 @@ describe('OllamaAdapter.status', () => {
     );
     const loaded = await new OllamaAdapter({
       model: 'bonsai-1.7b',
-      quant: 'q2_0',
+      quant: 'q4_K_M',
       fetchImpl: okFetch as unknown as typeof fetch,
     }).status();
     expect(loaded.loaded).toBe(true);
-    expect(loaded.quant).toBe('q2_0');
+    expect(loaded.quant).toBe('q4_K_M');
 
     // Not-loaded (daemon running but model missing) path.
     const emptyFetch = vi.fn().mockResolvedValue(jsonResponse({ models: [] }));
     const notLoaded = await new OllamaAdapter({
       model: 'bonsai-1.7b',
-      quant: 'q2_0',
+      quant: 'q4_K_M',
       fetchImpl: emptyFetch as unknown as typeof fetch,
     }).status();
     expect(notLoaded.loaded).toBe(false);
     expect(notLoaded.sidecar).toBe('running');
-    expect(notLoaded.quant).toBe('q2_0');
+    expect(notLoaded.quant).toBe('q4_K_M');
 
     // Daemon-refused path.
     const refusedFetch = vi.fn().mockResolvedValue(new Response('', { status: 500 }));
     const refused = await new OllamaAdapter({
       model: 'bonsai-1.7b',
-      quant: 'q2_0',
+      quant: 'q4_K_M',
       fetchImpl: refusedFetch as unknown as typeof fetch,
     }).status();
     expect(refused.loaded).toBe(false);
     expect(refused.sidecar).toBe('stopped');
-    expect(refused.quant).toBe('q2_0');
+    expect(refused.quant).toBe('q4_K_M');
   });
 
   it('defaults quant to "default" when the constructor option is omitted (Bonsai-1.7B ships as a single GGUF)', async () => {

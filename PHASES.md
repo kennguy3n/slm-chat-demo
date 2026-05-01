@@ -50,23 +50,25 @@ PrismML `llama.cpp` fork (preferred) and an Ollama daemon (fallback).
 
 ---
 
-## Phase 2 — KChat B2C second-brain demo
+## Phase 2 — KChat B2C bilingual chat demo
 
 **Goal:** Make B2C feel like native AI messaging, not a separate assistant.
 
 **Deliverables:**
 
-- Inline translation under message bubbles
+- Inline bilingual translation card under every message bubble
+  (per-panel language flags, viewer-language emphasis)
 - AI task-created pills
 - "Why suggested" explanations
-- AI Memory page
-- Family checklist and shopping list
-- Community event / RSVP card
+- AI Memory page (local IndexedDB; 0 B egress)
+- Bilingual conversation summary panel (right-rail Summary tab)
+- Smart-reply bar in the composer
 - Guardrail rewrite card
-- Morning digest
 - Local-only memory index
 
-**Exit criteria:** A user can run the full Personal → Family → Community journey with on-device AI and no modal-heavy context switching.
+**Exit criteria:** A user can run the bilingual chat journey
+(Alice 🇺🇸 ↔ Minh 🇻🇳) entirely on-device — every translation,
+summary, and smart-reply call hits the local model.
 
 ---
 
@@ -147,6 +149,58 @@ PrismML `llama.cpp` fork (preferred) and an Ollama daemon (fallback).
 - Android native local inference path (`AICoreBridge` interface + `StubAICoreBridge` in `frontend/electron/inference/aicore-bridge.ts`; the contract the React Native / native Android port will implement against Google AICore / ML Kit GenAI)
 
 **Exit criteria:** Workspace admins can define which AI tasks run on-device, which may use confidential server compute, and which are refused.
+
+---
+
+## Phase 8 — B2C ground-zero LLM redesign
+
+**Goal:** Strip every mock-coupled B2C surface so the demo can only
+showcase real on-device LLM behaviour, then re-anchor the right
+rail around a new LLM-driven Insights tab.
+
+**Deliverables:**
+
+- Deletion of the mock-only B2C second-brain components
+  (`FamilyChecklistCard`, `ShoppingNudgesPanel`, `EventRSVPCard`,
+  `TripPlannerCard`) and their inference helpers
+  (`secondBrain.ts`, `secondBrain.test.ts`,
+  `skills/trip-planner.ts`, `search-service.ts`)
+- Removal of the `ai:family-checklist`, `ai:shopping-nudges`,
+  `ai:event-rsvp`, and `ai:trip-plan` IPC handlers and their
+  preload / API surface
+- Removal of the `SEEDED_TRANSLATIONS` table, `mockTranslate`, and
+  `mockIsBilingualSummary` helpers from `MockAdapter` so every
+  translation / summary now requires a real LLM (or returns an
+  obvious `[MOCK]` placeholder)
+- Reduction of `seed.go` B2C content to a single channel
+  (`ch_dm_alice_minh`, the bilingual DM) with no seeded events or
+  tasks
+- New `frontend/electron/inference/prompts/conversation-insights.ts`
+  prompt module (≤200-token system span, pipe-delimited
+  TOPICS / ACTIONS / DECISIONS / SENTIMENT output, INSUFFICIENT
+  refusal contract) and a tolerant
+  `parseConversationInsightsOutput` parser that recovers from
+  reordered or partial sections
+- New `runConversationInsights` task helper in `tasks.ts` (with
+  fuzzy ≥4-character-token source-message back-linking),
+  `ai:conversation-insights` IPC handler, and
+  `electronAI.conversationInsights` preload binding
+- New `frontend/src/features/ai/ConversationInsightsPanel.tsx`
+  component that auto-runs on first mount, caches per-channel via
+  react-query, and renders topics / actions / decisions /
+  sentiment + privacy strip
+- Right-rail tab re-shuffle: `Summary / Memory / Stats` →
+  `Summary / Insights / Stats`
+- Documentation refresh across PROGRESS.md, README.md,
+  ARCHITECTURE.md, PROPOSAL.md, demo/README.md, PHASES.md
+
+**Exit criteria:** With the on-device runtime running, every
+visible B2C affordance — translation, summary, smart-reply,
+insights, task extraction, metrics — renders real LLM output
+under a `compute: on-device`, `egress: 0 B` privacy strip; with
+the runtime offline, every surface visibly degrades to
+`[MOCK]`-prefixed placeholders so the operator can immediately
+tell the LLM is not connected.
 
 ---
 

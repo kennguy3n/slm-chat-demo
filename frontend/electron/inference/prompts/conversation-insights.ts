@@ -2,7 +2,7 @@
 // "Insights" right-rail panel (Alice ↔ Minh bilingual VI↔EN demo).
 // The 2026-05-01 ground-zero LLM redesign wires this prompt to a
 // dedicated `ai:conversation-insights` IPC channel that calls the
-// real on-device model (OllamaAdapter → Bonsai-8B-Q1_0).
+// real on-device model (OllamaAdapter / LlamaCppAdapter → Bonsai-1.7B).
 //
 // Output is line-delimited and tagged so the parser can recover
 // distinct sections (topics / action items / decisions / sentiment)

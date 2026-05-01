@@ -4,23 +4,17 @@ KChat SLM demo — Ollama-compatible shim in front of PrismML `llama-server`.
 
 Why this exists
 ---------------
-Legacy: this shim was originally needed to drive the previous
-Bonsai-8B-Q1_0 GGUF (PrismML's custom 1-bit tensor type) through the
-Electron `OllamaAdapter`, because stock Ollama could not load Q1_0
-weights. The demo now defaults to **Bonsai-1.7B** and prefers the
-new `LlamaCppAdapter`, which talks directly to PrismML
-`llama-server` over `POST /completion` (SSE). The bootstrap probes
-`llama-server` on `LLAMACPP_BASE_URL` (default `http://localhost:11400`)
-first and only falls back to Ollama when llama-server is
-unreachable, so most users no longer need this script.
+The demo's primary on-device path is the `LlamaCppAdapter`, which
+talks directly to PrismML `llama-server` over `POST /completion`
+(SSE). The bootstrap probes `llama-server` on `LLAMACPP_BASE_URL`
+(default `http://localhost:11400`) first and only falls back to
+Ollama when llama-server is unreachable, so most users do not need
+this script.
 
-The shim is retained for two niche cases:
-
-- Driving an exotic Bonsai GGUF that mainline Ollama cannot load,
-  but where the `OllamaAdapter` code path still needs to work
-  (e.g. integration tests gated on `OLLAMA_INTEGRATION=1`).
-- Rolling back to the historical 8B-class artifacts on hosts that
-  cannot run llama-server directly.
+The shim is retained for the case where you want to keep the
+unmodified `OllamaAdapter` code path on (e.g. integration tests
+gated on `OLLAMA_INTEGRATION=1`) while still serving the model from
+PrismML `llama-server`.
 
 The runtime path then becomes:
 
