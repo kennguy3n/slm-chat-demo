@@ -54,6 +54,7 @@ export function ThreadTasksPanel({ channel }: Props) {
         const messages = await fetchChannelMessages(channelId, {
           includeReplies: true,
         });
+        if (runIdRef.current !== myRunId) return;
         if (messages.length === 0) {
           throw new Error('channel has no messages to extract tasks from');
         }

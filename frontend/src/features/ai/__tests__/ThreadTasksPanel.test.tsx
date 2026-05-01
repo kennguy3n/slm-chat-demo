@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThreadTasksPanel } from '../ThreadTasksPanel';
 import { renderWithProviders } from '../../../test/renderWithProviders';
 import * as chatApi from '../../../api/chatApi';
@@ -117,5 +117,96 @@ describe('ThreadTasksPanel', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/extraction crashed/),
     );
+  });
+
+  // Regression: a mid-flight channel switch must not fire `extractKAppTasks`
+  // for the abandoned channel. The inference router runs --parallel 1, so a
+  // stale on-device LLM call serially blocks the new channel's extraction
+  // for several seconds before the post-call run-id check discards it.
+  it('aborts the in-flight run when the channel changes between fetchChannelMessages and extractKAppTasks', async () => {
+    const channelA: Channel = {
+      id: 'ch_a',
+      workspaceId: 'ws_acme',
+      name: 'a',
+      kind: 'channel',
+      context: 'b2b',
+      memberIds: [],
+    };
+    const channelB: Channel = {
+      ...channelA,
+      id: 'ch_b',
+      name: 'b',
+    };
+    const messagesA: Message[] = [
+      {
+        id: 'msg_a',
+        channelId: 'ch_a',
+        threadId: 'msg_a',
+        senderId: 'u',
+        content: 'a',
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    const messagesB: Message[] = [
+      {
+        id: 'msg_b',
+        channelId: 'ch_b',
+        threadId: 'msg_b',
+        senderId: 'u',
+        content: 'b',
+        createdAt: new Date().toISOString(),
+      },
+    ];
+
+    // Pin channel A's fetch so we can hold it open across the channel switch.
+    let resolveA: (m: Message[]) => void = () => {};
+    const aPromise = new Promise<Message[]>((r) => {
+      resolveA = r;
+    });
+
+    vi.spyOn(chatApi, 'fetchChannelMessages').mockReset();
+    vi.spyOn(chatApi, 'fetchChannelMessages').mockImplementation((id: string) => {
+      if (id === 'ch_a') return aPromise;
+      if (id === 'ch_b') return Promise.resolve(messagesB);
+      return Promise.resolve([]);
+    });
+    vi.spyOn(kappsApi, 'extractKAppTasks').mockReset();
+    vi.spyOn(kappsApi, 'extractKAppTasks').mockResolvedValue(fakeTasks);
+
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Infinity, refetchOnWindowFocus: false },
+      },
+    });
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ThreadTasksPanel channel={channelA} />
+      </QueryClientProvider>,
+    );
+
+    // Switch to B before A's fetchChannelMessages resolves.
+    rerender(
+      <QueryClientProvider client={client}>
+        <ThreadTasksPanel channel={channelB} />
+      </QueryClientProvider>,
+    );
+
+    // B's run completes — its extraction lands.
+    await waitFor(() =>
+      expect(screen.getByTestId('task-extraction-card')).toBeInTheDocument(),
+    );
+
+    // Now release A's slow fetch. The runIdRef guard must short-circuit the
+    // continuation before extractKAppTasks is invoked for A.
+    resolveA(messagesA);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const calls = (kappsApi.extractKAppTasks as unknown as {
+      mock: { calls: [{ threadId: string }][] };
+    }).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toEqual({ threadId: 'msg_b' });
   });
 });
