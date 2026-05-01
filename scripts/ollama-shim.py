@@ -125,8 +125,8 @@ class ShimHandler(BaseHTTPRequestHandler):
             "details": {
                 "format": "gguf",
                 "family": "qwen3",
-                "quantization_level": "Q1_0",
-                "parameter_size": "8B",
+                "quantization_level": "default",
+                "parameter_size": "1.7B",
             },
         }
 

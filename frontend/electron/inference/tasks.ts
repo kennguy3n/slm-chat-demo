@@ -44,7 +44,7 @@ import {
   parseExtractTasksOutput,
   parsePrefillApprovalOutput,
 } from './prompts/index.js';
-import { PROMPT_THREAD_CAP } from './prompts/shared.js';
+import { PROMPT_MESSAGE_CAP, PROMPT_THREAD_CAP } from './prompts/shared.js';
 
 // truncateForPrompt caps a string at `max` runes (not bytes) so multi-
 // byte characters (emoji, CJK) are never split mid-codepoint.
@@ -695,11 +695,13 @@ export function buildDraftArtifact(
 
 // ---------- B2C unread summary ----------
 
-const UNREAD_SUMMARY_MAX_MESSAGES = 20;
+// Aligned with PROMPT_THREAD_CAP so the digest prompt fits in the
+// same ~512-token input budget as every other B2B / B2C surface.
+const UNREAD_SUMMARY_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 // Per-channel cap for the standard multi-chat morning digest. The
-// bilingual variant lifts this so a single ~20-message conversation
-// is summarised in full.
+// bilingual variant uses UNREAD_SUMMARY_MAX_MESSAGES instead so the
+// most recent slice of a single conversation is summarised together.
 const PER_CHAT_MESSAGE_TAIL = 5;
 
 // ISO 639-1 → English language name lookup for the bilingual summary
@@ -774,7 +776,7 @@ export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResp
         sender: m.senderId,
         excerpt: truncateForPrompt(m.content, 160),
       });
-      prompt += `- [${ch.name}] ${m.senderId}: ${m.content}\n`;
+      prompt += `- [${ch.name}] ${m.senderId}: ${truncateForPrompt(m.content, PROMPT_MESSAGE_CAP)}\n`;
       if (sources.length >= UNREAD_SUMMARY_MAX_MESSAGES) break outer;
     }
   }
