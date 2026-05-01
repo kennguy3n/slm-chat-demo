@@ -65,7 +65,10 @@ describe('ConversationInsightsPanel', () => {
         queries: { retry: false, staleTime: Infinity, refetchOnWindowFocus: false },
       },
     });
-    client.setQueryData(['conversation-insights', channelB.id], makeInsights(channelB.id, 'B-topic'));
+    client.setQueryData(['conversation-insights', channelB.id], {
+      insights: makeInsights(channelB.id, 'B-topic'),
+      generatedAt: new Date().toISOString(),
+    });
 
     // Channel A's fetch never resolves until we say so — simulating a slow LLM
     // generation that the user has navigated away from.
@@ -119,5 +122,56 @@ describe('ConversationInsightsPanel', () => {
     renderWithProviders(<ConversationInsightsPanel channel={null} />);
     expect(spy).not.toHaveBeenCalled();
     expect(screen.getByText(/Select a chat/)).toBeInTheDocument();
+  });
+
+  it("renders each cached channel's own generatedAt on switch (no stale or missing timestamp)", async () => {
+    // Pre-cache both channels with distinct generatedAt timestamps. We pin
+    // explicit hours so the rendered string is deterministic regardless of
+    // the test runner's wall clock.
+    const aDate = new Date('2026-04-30T08:15:00');
+    const bDate = new Date('2026-04-30T17:42:00');
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Infinity, refetchOnWindowFocus: false },
+      },
+    });
+    client.setQueryData(['conversation-insights', channelA.id], {
+      insights: makeInsights(channelA.id, 'A-topic'),
+      generatedAt: aDate.toISOString(),
+    });
+    client.setQueryData(['conversation-insights', channelB.id], {
+      insights: makeInsights(channelB.id, 'B-topic'),
+      generatedAt: bDate.toISOString(),
+    });
+    const spy = vi.spyOn(aiApi, 'fetchConversationInsights');
+
+    const { rerender } = renderWithProviders(
+      <ConversationInsightsPanel channel={channelA} />,
+      { client },
+    );
+
+    // A's cached path should hydrate A's generatedAt, not "now".
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation-insights-topic')).toHaveTextContent('A-topic'),
+    );
+    expect(screen.getByTestId('conversation-insights-timestamp')).toHaveTextContent(
+      aDate.toLocaleTimeString(),
+    );
+
+    // Switch to B — the timestamp must update to B's cached value, not
+    // remain pinned to A's.
+    rerender(
+      <QueryClientProvider client={client}>
+        <ConversationInsightsPanel channel={channelB} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation-insights-topic')).toHaveTextContent('B-topic'),
+    );
+    expect(screen.getByTestId('conversation-insights-timestamp')).toHaveTextContent(
+      bDate.toLocaleTimeString(),
+    );
+    // The cached path is taken, so the LLM is never called.
+    expect(spy).not.toHaveBeenCalled();
   });
 });

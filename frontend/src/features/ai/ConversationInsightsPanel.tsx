@@ -22,6 +22,19 @@ function cacheKeyFor(channel: Channel | null | undefined) {
   return [CACHE_KEY_PREFIX, channel?.id ?? null] as const;
 }
 
+// Cached payload for a channel's insights. We pin the original
+// `generatedAt` alongside the LLM output so a tab/channel switch
+// re-renders the same "Updated …" timestamp the user saw before
+// instead of either:
+//   • bleeding the previous channel's timestamp into the new view
+//     (when state still holds it from a prior run), or
+//   • dropping the timestamp entirely when the prior view never
+//     completed and `generatedAt` is null.
+interface InsightsCache {
+  insights: ConversationInsightsResponse;
+  generatedAt: string;
+}
+
 const SENTIMENT_LABEL: Record<ConversationSentiment, string> = {
   positive: 'Positive',
   neutral: 'Neutral',
@@ -44,14 +57,13 @@ const SENTIMENT_LABEL: Record<ConversationSentiment, string> = {
 export function ConversationInsightsPanel({ channel = null }: Props) {
   const queryClient = useQueryClient();
   const cacheKey = cacheKeyFor(channel);
-  const cached =
-    queryClient.getQueryData<ConversationInsightsResponse>(cacheKey) ?? null;
+  const cached = queryClient.getQueryData<InsightsCache>(cacheKey) ?? null;
 
   const [insights, setInsights] = useState<ConversationInsightsResponse | null>(
-    cached,
+    cached?.insights ?? null,
   );
   const [generatedAt, setGeneratedAt] = useState<Date | null>(
-    cached ? new Date() : null,
+    cached ? new Date(cached.generatedAt) : null,
   );
   const [isLoading, setIsLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -72,9 +84,13 @@ export function ConversationInsightsPanel({ channel = null }: Props) {
     })
       .then((data) => {
         if (runIdRef.current !== myRunId) return;
+        const now = new Date();
         setInsights(data);
-        setGeneratedAt(new Date());
-        queryClient.setQueryData(cacheKey, data);
+        setGeneratedAt(now);
+        queryClient.setQueryData<InsightsCache>(cacheKey, {
+          insights: data,
+          generatedAt: now.toISOString(),
+        });
         setIsLoading(false);
       })
       .catch((e: unknown) => {
@@ -94,8 +110,12 @@ export function ConversationInsightsPanel({ channel = null }: Props) {
       // Switching to a channel with cached output — bump the run id so any
       // in-flight fetch from the previously selected channel is dropped
       // by its own resolved/rejected handler instead of overwriting state.
+      // Restore the cached `generatedAt` too, so the "Updated …" label
+      // matches the actual moment that channel's insights were produced
+      // — not "now" and not the previous channel's timestamp.
       runIdRef.current += 1;
-      setInsights(cached);
+      setInsights(cached.insights);
+      setGeneratedAt(new Date(cached.generatedAt));
       setIsLoading(false);
       setErr(null);
       return;
