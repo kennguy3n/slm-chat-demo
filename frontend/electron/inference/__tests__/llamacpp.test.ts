@@ -121,6 +121,28 @@ describe('LlamaCppAdapter', () => {
     expect(body.stop).toEqual(['<|im_end|>', '<|endoftext|>']);
   });
 
+  it('honours a per-request temperature override (translate pins to 0)', async () => {
+    // Translation calls send temperature=0 to force greedy
+    // decoding, otherwise the 1.7B model occasionally produces
+    // free-form rewrites of the source instead of a translation.
+    // Other tasks omit the field and continue to inherit the
+    // adapter default (0.2).
+    const fetchImpl = vi.fn(async () =>
+      sseResponse([JSON.stringify({ content: 'ok', stop: true })]),
+    ) as unknown as typeof fetch;
+    const adapter = new LlamaCppAdapter({ fetchImpl });
+    await adapter.run({
+      taskType: 'translate',
+      prompt: 'Text: Hi',
+      system: 'translate to vi',
+      temperature: 0,
+    });
+    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const [, init] = calls[0]! as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.temperature).toBe(0);
+  });
+
   it('falls back to a user-only chat template when no system is provided', async () => {
     const fetchImpl = vi.fn(async () =>
       sseResponse([JSON.stringify({ content: 'ok', stop: true })]),

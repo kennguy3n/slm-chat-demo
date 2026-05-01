@@ -156,12 +156,20 @@ export async function runTranslate(
     text: req.text,
     targetLanguage: target,
     sourceLanguage: source || undefined,
+    context: req.context,
   });
   const resp = await adapter.run({
     taskType: 'translate',
     prompt: user,
     system,
     channelId: req.channelId,
+    // Pin to greedy decoding. At any non-zero temperature a 1.7B
+    // model will, on a non-trivial fraction of calls, produce a
+    // free-form rewrite of the source instead of a translation —
+    // we caught Bonsai treating "Hey Minh!" as English-completion
+    // fodder during demo capture. Greedy = same input → same
+    // output, which is exactly what we want for translation.
+    temperature: 0,
   });
   const translated = parseTranslateOutput(resp.output) || req.text;
   return {
@@ -208,6 +216,7 @@ export async function runTranslateBatch(
       text: it.text,
       targetLanguage: it.targetLanguage,
       sourceLanguage: it.sourceLanguage,
+      context: it.context,
     });
     results.push(one);
   }

@@ -166,7 +166,10 @@ export class LlamaCppAdapter implements Adapter, StatusProvider, Loader {
       // Lower temperature than the previous default — a 1.7B model
       // hallucinates faster at higher temps, and translation is a
       // task where determinism is preferable to creative phrasing.
-      temperature: 0.2,
+      // Per-task override (`req.temperature`) lets `runTranslate`
+      // pin temperature to 0 to suppress the occasional free-form
+      // rewrite the model produces at any non-zero temperature.
+      temperature: req.temperature ?? 0.2,
       top_p: 0.9,
       n_predict: req.maxTokens && req.maxTokens > 0 ? req.maxTokens : DefaultMaxTokens,
       cache_prompt: true,

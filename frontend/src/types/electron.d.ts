@@ -107,6 +107,10 @@ interface ElectronAIBridge {
     text: string;
     targetLanguage?: string;
     sourceLanguage?: string;
+    // Optional preceding-message context for translation
+    // disambiguation. The main process renders these into a
+    // `Recent conversation:` block inside the translate prompt.
+    context?: { sender: string; text: string }[];
   }): Promise<TranslateResponse>;
   translateBatch(req: {
     items: {
@@ -115,6 +119,9 @@ interface ElectronAIBridge {
       text: string;
       targetLanguage: string;
       sourceLanguage?: string;
+      // Optional preceding-message context. Same shape and budget
+      // as `translate.context` above.
+      context?: { sender: string; text: string }[];
     }[];
   }): Promise<{ results: TranslateResponse[] }>;
   extractTasks(req: {

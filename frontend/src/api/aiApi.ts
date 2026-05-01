@@ -183,6 +183,11 @@ export async function fetchTranslateBatch(req: {
     text: string;
     targetLanguage: string;
     sourceLanguage?: string;
+    // Optional preceding-message context for disambiguation. The
+    // main process renders this into a `Recent conversation:` block
+    // inside the translate prompt so short / ambiguous chat lines
+    // don't trigger Bonsai-1.7B hallucinations.
+    context?: { sender: string; text: string }[];
   }[];
 }): Promise<{ results: TranslateResponse[] }> {
   const ipc = await waitForElectronAI();
@@ -194,6 +199,7 @@ export async function fetchTranslateBatch(req: {
         channelId: it.channelId,
         targetLanguage: it.targetLanguage,
         sourceLanguage: it.sourceLanguage,
+        context: it.context,
       });
     }),
   );
@@ -209,6 +215,9 @@ export async function fetchTranslate(req: {
   channelId?: string;
   targetLanguage?: string;
   sourceLanguage?: string;
+  // Optional preceding-message context for disambiguation. See
+  // `fetchTranslateBatch` for shape and budget rationale.
+  context?: { sender: string; text: string }[];
 }): Promise<TranslateResponse> {
   const ipc = await waitForElectronAI();
   if (ipc) {
@@ -224,6 +233,7 @@ export async function fetchTranslate(req: {
       text: msg.content,
       targetLanguage: req.targetLanguage,
       sourceLanguage: req.sourceLanguage,
+      context: req.context,
     });
   }
   return apiFetch<TranslateResponse>('/api/ai/translate', {
@@ -233,6 +243,7 @@ export async function fetchTranslate(req: {
       messageId: req.messageId,
       targetLanguage: req.targetLanguage,
       sourceLanguage: req.sourceLanguage,
+      context: req.context,
     }),
   });
 }

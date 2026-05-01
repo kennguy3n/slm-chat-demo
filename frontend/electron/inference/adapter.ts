@@ -37,6 +37,15 @@ export interface InferenceRequest {
   system?: string;
   channelId?: string;
   maxTokens?: number;
+  // Sampling temperature override. Most tasks happily run at the
+  // adapter default (≈0.2 for Bonsai-1.7B) but translation needs
+  // determinism: at any non-zero temperature a 1.7B model will
+  // occasionally produce free-form rewrites or wander off into
+  // English completion of a Vietnamese source. Per-task override
+  // lets the translate path pin temperature to 0 without affecting
+  // smart-reply / draft / summary generations that benefit from
+  // mild diversity.
+  temperature?: number;
   // Phase 6 — explicit tier selection so the dispatcher can ask for
   // server compute (e.g. user-toggled "Confidential Server" mode).
   // Omit or pass 'local' for on-device compute; pass 'server' to
@@ -156,6 +165,12 @@ export interface TranslateRequest {
   // direction, which a small instruct model (Bonsai-1.7B) sometimes
   // gets wrong on idiomatic Vietnamese.
   sourceLanguage?: string;
+  // Up to 3 preceding messages, plumbed down to the prompt builder
+  // as a `Recent conversation:` block so the 1.7B model can
+  // disambiguate short / ambiguous chat lines instead of
+  // hallucinating unrelated content. The renderer (MessageList)
+  // assembles this from the channel's message stream.
+  context?: { sender: string; text: string }[];
 }
 
 export interface TranslateResponse {
@@ -180,6 +195,9 @@ export interface TranslateBatchItem {
   // Optional source-language hint (ISO-639-1). See `TranslateRequest`
   // for why we plumb this through.
   sourceLanguage?: string;
+  // Optional preceding-message context for translation
+  // disambiguation. Same shape and cap as `TranslateRequest.context`.
+  context?: { sender: string; text: string }[];
 }
 
 export interface TranslateBatchRequest {

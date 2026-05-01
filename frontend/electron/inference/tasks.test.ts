@@ -539,6 +539,84 @@ describe('runTranslateBatch (single-call optimisation)', () => {
       'Chào Alice',
     ]);
   });
+
+  // Conversation context — short / ambiguous chat lines like
+  // "Yes! That's the one." or "Trưa được nha!" hallucinate on a
+  // 1.7B model when fed in isolation. We pipe the preceding 2-3
+  // messages down to the prompt builder; this test pins that the
+  // flow from `runTranslateBatch` → `runTranslate` → `buildTranslatePrompt`
+  // preserves per-item context end-to-end.
+  it('plumbs per-item context through to the adapter prompt', async () => {
+    const seen: { prompt: string; system: string; temperature: number | undefined }[] = [];
+    const adapter: Adapter = {
+      name: () => 'spy',
+      async run(req: InferenceRequest): Promise<InferenceResponse> {
+        seen.push({
+          prompt: req.prompt ?? '',
+          system: req.system ?? '',
+          temperature: req.temperature,
+        });
+        return {
+          taskType: req.taskType,
+          model: 'bonsai-1.7b',
+          output: 'Vâng! Đúng cái đó.',
+          tokensUsed: 1,
+          latencyMs: 0,
+          onDevice: true,
+        };
+      },
+      async *stream(req: InferenceRequest): AsyncGenerator<StreamChunk, void, void> {
+        const r = await this.run(req);
+        yield { delta: r.output, done: false };
+        yield { done: true };
+      },
+    };
+    await runTranslateBatch(adapter, {
+      items: [
+        {
+          messageId: 'm1',
+          channelId: 'c1',
+          text: "Yes! That's the one.",
+          targetLanguage: 'vi',
+          sourceLanguage: 'en',
+          context: [
+            { sender: 'user_minh', text: 'Phở 79 hay là Phở Lý Quốc Sư?' },
+            { sender: 'user_alice', text: 'I think Phở 79 — closer to home.' },
+          ],
+        },
+        {
+          // Second item without context — verifies per-item isolation
+          // (item 2's prompt must not include item 1's context).
+          messageId: 'm2',
+          channelId: 'c1',
+          text: 'Got it!',
+          targetLanguage: 'vi',
+          sourceLanguage: 'en',
+        },
+      ],
+    });
+    expect(seen).toHaveLength(2);
+    // Conversation context lives in the system role — see
+    // buildTranslatePrompt for the rationale (the 1.7B model
+    // regurgitates context verbatim if it sits in the user turn).
+    expect(seen[0]!.system).toContain('Recent conversation');
+    expect(seen[0]!.system).toContain('user_minh: Phở 79 hay là Phở Lý Quốc Sư?');
+    expect(seen[0]!.system).toMatch(/conversation context/i);
+    expect(seen[0]!.prompt).toContain("Text: Yes! That's the one.");
+    expect(seen[0]!.prompt).not.toContain('Recent conversation');
+    expect(seen[0]!.prompt).not.toContain('user_minh');
+    // Per-item isolation: item 2 carried no context so neither role
+    // should reference the channel's prior turns.
+    expect(seen[1]!.system).not.toContain('Recent conversation');
+    expect(seen[1]!.system).not.toContain('user_minh');
+    expect(seen[1]!.prompt).not.toContain('Recent conversation');
+    expect(seen[1]!.prompt).toContain('Text: Got it!');
+    // Translate calls pin temperature to 0 so the 1.7B model can't
+    // wander off into free-form rewrites at any non-zero
+    // temperature. Both items must carry this through.
+    expect(seen[0]!.temperature).toBe(0);
+    expect(seen[1]!.temperature).toBe(0);
+  });
 });
 
 describe('findSourceMessage', () => {

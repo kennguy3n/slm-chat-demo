@@ -279,6 +279,96 @@ describe('translate prompt', () => {
     expect(user).not.toMatch(/Translate from/);
   });
 
+  it('omits the conversation block when no context is given (backward compat)', () => {
+    const { system, user } = buildTranslatePrompt({
+      text: 'Chào Alice!',
+      targetLanguage: 'en',
+      sourceLanguage: 'vi',
+    });
+    expect(system).not.toContain('Recent conversation');
+    expect(user).not.toContain('Recent conversation');
+    expect(user).toBe('Translate from Vietnamese to English.\nText: Chào Alice!');
+  });
+
+  it('omits the conversation block when context is an empty array', () => {
+    const { system, user } = buildTranslatePrompt({
+      text: 'Chào Alice!',
+      targetLanguage: 'en',
+      context: [],
+    });
+    expect(system).not.toContain('Recent conversation');
+    expect(user).not.toContain('Recent conversation');
+  });
+
+  it('mentions context-awareness in the system instruction (rule 8)', () => {
+    const { system } = buildTranslatePrompt({
+      text: 'Yes! That’s the one.',
+      targetLanguage: 'vi',
+    });
+    // Rule 8: use the conversation context (if provided) to
+    // disambiguate the user message, never echo it.
+    expect(system).toMatch(/conversation context/i);
+    expect(system).toMatch(/never echo, repeat, or include/i);
+  });
+
+  it('attaches conversation context to the system role, not the user role', () => {
+    // The 1.7B Bonsai model regurgitates context verbatim when it
+    // sits in the user turn alongside the line to translate. We
+    // route context through the system role so the model treats it
+    // as background metadata. The user turn must stay minimal —
+    // direction + Text — so the model has exactly one thing to
+    // produce a translation for.
+    const { system, user } = buildTranslatePrompt({
+      text: "Yes! That's the one.",
+      targetLanguage: 'vi',
+      sourceLanguage: 'en',
+      context: [
+        { sender: 'user_minh', text: 'Phở 79 hay là Phở Lý Quốc Sư?' },
+        { sender: 'user_alice', text: 'I think Phở 79 — closer to home.' },
+      ],
+    });
+    expect(system).toContain('Recent conversation');
+    expect(system).toContain('user_minh: Phở 79 hay là Phở Lý Quốc Sư?');
+    expect(system).toContain('user_alice: I think Phở 79 — closer to home.');
+    expect(user).not.toContain('Recent conversation');
+    expect(user).not.toContain('user_minh');
+    expect(user).not.toContain('Phở 79');
+    expect(user).toBe("Translate from English to Vietnamese.\nText: Yes! That's the one.");
+  });
+
+  it('caps context at the last 3 messages', () => {
+    const ctx = Array.from({ length: 5 }, (_, i) => ({
+      sender: `user_${i}`,
+      text: `message ${i}`,
+    }));
+    const { system } = buildTranslatePrompt({
+      text: 'follow-up',
+      targetLanguage: 'en',
+      context: ctx,
+    });
+    // The last three should appear in the system block; the
+    // first two should not.
+    expect(system).toContain('user_2: message 2');
+    expect(system).toContain('user_3: message 3');
+    expect(system).toContain('user_4: message 4');
+    expect(system).not.toContain('user_0: message 0');
+    expect(system).not.toContain('user_1: message 1');
+  });
+
+  it('truncates each context entry to 100 characters', () => {
+    const long = 'a'.repeat(150);
+    const { system } = buildTranslatePrompt({
+      text: 'reply',
+      targetLanguage: 'en',
+      context: [{ sender: 'user_alice', text: long }],
+    });
+    // Only 100 'a's should make it into the system block (plus the
+    // sender prefix). The 101st 'a' must not appear in the rendered
+    // line — anchor on a length-101 'a' run to be unambiguous.
+    expect(system).toContain('user_alice: ' + 'a'.repeat(100));
+    expect(system).not.toContain('a'.repeat(101));
+  });
+
   it('languageLabel maps known ISO codes and falls back to the raw code', () => {
     expect(languageLabel('en')).toBe('English');
     expect(languageLabel('vi')).toBe('Vietnamese');

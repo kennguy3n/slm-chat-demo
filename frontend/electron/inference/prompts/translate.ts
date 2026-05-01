@@ -51,6 +51,14 @@ export interface TranslateBuilderInput {
   // ISO-639-1 source-language hint. Optional — when omitted the
   // prompt uses the target-only "Translate to <DST>" form.
   sourceLanguage?: string;
+  // Optional preceding messages for disambiguation. Chat messages
+  // are often short and typed over multiple lines, so a single
+  // message in isolation can be ambiguous ("Yes! That's the one.",
+  // "Trưa được nha!"). Feeding 2-3 earlier messages gives the
+  // 1.7B model enough grounding to avoid hallucinating unrelated
+  // content (French homework, restaurant tips, etc.) while staying
+  // well within the 1024-token context window.
+  context?: { sender: string; text: string }[];
 }
 
 export interface TranslatePromptParts {
@@ -81,12 +89,28 @@ const SYSTEM_INSTRUCTION =
   '(4) Do NOT repeat the original text. ' +
   '(5) Preserve names, emoji, and informal tone. ' +
   '(6) If the source is already in the target language, output it unchanged. ' +
-  '(7) Never translate English into English or a language into itself.';
+  '(7) Never translate English into English or a language into itself. ' +
+  '(8) Use the conversation context (if provided in the system block) ' +
+  'to disambiguate the user message, but translate ONLY that user message — ' +
+  'never echo, repeat, or include the conversation context in the output.';
 
 // buildTranslatePrompt builds the (system, user) pair for a single-
 // message translation. The split is the contract LlamaCppAdapter and
 // OllamaAdapter use to route system instructions through the Qwen3
 // chat template instead of dumping them into the user role.
+//
+// Conversation context is attached to the *system* role rather than
+// the user role on purpose. We initially shipped context as a
+// "Recent conversation:" block inside the user turn, but the live-
+// LLM screenshots against Bonsai-1.7B showed the model was simply
+// regurgitating the entire context block as its "translation" — the
+// 1.7B instruct model is not strong enough to reliably follow a
+// "translate only the Text line" rule when the context shares the
+// same role as the target text. Routing context through the system
+// role frames it as background metadata for the engine, not as
+// input to translate, which empirically gives a clean translation
+// while still letting the model disambiguate short chat lines like
+// "Yes! That's the one." or "Trưa được nha!".
 export function buildTranslatePrompt(input: TranslateBuilderInput): TranslatePromptParts {
   const target = (input.targetLanguage ?? '').trim() || 'en';
   const targetName = languageLabel(target) || target;
@@ -95,8 +119,25 @@ export function buildTranslatePrompt(input: TranslateBuilderInput): TranslatePro
   const direction = sourceName
     ? `Translate from ${sourceName} to ${targetName}.`
     : `Translate to ${targetName}.`;
-  const user = `${direction}\n\nText: ${input.text}`;
-  return { system: SYSTEM_INSTRUCTION, user };
+
+  // Include up to 3 preceding messages as background context. Per-
+  // line text is capped at 100 chars so the whole context block
+  // stays well under ~300 chars (~120 tokens), leaving plenty of
+  // room inside the 1024-token Bonsai window for the actual Text
+  // and the model's reply.
+  let system = SYSTEM_INSTRUCTION;
+  if (input.context && input.context.length > 0) {
+    const recent = input.context.slice(-3);
+    const lines = recent.map((c) => `${c.sender}: ${c.text.slice(0, 100)}`);
+    system +=
+      '\n\nRecent conversation (background only — DO NOT translate, ' +
+      'DO NOT echo, DO NOT include in output; use only to disambiguate ' +
+      'the user message):\n' +
+      lines.join('\n');
+  }
+
+  const user = `${direction}\nText: ${input.text}`;
+  return { system, user };
 }
 
 const BATCH_SYSTEM_INSTRUCTION =
