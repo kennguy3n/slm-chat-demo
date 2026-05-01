@@ -156,6 +156,7 @@ export async function runTranslate(
     text: req.text,
     targetLanguage: target,
     sourceLanguage: source || undefined,
+    context: req.context,
   });
   const resp = await adapter.run({
     taskType: 'translate',
@@ -208,6 +209,7 @@ export async function runTranslateBatch(
       text: it.text,
       targetLanguage: it.targetLanguage,
       sourceLanguage: it.sourceLanguage,
+      context: it.context,
     });
     results.push(one);
   }

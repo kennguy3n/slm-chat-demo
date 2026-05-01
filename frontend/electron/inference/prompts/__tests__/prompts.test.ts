@@ -279,6 +279,87 @@ describe('translate prompt', () => {
     expect(user).not.toMatch(/Translate from/);
   });
 
+  it('omits the conversation block when no context is given (backward compat)', () => {
+    const { user } = buildTranslatePrompt({
+      text: 'Chào Alice!',
+      targetLanguage: 'en',
+      sourceLanguage: 'vi',
+    });
+    expect(user).not.toContain('Recent conversation:');
+    // Single blank line separates direction from Text:.
+    expect(user).toBe('Translate from Vietnamese to English.\n\nText: Chào Alice!');
+  });
+
+  it('omits the conversation block when context is an empty array', () => {
+    const { user } = buildTranslatePrompt({
+      text: 'Chào Alice!',
+      targetLanguage: 'en',
+      context: [],
+    });
+    expect(user).not.toContain('Recent conversation:');
+  });
+
+  it('mentions context-awareness in the system instruction (rule 8)', () => {
+    const { system } = buildTranslatePrompt({
+      text: 'Yes! That’s the one.',
+      targetLanguage: 'vi',
+    });
+    // Rule 8: use the conversation context (if provided) to
+    // disambiguate the message, but only translate the Text line.
+    expect(system).toMatch(/conversation context/i);
+    expect(system).toMatch(/only translate the Text line/i);
+  });
+
+  it('renders a "Recent conversation:" block when context is provided', () => {
+    const { user } = buildTranslatePrompt({
+      text: "Yes! That's the one.",
+      targetLanguage: 'vi',
+      sourceLanguage: 'en',
+      context: [
+        { sender: 'user_minh', text: 'Phở 79 hay là Phở Lý Quốc Sư?' },
+        { sender: 'user_alice', text: 'I think Phở 79 — closer to home.' },
+      ],
+    });
+    expect(user).toContain('Recent conversation:\n');
+    expect(user).toContain('user_minh: Phở 79 hay là Phở Lý Quốc Sư?');
+    expect(user).toContain('user_alice: I think Phở 79 — closer to home.');
+    // Block precedes the Text: line.
+    expect(user.indexOf('Recent conversation:')).toBeLessThan(user.indexOf('Text:'));
+    expect(user).toContain("Text: Yes! That's the one.");
+  });
+
+  it('caps context at the last 3 messages', () => {
+    const ctx = Array.from({ length: 5 }, (_, i) => ({
+      sender: `user_${i}`,
+      text: `message ${i}`,
+    }));
+    const { user } = buildTranslatePrompt({
+      text: 'follow-up',
+      targetLanguage: 'en',
+      context: ctx,
+    });
+    // The last three should appear; the first two should not.
+    expect(user).toContain('user_2: message 2');
+    expect(user).toContain('user_3: message 3');
+    expect(user).toContain('user_4: message 4');
+    expect(user).not.toContain('user_0: message 0');
+    expect(user).not.toContain('user_1: message 1');
+  });
+
+  it('truncates each context entry to 100 characters', () => {
+    const long = 'a'.repeat(150);
+    const { user } = buildTranslatePrompt({
+      text: 'reply',
+      targetLanguage: 'en',
+      context: [{ sender: 'user_alice', text: long }],
+    });
+    // Only 100 'a's should make it into the user turn (plus the
+    // sender prefix). The 101st 'a' must not appear in the rendered
+    // line — anchor on a length-101 'a' run to be unambiguous.
+    expect(user).toContain('user_alice: ' + 'a'.repeat(100));
+    expect(user).not.toContain('a'.repeat(101));
+  });
+
   it('languageLabel maps known ISO codes and falls back to the raw code', () => {
     expect(languageLabel('en')).toBe('English');
     expect(languageLabel('vi')).toBe('Vietnamese');

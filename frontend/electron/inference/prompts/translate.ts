@@ -51,6 +51,14 @@ export interface TranslateBuilderInput {
   // ISO-639-1 source-language hint. Optional — when omitted the
   // prompt uses the target-only "Translate to <DST>" form.
   sourceLanguage?: string;
+  // Optional preceding messages for disambiguation. Chat messages
+  // are often short and typed over multiple lines, so a single
+  // message in isolation can be ambiguous ("Yes! That's the one.",
+  // "Trưa được nha!"). Feeding 2-3 earlier messages gives the
+  // 1.7B model enough grounding to avoid hallucinating unrelated
+  // content (French homework, restaurant tips, etc.) while staying
+  // well within the 1024-token context window.
+  context?: { sender: string; text: string }[];
 }
 
 export interface TranslatePromptParts {
@@ -81,7 +89,9 @@ const SYSTEM_INSTRUCTION =
   '(4) Do NOT repeat the original text. ' +
   '(5) Preserve names, emoji, and informal tone. ' +
   '(6) If the source is already in the target language, output it unchanged. ' +
-  '(7) Never translate English into English or a language into itself.';
+  '(7) Never translate English into English or a language into itself. ' +
+  '(8) Use the conversation context (if provided) to disambiguate the ' +
+  'message, but only translate the Text line.';
 
 // buildTranslatePrompt builds the (system, user) pair for a single-
 // message translation. The split is the contract LlamaCppAdapter and
@@ -95,7 +105,21 @@ export function buildTranslatePrompt(input: TranslateBuilderInput): TranslatePro
   const direction = sourceName
     ? `Translate from ${sourceName} to ${targetName}.`
     : `Translate to ${targetName}.`;
-  const user = `${direction}\n\nText: ${input.text}`;
+
+  // Include up to 3 preceding messages as context so the model can
+  // disambiguate short / ambiguous chat lines ("Yes! That's the one.",
+  // "Trưa được nha!"). Per-line text is capped at 100 chars so the
+  // whole context block stays well under ~300 chars (~120 tokens),
+  // leaving plenty of room inside the 1024-token Bonsai window for
+  // the actual Text and the model's reply.
+  let contextBlock = '';
+  if (input.context && input.context.length > 0) {
+    const recent = input.context.slice(-3);
+    const lines = recent.map((c) => `${c.sender}: ${c.text.slice(0, 100)}`);
+    contextBlock = `Recent conversation:\n${lines.join('\n')}\n\n`;
+  }
+
+  const user = `${direction}\n\n${contextBlock}Text: ${input.text}`;
   return { system: SYSTEM_INSTRUCTION, user };
 }
 

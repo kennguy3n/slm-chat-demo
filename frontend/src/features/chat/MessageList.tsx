@@ -49,8 +49,10 @@ export function MessageList({
       text: string;
       targetLanguage: string;
       sourceLanguage: string;
+      context: { sender: string; text: string }[];
     }[] = [];
-    for (const m of messages) {
+    for (let idx = 0; idx < messages.length; idx++) {
+      const m = messages[idx]!;
       const target = computeTranslationTarget(m.content, pref, partnerLanguage, detect);
       if (!target) continue;
       const cached = queryClient.getQueryData<TranslateResponse | null>(
@@ -61,6 +63,19 @@ export function MessageList({
       // arrives, prop identity changes) doesn't kick off a duplicate
       // batch for the same items.
       if (cached !== undefined) continue;
+
+      // Up to 3 preceding messages as conversation context. Short
+      // bilingual chat lines ("Yes! That's the one.", "Trưa được
+      // nha!") are highly ambiguous in isolation; the prompt builder
+      // renders these into a `Recent conversation:` block so the
+      // 1.7B Bonsai model can disambiguate instead of hallucinating
+      // unrelated content.
+      const contextStart = Math.max(0, idx - 3);
+      const context = messages.slice(contextStart, idx).map((prev) => ({
+        sender: prev.senderId,
+        text: prev.content,
+      }));
+
       items.push({
         messageId: m.id,
         channelId: m.channelId,
@@ -71,6 +86,7 @@ export function MessageList({
         // instruction, which avoids the EN→EN echo and EN→VI ↔
         // VI→EN confusion the 1.7B model otherwise drops into.
         sourceLanguage: detect(m.content),
+        context,
       });
     }
     if (items.length === 0) return;
