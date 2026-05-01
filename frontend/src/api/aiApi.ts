@@ -182,6 +182,7 @@ export async function fetchTranslateBatch(req: {
     channelId: string;
     text: string;
     targetLanguage: string;
+    sourceLanguage?: string;
   }[];
 }): Promise<{ results: TranslateResponse[] }> {
   const ipc = await waitForElectronAI();
@@ -192,6 +193,7 @@ export async function fetchTranslateBatch(req: {
         messageId: it.messageId,
         channelId: it.channelId,
         targetLanguage: it.targetLanguage,
+        sourceLanguage: it.sourceLanguage,
       });
     }),
   );
@@ -206,6 +208,7 @@ export async function fetchTranslate(req: {
   messageId: string;
   channelId?: string;
   targetLanguage?: string;
+  sourceLanguage?: string;
 }): Promise<TranslateResponse> {
   const ipc = await waitForElectronAI();
   if (ipc) {
@@ -220,12 +223,17 @@ export async function fetchTranslate(req: {
       channelId: msg.channelId,
       text: msg.content,
       targetLanguage: req.targetLanguage,
+      sourceLanguage: req.sourceLanguage,
     });
   }
   return apiFetch<TranslateResponse>('/api/ai/translate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messageId: req.messageId, targetLanguage: req.targetLanguage }),
+    body: JSON.stringify({
+      messageId: req.messageId,
+      targetLanguage: req.targetLanguage,
+      sourceLanguage: req.sourceLanguage,
+    }),
   });
 }
 

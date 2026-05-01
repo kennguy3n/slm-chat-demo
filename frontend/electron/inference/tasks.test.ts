@@ -475,4 +475,64 @@ describe('runTranslateBatch (single-call optimisation)', () => {
     expect(resp.results).toHaveLength(1);
     expect(resp.results[0]?.translated).toBe('translated text');
   });
+
+  // Identity short-circuit: a 1.7B model would otherwise hallucinate
+  // an "English → English" rewrite that looks like a bug to the user.
+  // The runTranslate path returns the original text verbatim with
+  // model='identity' instead.
+  it('skips the LLM and returns the original text when source==target', async () => {
+    const router = makeStubRouter({ translate: 'WRONG — should not be called' });
+    const resp = await runTranslateBatch(router, {
+      items: [
+        {
+          messageId: 'm1',
+          channelId: 'c1',
+          text: 'Hello there!',
+          targetLanguage: 'en',
+          sourceLanguage: 'en',
+        },
+        {
+          messageId: 'm2',
+          channelId: 'c1',
+          text: 'Chào bạn!',
+          targetLanguage: 'en',
+          sourceLanguage: 'vi',
+        },
+      ],
+    });
+    expect(resp.results).toHaveLength(2);
+    expect(resp.results[0]?.translated).toBe('Hello there!');
+    expect(resp.results[0]?.model).toBe('identity');
+    // Second item still uses the LLM because src != dst.
+    expect(resp.results[1]?.translated).toBe('WRONG — should not be called');
+    expect(resp.results[1]?.model).not.toBe('identity');
+  });
+
+  it('strips per-line "(to xx)" prefixes from the batched response', async () => {
+    const router = makeStubRouter({
+      translate: ['1. (to vi) Chào Alice', '2. (to en) Hi Minh'].join('\n'),
+    });
+    const resp = await runTranslateBatch(router, {
+      items: [
+        {
+          messageId: 'm1',
+          channelId: 'c1',
+          text: 'Hi Alice!',
+          targetLanguage: 'vi',
+          sourceLanguage: 'en',
+        },
+        {
+          messageId: 'm2',
+          channelId: 'c1',
+          text: 'Chào Minh!',
+          targetLanguage: 'en',
+          sourceLanguage: 'vi',
+        },
+      ],
+    });
+    expect(resp.results.map((r) => r.translated)).toEqual([
+      'Chào Alice',
+      'Hi Minh',
+    ]);
+  });
 });

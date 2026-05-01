@@ -119,14 +119,17 @@ function mockOutputFor(req: InferenceRequest): string {
   }
 }
 
-// extractPromptText pulls the source `Message: <body>` out of the
-// translate envelope built by `runTranslate`. Falls back to the
-// trimmed prompt body for ad-hoc callers (tests, one-off demos) so
-// the mock surface still produces something visible.
+// extractPromptText pulls the source body out of the translate
+// envelope built by `runTranslate`. The current prompt builder
+// uses `Text: <body>`; the previous (pre-2026-05-01) builder used
+// `Message: <body>`. We accept either label so a mid-flight prompt
+// rewrite doesn't blank out the mock placeholder. Falls back to
+// the trimmed prompt body for ad-hoc callers (tests, one-off demos)
+// so the mock surface still produces something visible.
 function extractPromptText(prompt: string): string {
-  const idx = prompt.lastIndexOf('Message:');
-  if (idx >= 0) {
-    return prompt.slice(idx + 'Message:'.length).trim();
+  for (const label of ['Text:', 'Message:']) {
+    const idx = prompt.lastIndexOf(label);
+    if (idx >= 0) return prompt.slice(idx + label.length).trim();
   }
   return prompt.trim();
 }

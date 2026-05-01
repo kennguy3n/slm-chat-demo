@@ -21,6 +21,11 @@ import {
   buildDraftArtifactPrompt,
   buildExtractKnowledgePrompt,
   parseExtractKnowledgeOutput,
+  buildTranslatePrompt,
+  buildTranslateBatchPrompt,
+  parseTranslateOutput,
+  parseTranslateBatchOutput,
+  languageLabel,
 } from '../index.js';
 
 const THREAD = [
@@ -244,5 +249,113 @@ describe('extract-knowledge prompt', () => {
 
   it('honours INSUFFICIENT', () => {
     expect(parseExtractKnowledgeOutput('INSUFFICIENT: empty channel').rows).toEqual([]);
+  });
+});
+
+describe('translate prompt', () => {
+  it('builds a (system, user) pair anchored on the language pair', () => {
+    const { system, user } = buildTranslatePrompt({
+      text: 'Hey Minh!',
+      targetLanguage: 'vi',
+      sourceLanguage: 'en',
+    });
+    // System instruction must explicitly forbid commentary, label
+    // prefixes and language-into-itself "translation" — the three
+    // failure modes captured in the 2026-05-01 demo screenshots.
+    expect(system).toMatch(/translation engine/i);
+    expect(system).toMatch(/no commentary/i);
+    expect(system).toMatch(/translate english into english|language into itself/i);
+    // User turn carries the explicit direction + the source body.
+    expect(user).toContain('Translate from English to Vietnamese.');
+    expect(user).toContain('Text: Hey Minh!');
+  });
+
+  it('falls back to "Translate to <DST>" when no source is given', () => {
+    const { user } = buildTranslatePrompt({
+      text: 'Chào Alice!',
+      targetLanguage: 'en',
+    });
+    expect(user).toContain('Translate to English.');
+    expect(user).not.toMatch(/Translate from/);
+  });
+
+  it('languageLabel maps known ISO codes and falls back to the raw code', () => {
+    expect(languageLabel('en')).toBe('English');
+    expect(languageLabel('vi')).toBe('Vietnamese');
+    expect(languageLabel('xx')).toBe('xx');
+    expect(languageLabel(undefined)).toBe('');
+  });
+
+  it('strips leading "(to <code>)" echoes from the model output', () => {
+    expect(parseTranslateOutput('(to en) Hi Alice, how are you?')).toBe(
+      'Hi Alice, how are you?',
+    );
+    expect(parseTranslateOutput('(to vi) Chào Alice')).toBe('Chào Alice');
+  });
+
+  it('strips "[from → to]" and "[Vietnamese → English]" echoes', () => {
+    expect(parseTranslateOutput('[en → vi] Chào bạn')).toBe('Chào bạn');
+    expect(parseTranslateOutput('[Vietnamese → English] Hi there')).toBe('Hi there');
+  });
+
+  it('strips "Translation:", "Answer:", "Câu trả lời:" labels', () => {
+    expect(parseTranslateOutput('Translation: Hi Alice')).toBe('Hi Alice');
+    expect(parseTranslateOutput('Vietnamese translation: Chào bạn')).toBe('Chào bạn');
+    expect(parseTranslateOutput('Câu trả lời: Hello')).toBe('Hello');
+    expect(parseTranslateOutput('Answer: 7pm at the new place.')).toBe(
+      '7pm at the new place.',
+    );
+  });
+
+  it('strips matched surrounding quotes', () => {
+    expect(parseTranslateOutput('"Hi Alice"')).toBe('Hi Alice');
+    expect(parseTranslateOutput("'Hi Alice'")).toBe('Hi Alice');
+    expect(parseTranslateOutput('“Hi Alice”')).toBe('Hi Alice');
+  });
+
+  it('strips a leading <think>…</think> reasoning block defensively', () => {
+    const out = '<think>The user wants a translation.</think>\nHi Alice';
+    expect(parseTranslateOutput(out)).toBe('Hi Alice');
+  });
+
+  it('stacks: strips numbering then label then quotes', () => {
+    expect(parseTranslateOutput('1. Translation: "Hi Alice"')).toBe('Hi Alice');
+  });
+
+  it('returns the input unchanged when no recognised prefix is present', () => {
+    expect(parseTranslateOutput('Hi Alice, how are you?')).toBe(
+      'Hi Alice, how are you?',
+    );
+  });
+
+  it('builds a batch prompt with per-item language annotations', () => {
+    const { system, user } = buildTranslateBatchPrompt({
+      items: [
+        { text: 'Hey Minh!', targetLanguage: 'vi', sourceLanguage: 'en' },
+        { text: 'Chào Alice!', targetLanguage: 'en', sourceLanguage: 'vi' },
+      ],
+    });
+    expect(system).toMatch(/translation engine/i);
+    expect(system).toMatch(/`<N>\. <translation>`/);
+    expect(user).toContain('1. [English → Vietnamese] Hey Minh!');
+    expect(user).toContain('2. [Vietnamese → English] Chào Alice!');
+  });
+
+  it('parseTranslateBatchOutput strips per-line "(to xx)" echoes', () => {
+    const out = ['1. (to vi) Chào Alice', '2. (to en) Hi Minh'].join('\n');
+    expect(parseTranslateBatchOutput(out, 2)).toEqual(['Chào Alice', 'Hi Minh']);
+  });
+
+  it('parseTranslateBatchOutput recovers per-line label / quote strips', () => {
+    const out = [
+      '1. Translation: "Hi Alice"',
+      '2. Vietnamese translation: Chào Minh',
+    ].join('\n');
+    expect(parseTranslateBatchOutput(out, 2)).toEqual(['Hi Alice', 'Chào Minh']);
+  });
+
+  it('parseTranslateBatchOutput honours expected length and missing rows', () => {
+    const out = '1. first\n3. third';
+    expect(parseTranslateBatchOutput(out, 3)).toEqual(['first', '', 'third']);
   });
 });

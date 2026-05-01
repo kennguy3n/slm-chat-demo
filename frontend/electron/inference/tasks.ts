@@ -47,9 +47,13 @@ import {
   buildExtractTasksPrompt,
   buildPrefillApprovalPrompt,
   buildDraftArtifactPrompt,
+  buildTranslatePrompt,
+  buildTranslateBatchPrompt,
   parseConversationInsightsOutput,
   parseExtractTasksOutput,
   parsePrefillApprovalOutput,
+  parseTranslateOutput,
+  parseTranslateBatchOutput,
 } from './prompts/index.js';
 import { PROMPT_MESSAGE_CAP, PROMPT_THREAD_CAP } from './prompts/shared.js';
 
@@ -130,15 +134,37 @@ export async function runTranslate(
   req: TranslateRequest,
 ): Promise<TranslateResponse> {
   const target = (req.targetLanguage ?? '').trim() || 'en';
-  const prompt =
-    `Translate the following chat message into ${target}. Preserve tone, names, and emoji. ` +
-    `Respond with the translation only, no commentary.\n\nMessage: ${req.text}`;
+  const source = (req.sourceLanguage ?? '').trim();
+  // Skip the model call entirely when source and target match — the
+  // small Bonsai-1.7B model otherwise loves to "translate" English
+  // into English by inventing new content (hallucination), which
+  // looks like a bug to the user. Returning the original verbatim
+  // is also faithful to the user's intent ("translate to English"
+  // when the bubble is already English ⇒ identity).
+  if (source && source === target) {
+    return {
+      messageId: req.messageId,
+      channelId: req.channelId,
+      original: req.text,
+      translated: req.text,
+      targetLanguage: target,
+      model: 'identity',
+      computeLocation: 'on_device',
+      dataEgressBytes: 0,
+    };
+  }
+  const { system, user } = buildTranslatePrompt({
+    text: req.text,
+    targetLanguage: target,
+    sourceLanguage: source || undefined,
+  });
   const resp = await adapter.run({
     taskType: 'translate',
-    prompt,
+    prompt: user,
+    system,
     channelId: req.channelId,
   });
-  const translated = resp.output.trim() || req.text;
+  const translated = parseTranslateOutput(resp.output) || req.text;
   return {
     messageId: req.messageId,
     channelId: req.channelId,
@@ -151,69 +177,114 @@ export async function runTranslate(
   };
 }
 
-// runTranslateBatch sends every message in a single prompt so the
-// model only pays the prompt-eval / load cost once. The response is a
-// JSON array keyed by index; missing entries fall back to the
-// original text so the renderer never blanks out.
+// runTranslateBatch issues one model call covering every message in
+// the batch — much faster than N independent `/api/generate` round
+// trips on CPU inference where each call pays the prompt-eval cost
+// up front. Items where source and target language match are
+// short-circuited via the per-item identity path in `runTranslate`
+// instead of being included in the LLM call (Bonsai-1.7B otherwise
+// hallucinates English-to-English "translations" that look like a
+// bug). The remaining items are bucketed into a single batched
+// prompt and the model output is run through `parseTranslateBatchOutput`
+// for index-keyed recovery.
 export async function runTranslateBatch(
   adapter: Adapter,
   req: TranslateBatchRequest,
 ): Promise<TranslateBatchResponse> {
   const items = req.items;
   if (items.length === 0) return { results: [] };
-  if (items.length === 1) {
-    const only = items[0]!;
-    const one = await runTranslate(adapter, {
-      messageId: only.messageId,
-      channelId: only.channelId,
-      text: only.text,
-      targetLanguage: only.targetLanguage,
-    });
-    return { results: [one] };
+
+  // Build a placeholder array sized to the input so we can write
+  // results back in order (some indices skipped via identity, others
+  // filled by the batched LLM call).
+  const results: TranslateResponse[] = new Array(items.length);
+
+  // Phase 1: fast-path identity responses for "translate X to X".
+  const llmIndices: number[] = [];
+  for (let i = 0; i < items.length; i += 1) {
+    const it = items[i]!;
+    const target = (it.targetLanguage ?? '').trim() || 'en';
+    const source = (it.sourceLanguage ?? '').trim();
+    if (source && source === target) {
+      results[i] = {
+        messageId: it.messageId,
+        channelId: it.channelId,
+        original: it.text,
+        translated: it.text,
+        targetLanguage: target,
+        model: 'identity',
+        computeLocation: 'on_device',
+        dataEgressBytes: 0,
+      };
+      continue;
+    }
+    llmIndices.push(i);
   }
-  const channelId = items[0]!.channelId;
-  const lines = items
-    .map((it, i) => `${i + 1}. (to ${it.targetLanguage}) ${truncateForPrompt(it.text, 400)}`)
-    .join('\n');
-  const prompt =
-    'Translate each of the following chat messages into the language indicated in parentheses. ' +
-    'Preserve tone, names, and emoji. Output one translation per line in the exact format ' +
-    '`<N>. <translation>` with nothing else — no commentary, no repetition of the original.\n\n' +
-    lines;
+
+  if (llmIndices.length === 0) return { results };
+
+  // Single-LLM-item batches still benefit from the per-item prompt
+  // (system + user split, language-pair anchoring) — defer to
+  // `runTranslate` rather than re-implementing the format here.
+  if (llmIndices.length === 1) {
+    const i = llmIndices[0]!;
+    const it = items[i]!;
+    const one = await runTranslate(adapter, {
+      messageId: it.messageId,
+      channelId: it.channelId,
+      text: it.text,
+      targetLanguage: it.targetLanguage,
+      sourceLanguage: it.sourceLanguage,
+    });
+    results[i] = one;
+    return { results };
+  }
+
+  // Phase 2: batched LLM call for everything else.
+  const channelId = items[llmIndices[0]!]!.channelId;
+  const llmItems = llmIndices.map((i) => {
+    const it = items[i]!;
+    return {
+      text: truncateForPrompt(it.text, 400),
+      targetLanguage: it.targetLanguage,
+      sourceLanguage: it.sourceLanguage,
+    };
+  });
+  const { system, user } = buildTranslateBatchPrompt({ items: llmItems });
   const resp = await adapter.run({
     taskType: 'translate',
-    prompt,
+    prompt: user,
+    system,
     channelId,
-    maxTokens: Math.max(256, items.reduce((s, it) => s + it.text.length, 0)),
+    maxTokens: Math.max(
+      256,
+      llmItems.reduce((s, it) => s + it.text.length, 0),
+    ),
   });
-  const parsed = parseBatchTranslations(resp.output, items.length);
-  const results: TranslateResponse[] = items.map((it, i) => ({
-    messageId: it.messageId,
-    channelId: it.channelId,
-    original: it.text,
-    translated: parsed[i]?.trim() || it.text,
-    targetLanguage: it.targetLanguage,
-    model: resp.model,
-    computeLocation: 'on_device',
-    dataEgressBytes: 0,
-  }));
+  const parsed = parseTranslateBatchOutput(resp.output, llmIndices.length);
+  for (let k = 0; k < llmIndices.length; k += 1) {
+    const i = llmIndices[k]!;
+    const it = items[i]!;
+    results[i] = {
+      messageId: it.messageId,
+      channelId: it.channelId,
+      original: it.text,
+      translated: parsed[k]?.trim() || it.text,
+      targetLanguage: it.targetLanguage,
+      model: resp.model,
+      computeLocation: 'on_device',
+      dataEgressBytes: 0,
+    };
+  }
   return { results };
 }
 
+// Legacy export retained for any out-of-tree caller that still
+// imports it. Internally tasks.ts now uses
+// `parseTranslateBatchOutput` from the prompt module which also
+// strips per-line label / `(to xx)` echo prefixes.
 export function parseBatchTranslations(out: string, expected: number): string[] {
-  const result: string[] = new Array(expected).fill('');
-  if (!out) return result;
-  const lines = out.split('\n');
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    const m = line.match(/^\s*\(?(\d+)[.):\]]?\s+(.+)$/);
-    if (!m) continue;
-    const idx = Number.parseInt(m[1]!, 10) - 1;
-    if (idx < 0 || idx >= expected) continue;
-    if (!result[idx]) result[idx] = m[2]!.trim();
-  }
-  return result;
+  return parseTranslateBatchOutput(out, expected);
 }
 
 // ---------- extract tasks (B2C) ----------

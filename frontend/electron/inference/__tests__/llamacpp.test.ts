@@ -98,6 +98,7 @@ describe('LlamaCppAdapter', () => {
     await adapter.run({
       taskType: 'smart_reply',
       prompt: 'reply',
+      system: 'You are a helpful assistant.',
     });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls;
@@ -105,11 +106,34 @@ describe('LlamaCppAdapter', () => {
     expect(url).toBe('http://localhost:11400/completion');
     expect(init.method).toBe('POST');
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
-    expect(body.prompt).toBe('reply');
+    // Adapter wraps the (system, prompt) pair in the Qwen3 chat
+    // template before forwarding to /completion (see formatQwen3Chat).
+    expect(body.prompt).toContain('<|im_start|>system\nYou are a helpful assistant.<|im_end|>');
+    expect(body.prompt).toContain('<|im_start|>user\nreply<|im_end|>');
+    expect(body.prompt).toContain('<|im_start|>assistant\n');
     expect(body.stream).toBe(true);
-    expect(body.temperature).toBe(0.7);
+    // Lowered to 0.2 (from 0.7) on 2026-05-01 to keep translation
+    // and other instruct tasks deterministic on Bonsai-1.7B.
+    expect(body.temperature).toBe(0.2);
     expect(body.top_p).toBe(0.9);
     expect(typeof body.n_predict).toBe('number');
+    // Stop on `<|im_end|>` so the model can't emit a fake user turn.
+    expect(body.stop).toEqual(['<|im_end|>', '<|endoftext|>']);
+  });
+
+  it('falls back to a user-only chat template when no system is provided', async () => {
+    const fetchImpl = vi.fn(async () =>
+      sseResponse([JSON.stringify({ content: 'ok', stop: true })]),
+    ) as unknown as typeof fetch;
+
+    const adapter = new LlamaCppAdapter({ fetchImpl });
+    await adapter.run({ taskType: 'smart_reply', prompt: 'hi' });
+    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const [, init] = calls[0]! as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.prompt).not.toContain('<|im_start|>system');
+    expect(body.prompt).toContain('<|im_start|>user\nhi<|im_end|>');
+    expect(body.prompt).toContain('<|im_start|>assistant\n');
   });
 
   it('throws when the server returns a non-2xx response', async () => {
