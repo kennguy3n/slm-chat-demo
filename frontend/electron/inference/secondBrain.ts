@@ -25,7 +25,7 @@ import type {
 import type { InferenceRouter } from './router.js';
 import { truncateForPrompt } from './tasks.js';
 import { INSUFFICIENT_RULE, detectInsufficient } from './skill-framework.js';
-import { PROMPT_THREAD_CAP } from './prompts/shared.js';
+import { PROMPT_MESSAGE_CAP, PROMPT_THREAD_CAP } from './prompts/shared.js';
 
 // Second-Brain helpers don't use the prompts/ library yet, but the
 // outer cap is kept in lock-step with PROMPT_THREAD_CAP so the
@@ -52,7 +52,7 @@ export async function runFamilyChecklist(
   }
   prompt += 'Recent messages:\n';
   for (const m of limited) {
-    prompt += `- ${m.senderId}: ${truncateForPrompt(m.content, 200)}\n`;
+    prompt += `- ${m.senderId}: ${truncateForPrompt(m.content, PROMPT_MESSAGE_CAP)}\n`;
   }
 
   const resp = await router.run({
@@ -164,7 +164,7 @@ export async function runShoppingNudges(
   }
   prompt += 'Recent messages:\n';
   for (const m of limited) {
-    prompt += `- ${m.senderId}: ${truncateForPrompt(m.content, 200)}\n`;
+    prompt += `- ${m.senderId}: ${truncateForPrompt(m.content, PROMPT_MESSAGE_CAP)}\n`;
   }
 
   const resp = await router.run({
@@ -241,7 +241,7 @@ export async function runEventRSVP(
   prompt += 'Skip events without at least a title and a when. Return at most 4 events.\n\n';
   prompt += 'Recent messages:\n';
   for (const m of limited) {
-    prompt += `- ${m.senderId}: ${truncateForPrompt(m.content, 240)}\n`;
+    prompt += `- ${m.senderId}: ${truncateForPrompt(m.content, PROMPT_MESSAGE_CAP)}\n`;
   }
 
   const resp = await router.run({
