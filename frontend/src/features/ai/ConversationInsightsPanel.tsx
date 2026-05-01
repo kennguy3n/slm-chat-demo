@@ -91,7 +91,13 @@ export function ConversationInsightsPanel({ channel = null }: Props) {
     if (startedRef.current === channel.id) return;
     startedRef.current = channel.id;
     if (cached) {
+      // Switching to a channel with cached output — bump the run id so any
+      // in-flight fetch from the previously selected channel is dropped
+      // by its own resolved/rejected handler instead of overwriting state.
+      runIdRef.current += 1;
       setInsights(cached);
+      setIsLoading(false);
+      setErr(null);
       return;
     }
     run();
