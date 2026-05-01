@@ -9,6 +9,11 @@ import type {
   ApprovalTemplate,
   ArtifactKind,
   ArtifactSection,
+  ConversationInsightActionItem,
+  ConversationInsightDecision,
+  ConversationInsightTopic,
+  ConversationInsightsRequest,
+  ConversationInsightsResponse,
   DraftArtifactRequest,
   DraftArtifactResponse,
   ExtractTasksRequest,
@@ -37,10 +42,12 @@ import type {
 import type { InferenceRouter } from './router.js';
 import { INSUFFICIENT_RULE, detectInsufficient } from './skill-framework.js';
 import {
+  buildConversationInsightsPrompt,
   buildSummarizePrompt,
   buildExtractTasksPrompt,
   buildPrefillApprovalPrompt,
   buildDraftArtifactPrompt,
+  parseConversationInsightsOutput,
   parseExtractTasksOutput,
   parsePrefillApprovalOutput,
 } from './prompts/index.js';
@@ -889,5 +896,152 @@ function collectFormSources(
     }
   }
   if (seen.size === 0 && messages.length > 0) seen.add(messages[0].id);
+  return Array.from(seen);
+}
+
+// ---------- conversation insights (B2C ground-zero LLM redesign) ----------
+
+// runConversationInsights drives the right-rail "Insights" panel
+// in the B2C demo. The handler builds the conversation-insights
+// prompt and routes it through the same `InferenceRouter` as every
+// other AI surface so the privacy / metering / model-status story
+// is identical to summarise / translate / extract-tasks. Source-
+// message ids are recovered by fuzzy-matching topic / action /
+// decision text back to the messages we forwarded; this keeps the
+// renderer's "Why?" affordance working without asking the model to
+// emit an extra column.
+export async function runConversationInsights(
+  router: InferenceRouter,
+  req: ConversationInsightsRequest,
+): Promise<ConversationInsightsResponse> {
+  const messages = req.messages.slice(-PROMPT_THREAD_CAP);
+  const prompt = buildConversationInsightsPrompt({
+    messages: messages.map((m) => ({
+      id: m.id,
+      channelId: m.channelId,
+      senderId: m.senderId,
+      content: m.content,
+    })),
+    ...(req.viewerLanguage ? { viewerLanguage: req.viewerLanguage } : {}),
+  });
+
+  const resp = await router.run({
+    taskType: 'summarize',
+    prompt,
+    channelId: req.channelId,
+  });
+  const decision = router.lastDecision();
+  const tier: Tier = decision.tier ?? 'local';
+  const reason =
+    decision.reason ||
+    `Routed conversation_insights to ${
+      tier === 'server' ? 'confidential server' : 'on-device Bonsai'
+    }.`;
+
+  const parsed = parseConversationInsightsOutput(resp.output);
+
+  const topics: ConversationInsightTopic[] = [];
+  for (const t of parsed.topics) {
+    const sourceMessageId = findSourceMessage(
+      messages,
+      [t.label, t.detail ?? ''].join(' '),
+    );
+    topics.push({
+      label: t.label,
+      ...(t.detail ? { detail: t.detail } : {}),
+      ...(sourceMessageId ? { sourceMessageId } : {}),
+    });
+  }
+
+  const actionItems: ConversationInsightActionItem[] = [];
+  for (const a of parsed.actionItems) {
+    const sourceMessageId = findSourceMessage(
+      messages,
+      [a.text, a.owner ?? ''].join(' '),
+    );
+    actionItems.push({
+      text: a.text,
+      ...(a.owner ? { owner: a.owner } : {}),
+      ...(sourceMessageId ? { sourceMessageId } : {}),
+    });
+  }
+
+  const decisions: ConversationInsightDecision[] = [];
+  for (const d of parsed.decisions) {
+    const sourceMessageId = findSourceMessage(messages, d.text);
+    decisions.push({
+      text: d.text,
+      ...(sourceMessageId ? { sourceMessageId } : {}),
+    });
+  }
+
+  const sourceMessageIds = collectInsightSources(
+    topics,
+    actionItems,
+    decisions,
+    messages,
+  );
+
+  return {
+    channelId: req.channelId,
+    topics,
+    actionItems,
+    decisions,
+    sentiment: parsed.sentiment,
+    ...(parsed.sentimentRationale
+      ? { sentimentRationale: parsed.sentimentRationale }
+      : {}),
+    sourceMessageIds,
+    model: resp.model,
+    tier,
+    reason,
+    computeLocation: 'on_device',
+    dataEgressBytes: 0,
+  };
+}
+
+// findSourceMessage walks the same conversation slice we sent the
+// model and picks the message whose lower-cased content shares the
+// most ≥4-character tokens with `text`. Returns undefined when no
+// message has any meaningful overlap so the renderer can fall back
+// to "no source" rather than back-link to a coincidental hit.
+function findSourceMessage(
+  messages: { id: string; content: string }[],
+  text: string,
+): string | undefined {
+  const tokens = (text ?? '')
+    .toLowerCase()
+    .split(/[^a-z0-9\u00C0-\uFFFF]+/)
+    .filter((w) => w.length >= 4);
+  if (tokens.length === 0) return undefined;
+  let bestId: string | undefined;
+  let bestScore = 0;
+  for (const m of messages) {
+    const c = m.content.toLowerCase();
+    let score = 0;
+    for (const t of tokens) {
+      if (c.includes(t)) score += 1;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = m.id;
+    }
+  }
+  return bestId;
+}
+
+function collectInsightSources(
+  topics: ConversationInsightTopic[],
+  actions: ConversationInsightActionItem[],
+  decisions: ConversationInsightDecision[],
+  messages: { id: string }[],
+): string[] {
+  const seen = new Set<string>();
+  for (const t of topics) if (t.sourceMessageId) seen.add(t.sourceMessageId);
+  for (const a of actions) if (a.sourceMessageId) seen.add(a.sourceMessageId);
+  for (const d of decisions) if (d.sourceMessageId) seen.add(d.sourceMessageId);
+  if (seen.size === 0 && messages.length > 0) {
+    seen.add(messages[messages.length - 1]!.id);
+  }
   return Array.from(seen);
 }

@@ -6,6 +6,10 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { renderWithProviders } from '../../test/renderWithProviders';
 import type { Channel } from '../../types/workspace';
 
+// The 2026-05-01 ground-zero LLM redesign collapsed B2C to a single
+// bilingual VI↔EN DM. The layout still renders any DM-kind channel
+// the seed exposes, so we ship a small fixture with two of them to
+// confirm the sidebar renders multiple personal chats correctly.
 const chats: Channel[] = [
   {
     id: 'ch_dm_alice_minh',
@@ -17,26 +21,10 @@ const chats: Channel[] = [
     partnerLanguage: 'vi',
   },
   {
-    id: 'ch_dm',
+    id: 'ch_dm_alice_friend',
     workspaceId: 'ws_personal',
-    name: 'Bob Martinez',
+    name: 'Friend',
     kind: 'dm',
-    context: 'b2c',
-    memberIds: ['user_alice', 'user_bob'],
-  },
-  {
-    id: 'ch_family',
-    workspaceId: 'ws_personal',
-    name: 'Family Group',
-    kind: 'family',
-    context: 'b2c',
-    memberIds: ['user_alice', 'user_bob'],
-  },
-  {
-    id: 'ch_neighborhood',
-    workspaceId: 'ws_personal',
-    name: 'Neighborhood Community',
-    kind: 'community',
     context: 'b2c',
     memberIds: ['user_alice', 'user_carol'],
   },
@@ -61,42 +49,38 @@ describe('B2CLayout', () => {
   });
   afterEach(() => fetchSpy.mockReset());
 
-  it('renders sidebar sections for personal, family, and community chats', async () => {
+  it('renders the personal-chats sidebar section with all DM channels', () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
     expect(screen.getByRole('heading', { name: /personal chats/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /family groups/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /community groups/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /minh nguyen/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /bob martinez/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /family group/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /neighborhood community/i })).toBeInTheDocument();
-    // Wait for the (always-mounted) AIMemoryPage to finish its initial
-    // async load so we don't trigger React's act() warning.
-    await waitFor(() => expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /^friend$/i })).toBeInTheDocument();
+    // Family / community sidebar sections were removed by the
+    // ground-zero LLM redesign.
+    expect(screen.queryByRole('heading', { name: /family groups/i })).toBeNull();
+    expect(screen.queryByRole('heading', { name: /community groups/i })).toBeNull();
   });
 
-  it('mounts only the new Summary / Memory / Stats right-rail tabs', async () => {
+  it('mounts only the Summary / Insights / Stats right-rail tabs', () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
     expect(screen.getByTestId('b2c-right-tab-summary')).toBeInTheDocument();
-    expect(screen.getByTestId('b2c-right-tab-memory')).toBeInTheDocument();
+    expect(screen.getByTestId('b2c-right-tab-insights')).toBeInTheDocument();
     expect(screen.getByTestId('b2c-right-tab-stats')).toBeInTheDocument();
-    // Old tabs from the second-brain era must not render any more.
+    // Old tabs from the second-brain / memory era must not render.
+    expect(screen.queryByTestId('b2c-right-tab-memory')).toBeNull();
     expect(screen.queryByTestId('b2c-right-tab-family')).toBeNull();
     expect(screen.queryByTestId('b2c-right-tab-shopping')).toBeNull();
     expect(screen.queryByTestId('b2c-right-tab-events')).toBeNull();
     expect(screen.queryByTestId('b2c-right-tab-trip')).toBeNull();
-    expect(screen.queryByTestId('b2c-right-tab-digest')).toBeNull();
-    await waitFor(() =>
-      expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument(),
-    );
   });
 
-  it('mounts the conversation summary panel in the right rail', async () => {
+  it('mounts the conversation summary panel in the right rail', () => {
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
     expect(screen.getByTestId('morning-digest-panel')).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument(),
-    );
+  });
+
+  it('mounts the LLM-driven conversation insights panel', () => {
+    renderWithProviders(<B2CLayout chats={chats} users={{}} />);
+    expect(screen.getByTestId('conversation-insights-panel')).toBeInTheDocument();
   });
 
   it('auto-selects the bilingual ch_dm_alice_minh channel on first mount', async () => {
@@ -104,20 +88,13 @@ describe('B2CLayout', () => {
     await waitFor(() =>
       expect(useWorkspaceStore.getState().selectedChatId).toBe('ch_dm_alice_minh'),
     );
-    await waitFor(() =>
-      expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument(),
-    );
   });
 
-  it('keeps the user-selected chat when the layout remounts after a tab switch', async () => {
-    useWorkspaceStore.setState({ selectedChatId: 'ch_family' });
+  it('keeps the user-selected chat when the user switches right-rail tabs', async () => {
+    useWorkspaceStore.setState({ selectedChatId: 'ch_dm_alice_friend' });
     renderWithProviders(<B2CLayout chats={chats} users={{}} />);
-    expect(useWorkspaceStore.getState().selectedChatId).toBe('ch_family');
-    await waitFor(() =>
-      expect(screen.getByTestId('memory-page-empty')).toBeInTheDocument(),
-    );
-    // Tab switch must not reset the selected chat.
+    expect(useWorkspaceStore.getState().selectedChatId).toBe('ch_dm_alice_friend');
     await userEvent.click(screen.getByTestId('b2c-right-tab-stats'));
-    expect(useWorkspaceStore.getState().selectedChatId).toBe('ch_family');
+    expect(useWorkspaceStore.getState().selectedChatId).toBe('ch_dm_alice_friend');
   });
 });

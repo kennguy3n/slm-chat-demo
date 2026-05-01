@@ -357,89 +357,62 @@ export interface UnreadSummaryResponse {
   dataEgressBytes: 0;
 }
 
-// ---------- Phase 2 B2C second-brain surfaces ----------
+// ---------- B2C conversation insights ----------
 //
-// The next batch of B2C surfaces all share the same shape: read recent
-// chat messages from a single chat, run a single on-device inference,
-// return a structured set of items the renderer can render as cards.
-// None of the requests carry persistent state — the renderer stores
-// any user-confirmed memory locally (IndexedDB) and re-supplies the
-// relevant context on each call.
+// LLM-driven "insights" extraction over a single conversation. The
+// renderer ships the recent message window and receives back a
+// structured payload with key topics, action items, decisions, and
+// an overall sentiment label. All inference runs on-device — there
+// is no fallback to seeded data; when the local LLM is unreachable
+// the response surfaces an `[MOCK]` placeholder via MockAdapter so
+// the privacy strip + screenshots reveal the missing model.
 
-export interface FamilyChecklistItem {
-  title: string;
-  // dueHint is a soft, free-form deadline ("tonight", "Friday morning")
-  // pulled from the chat. Always renderer-displayable as-is.
-  dueHint?: string;
+export type ConversationSentiment =
+  | 'positive'
+  | 'neutral'
+  | 'negative'
+  | 'mixed'
+  | 'unknown';
+
+export interface ConversationInsightTopic {
+  // Short topic label (≤ 6 words). Surfaces as a chip in the panel.
+  label: string;
+  // Optional one-sentence elaboration.
+  detail?: string;
   sourceMessageId?: string;
 }
 
-export interface FamilyChecklistRequest {
-  channelId: string;
-  // Recent messages (last ~30) the renderer fetched from the data API.
-  messages: { id: string; channelId: string; senderId: string; content: string }[];
-  // Optional event hint ("Soccer practice tomorrow", "Birthday party
-  // Saturday") so the model can ground the checklist around it.
-  eventHint?: string;
-}
-
-export interface FamilyChecklistResponse {
-  channelId: string;
-  title: string;
-  items: FamilyChecklistItem[];
-  sourceMessageIds: string[];
-  model: string;
-  tier: Tier;
-  reason: string;
-  computeLocation: 'on_device';
-  dataEgressBytes: 0;
-}
-
-export interface ShoppingNudge {
-  // Suggested item to add to the list.
-  item: string;
-  // Reason — referenced back to a chat message when possible
-  // ("Add sunscreen because field trip is tomorrow").
-  reason: string;
+export interface ConversationInsightActionItem {
+  // Action verb phrase ("Book a table", "Bring an umbrella").
+  text: string;
+  // Owner name as it appears in the chat ("Minh", "Alice"). Optional
+  // — the model omits when the chat doesn't make it clear.
+  owner?: string;
   sourceMessageId?: string;
 }
 
-export interface ShoppingNudgesRequest {
-  channelId: string;
-  messages: { id: string; channelId: string; senderId: string; content: string }[];
-  // Items already on the user's shopping list — the model uses these to
-  // avoid duplicating suggestions.
-  existingItems: string[];
-}
-
-export interface ShoppingNudgesResponse {
-  channelId: string;
-  nudges: ShoppingNudge[];
-  sourceMessageIds: string[];
-  model: string;
-  tier: Tier;
-  reason: string;
-  computeLocation: 'on_device';
-  dataEgressBytes: 0;
-}
-
-export interface RSVPEvent {
-  title: string;
-  // Free-form date/time hint ("Saturday 3pm", "Friday afternoon").
-  whenHint?: string;
-  location?: string;
-  rsvpBy?: string;
+export interface ConversationInsightDecision {
+  text: string;
   sourceMessageId?: string;
 }
 
-export interface EventRSVPRequest {
+export interface ConversationInsightsRequest {
   channelId: string;
+  // Recent messages the renderer fetched from the data API. The
+  // task helper truncates / caps as needed for the prompt budget.
   messages: { id: string; channelId: string; senderId: string; content: string }[];
+  // Viewer's preferred output language. Defaults to English. Pure
+  // hint — the model writes its insights in the named language.
+  viewerLanguage?: string;
 }
 
-export interface EventRSVPResponse {
+export interface ConversationInsightsResponse {
   channelId: string;
-  events: RSVPEvent[];
+  topics: ConversationInsightTopic[];
+  actionItems: ConversationInsightActionItem[];
+  decisions: ConversationInsightDecision[];
+  sentiment: ConversationSentiment;
+  sentimentRationale?: string;
   sourceMessageIds: string[];
   model: string;
   tier: Tier;
@@ -471,14 +444,9 @@ export interface ElectronAI {
   prefillForm(req: PrefillFormRequest): Promise<PrefillFormResponse>;
   draftArtifact(req: DraftArtifactRequest): Promise<DraftArtifactResponse>;
   unreadSummary(req: UnreadSummaryRequest): Promise<UnreadSummaryResponse>;
-  familyChecklist(req: FamilyChecklistRequest): Promise<FamilyChecklistResponse>;
-  shoppingNudges(req: ShoppingNudgesRequest): Promise<ShoppingNudgesResponse>;
-  eventRSVP(req: EventRSVPRequest): Promise<EventRSVPResponse>;
-  // Phase 2 trip planner — opaque payloads here so the adapter module
-  // does not have to import the skill module (which depends on the
-  // search service); the renderer side gets full types via the
-  // dedicated `frontend/src/types/electron.d.ts` augmentation.
-  tripPlan(req: unknown): Promise<unknown>;
+  conversationInsights(
+    req: ConversationInsightsRequest,
+  ): Promise<ConversationInsightsResponse>;
   guardrailCheck(req: unknown): Promise<unknown>;
   // Phase 7 — LLM-driven knowledge extraction. Opaque payloads here
   // (the renderer side gets fully-typed shapes via `electron.d.ts`).

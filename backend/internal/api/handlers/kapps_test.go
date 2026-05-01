@@ -9,6 +9,13 @@ import (
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/models"
 )
 
+// TestKAppsCardsReturnsAllSeededKinds checks that the seeded card
+// dataset still covers the two B2B-anchored card kinds (Approval +
+// Artifact). The 2026-05-01 ground-zero LLM redesign removed the
+// seed-coupled B2C task and event cards — those now come from the
+// real on-device LLM at runtime (task extraction, conversation
+// insights), so the assertion here is scoped to the kinds that are
+// still seed-backed.
 func TestKAppsCardsReturnsAllSeededKinds(t *testing.T) {
 	h := newTestServer()
 	rec := doGet(t, h, "/api/kapps/cards", "user_alice")
@@ -21,52 +28,21 @@ func TestKAppsCardsReturnsAllSeededKinds(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body.Cards) < 4 {
-		t.Fatalf("expected at least 4 seeded cards, got %d", len(body.Cards))
+	if len(body.Cards) < 2 {
+		t.Fatalf("expected at least 2 seeded cards, got %d", len(body.Cards))
 	}
 	kinds := map[models.CardKind]bool{}
 	for _, c := range body.Cards {
 		kinds[c.Kind] = true
 	}
 	want := []models.CardKind{
-		models.CardKindTask,
 		models.CardKindApproval,
 		models.CardKindArtifact,
-		models.CardKindEvent,
 	}
 	for _, k := range want {
 		if !kinds[k] {
 			t.Errorf("expected at least one card of kind %q", k)
 		}
-	}
-}
-
-func TestKAppsCardsTaskHasExpectedFields(t *testing.T) {
-	h := newTestServer()
-	rec := doGet(t, h, "/api/kapps/cards", "user_alice")
-	var body struct {
-		Cards []models.Card `json:"cards"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-
-	var task *models.Task
-	for _, c := range body.Cards {
-		if c.Kind == models.CardKindTask {
-			task = c.Task
-			break
-		}
-	}
-	if task == nil {
-		t.Fatalf("expected at least one task card")
-	}
-	if task.Title == "" || task.ChannelID == "" {
-		t.Errorf("expected task to have title and channel, got %+v", task)
-	}
-	if !task.AIGenerated {
-		t.Errorf("expected seeded task to be AI-generated")
-	}
-	if task.SourceMessageID == "" {
-		t.Errorf("expected task to back-link to a source message")
 	}
 }
 
@@ -99,9 +75,14 @@ func TestKAppsCardsApprovalHasFieldsAndDecisionLog(t *testing.T) {
 	}
 }
 
+// TestKAppsCardsFiltersByChannel exercises the channel filter on the
+// cards endpoint against the B2B vendor-management channel — the
+// one remaining seeded channel that backs a card after the
+// 2026-05-01 ground-zero LLM redesign stripped the seed-coupled B2C
+// task / event cards.
 func TestKAppsCardsFiltersByChannel(t *testing.T) {
 	h := newTestServer()
-	rec := doGet(t, h, "/api/kapps/cards?channelId=ch_family", "user_alice")
+	rec := doGet(t, h, "/api/kapps/cards?channelId=ch_vendor_management", "user_alice")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
@@ -110,7 +91,7 @@ func TestKAppsCardsFiltersByChannel(t *testing.T) {
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	if len(body.Cards) == 0 {
-		t.Fatalf("expected at least one card for ch_family")
+		t.Fatalf("expected at least one card for ch_vendor_management")
 	}
 	for _, c := range body.Cards {
 		channelID := ""
@@ -124,8 +105,8 @@ func TestKAppsCardsFiltersByChannel(t *testing.T) {
 		case models.CardKindEvent:
 			channelID = c.Event.ChannelID
 		}
-		if channelID != "ch_family" {
-			t.Errorf("expected only ch_family cards, got %s", channelID)
+		if channelID != "ch_vendor_management" {
+			t.Errorf("expected only ch_vendor_management cards, got %s", channelID)
 		}
 	}
 }
@@ -134,7 +115,7 @@ func TestKAppsCardsFiltersByChannel(t *testing.T) {
 
 func TestLinkedObjectsReturnsSeededCards(t *testing.T) {
 	h := newTestServer()
-	rec := doGet(t, h, "/api/threads/msg_fam_1/linked-objects", "user_alice")
+	rec := doGet(t, h, "/api/threads/msg_vend_root/linked-objects", "user_alice")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -145,15 +126,15 @@ func TestLinkedObjectsReturnsSeededCards(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body.ThreadID != "msg_fam_1" {
+	if body.ThreadID != "msg_vend_root" {
 		t.Errorf("expected threadId echo, got %q", body.ThreadID)
 	}
 	if len(body.Cards) == 0 {
 		t.Fatalf("expected at least one linked card")
 	}
 	for _, c := range body.Cards {
-		if c.ThreadID != "msg_fam_1" {
-			t.Errorf("expected ThreadID=msg_fam_1, got %q on %s", c.ThreadID, c.Kind)
+		if c.ThreadID != "msg_vend_root" {
+			t.Errorf("expected ThreadID=msg_vend_root, got %q on %s", c.ThreadID, c.Kind)
 		}
 	}
 }
@@ -307,7 +288,9 @@ func TestCreateTaskRejectsEmptyTitle(t *testing.T) {
 func TestUpdateTaskStatusRejectsUnknownStatus(t *testing.T) {
 	h := newTestServer()
 	body := strings.NewReader(`{"status":"on_fire"}`)
-	rec := doRequest(t, h, http.MethodPatch, "/api/kapps/tasks/task_sunscreen/status", "user_alice", body)
+	// Status validation runs before task lookup so the path is just a
+	// vehicle for the validator to reject the body.
+	rec := doRequest(t, h, http.MethodPatch, "/api/kapps/tasks/task_demo/status", "user_alice", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}

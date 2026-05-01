@@ -21,6 +21,7 @@ import type {
   AIRouteResponse,
   AIRunRequest,
   AIRunResponse,
+  ConversationInsightsResponse,
   EgressPreview,
   ExtractTasksResponse,
   ModelStatus,
@@ -30,8 +31,6 @@ import type {
   UnreadSummaryResponse,
 } from '../types/ai';
 import type {
-  TripPlannerExecution,
-  TripPlannerInputArgs,
   GuardrailSkillResult,
 } from '../types/electron';
 import { logActivity } from '../features/ai/activityLog';
@@ -290,19 +289,24 @@ export async function fetchThreadSummary(req: {
   });
 }
 
-// ---------- Phase 2 B2C second-brain helpers ----------
-
-export async function fetchFamilyChecklist(req: {
+// ---------- B2C conversation-insights helper ----------
+//
+// LLM-driven insights extraction over the currently selected B2C chat.
+// Pulls the message list from the data API, ships it through the
+// Electron bridge to the on-device router, and returns the structured
+// {topics, actionItems, decisions, sentiment} payload the renderer
+// renders in the Insights tab.
+export async function fetchConversationInsights(req: {
   channelId: string;
-  eventHint?: string;
-}): Promise<import('../types/ai').FamilyChecklistResponse> {
+  viewerLanguage?: string;
+}): Promise<ConversationInsightsResponse> {
   const ipc = getElectronAI();
   if (!ipc) {
-    throw new Error('family checklist requires the Electron preload bridge');
+    throw new Error('conversation insights requires the Electron preload bridge');
   }
   const messages = await fetchChannelMessages(req.channelId);
   const start = performance.now();
-  const data = await ipc.familyChecklist({
+  const data = await ipc.conversationInsights({
     channelId: req.channelId,
     messages: messages.map((m) => ({
       id: m.id,
@@ -310,101 +314,18 @@ export async function fetchFamilyChecklist(req: {
       senderId: m.senderId,
       content: m.content,
     })),
-    eventHint: req.eventHint,
+    viewerLanguage: req.viewerLanguage,
   });
   logActivity({
-    skillId: 'family-checklist',
+    skillId: 'conversation-insights',
     model: data.model,
     tier: data.tier,
-    itemsProduced: data.items.length,
+    itemsProduced:
+      data.topics.length + data.actionItems.length + data.decisions.length,
     egressBytes: data.dataEgressBytes,
     latencyMs: Math.round(performance.now() - start),
   });
   return data;
-}
-
-export async function fetchShoppingNudges(req: {
-  channelId: string;
-  existingItems: string[];
-}): Promise<import('../types/ai').ShoppingNudgesResponse> {
-  const ipc = getElectronAI();
-  if (!ipc) {
-    throw new Error('shopping nudges requires the Electron preload bridge');
-  }
-  const messages = await fetchChannelMessages(req.channelId);
-  const start = performance.now();
-  const data = await ipc.shoppingNudges({
-    channelId: req.channelId,
-    messages: messages.map((m) => ({
-      id: m.id,
-      channelId: m.channelId,
-      senderId: m.senderId,
-      content: m.content,
-    })),
-    existingItems: req.existingItems,
-  });
-  logActivity({
-    skillId: 'shopping-nudges',
-    model: data.model,
-    tier: data.tier,
-    itemsProduced: data.nudges.length,
-    egressBytes: data.dataEgressBytes,
-    latencyMs: Math.round(performance.now() - start),
-  });
-  return data;
-}
-
-export async function fetchEventRSVP(req: {
-  channelId: string;
-}): Promise<import('../types/ai').EventRSVPResponse> {
-  const ipc = getElectronAI();
-  if (!ipc) {
-    throw new Error('event RSVP requires the Electron preload bridge');
-  }
-  const messages = await fetchChannelMessages(req.channelId);
-  const start = performance.now();
-  const data = await ipc.eventRSVP({
-    channelId: req.channelId,
-    messages: messages.map((m) => ({
-      id: m.id,
-      channelId: m.channelId,
-      senderId: m.senderId,
-      content: m.content,
-    })),
-  });
-  logActivity({
-    skillId: 'event-rsvp',
-    model: data.model,
-    tier: data.tier,
-    itemsProduced: data.events.length,
-    egressBytes: data.dataEgressBytes,
-    latencyMs: Math.round(performance.now() - start),
-  });
-  return data;
-}
-
-export async function fetchTripPlan(req: {
-  input: TripPlannerInputArgs;
-  channelId?: string;
-}): Promise<TripPlannerExecution> {
-  const ipc = getElectronAI();
-  if (!ipc) {
-    throw new Error('trip planner requires the Electron preload bridge');
-  }
-  const start = performance.now();
-  const exec = await ipc.tripPlan(req);
-  const latency = Math.round(performance.now() - start);
-  if (exec.result.status === 'ok') {
-    logActivity({
-      skillId: exec.result.skillId,
-      model: exec.result.privacy.modelName,
-      tier: exec.result.privacy.tier,
-      itemsProduced: exec.result.result.days.reduce((n, d) => n + d.items.length, 0),
-      egressBytes: exec.result.privacy.dataEgressBytes,
-      latencyMs: latency,
-    });
-  }
-  return exec;
 }
 
 export async function runGuardrailCheck(req: {

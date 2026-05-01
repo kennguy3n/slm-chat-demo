@@ -13,6 +13,7 @@ import {
   buildDraftArtifact,
   buildThreadSummary,
   buildUnreadSummary,
+  runConversationInsights,
   runExtractTasks,
   runKAppsExtractTasks,
   runPrefillApproval,
@@ -22,18 +23,9 @@ import {
   runTranslateBatch,
 } from './inference/tasks.js';
 import {
-  runEventRSVP,
-  runFamilyChecklist,
-  runShoppingNudges,
-} from './inference/secondBrain.js';
-import {
   runExtractKnowledge,
   type ExtractKnowledgeRequest,
 } from './inference/skills/extract-knowledge.js';
-import {
-  runTripPlanner,
-  type RunTripPlannerArgs,
-} from './inference/skills/trip-planner.js';
 import {
   runGuardrailRewrite,
   type RunGuardrailArgs,
@@ -46,16 +38,14 @@ import {
 import type { InferenceRouter } from './inference/router.js';
 import { globalEgressTracker } from './inference/egress-tracker.js';
 import type {
+  ConversationInsightsRequest,
   DraftArtifactRequest,
-  EventRSVPRequest,
   ExtractTasksRequest,
-  FamilyChecklistRequest,
   InferenceRequest,
   KAppsExtractTasksRequest,
   PrefillApprovalRequest,
   PrefillFormRequest,
   RouteDecision,
-  ShoppingNudgesRequest,
   SmartReplyRequest,
   ThreadSummaryRequest,
   TranslateBatchRequest,
@@ -183,24 +173,9 @@ export function registerIPCHandlers(): void {
     return buildUnreadSummary(req);
   });
 
-  ipcMain.handle('ai:family-checklist', async (_e, req: FamilyChecklistRequest) => {
+  ipcMain.handle('ai:conversation-insights', async (_e, req: ConversationInsightsRequest) => {
     const { router } = await getStack();
-    return runFamilyChecklist(router, req);
-  });
-
-  ipcMain.handle('ai:shopping-nudges', async (_e, req: ShoppingNudgesRequest) => {
-    const { router } = await getStack();
-    return runShoppingNudges(router, req);
-  });
-
-  ipcMain.handle('ai:event-rsvp', async (_e, req: EventRSVPRequest) => {
-    const { router } = await getStack();
-    return runEventRSVP(router, req);
-  });
-
-  ipcMain.handle('ai:trip-plan', async (_e, req: RunTripPlannerArgs) => {
-    const { router, search } = await getStack();
-    return runTripPlanner(router, search, req);
+    return runConversationInsights(router, req);
   });
 
   ipcMain.handle('ai:guardrail-check', async (_e, req: RunGuardrailArgs) => {

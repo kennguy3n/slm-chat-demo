@@ -288,54 +288,44 @@ export interface DraftArtifactResponse {
   dataEgressBytes: number;
 }
 
-// ---------- Phase 2 B2C second-brain surfaces ----------
+// ---------- B2C conversation insights ----------
+//
+// LLM-driven extraction of topics, action items, decisions and
+// sentiment from a single chat. All inference is on-device; the
+// renderer's ConversationInsightsPanel surfaces this in the right
+// rail of B2CLayout.
 
-export interface FamilyChecklistItem {
-  title: string;
-  dueHint?: string;
+export type ConversationSentiment =
+  | 'positive'
+  | 'neutral'
+  | 'negative'
+  | 'mixed'
+  | 'unknown';
+
+export interface ConversationInsightTopic {
+  label: string;
+  detail?: string;
   sourceMessageId?: string;
 }
 
-export interface FamilyChecklistResponse {
-  channelId: string;
-  title: string;
-  items: FamilyChecklistItem[];
-  sourceMessageIds: string[];
-  model: string;
-  tier: 'local' | 'server';
-  reason: string;
-  computeLocation: ComputeLocation;
-  dataEgressBytes: number;
-}
-
-export interface ShoppingNudge {
-  item: string;
-  reason: string;
+export interface ConversationInsightActionItem {
+  text: string;
+  owner?: string;
   sourceMessageId?: string;
 }
 
-export interface ShoppingNudgesResponse {
-  channelId: string;
-  nudges: ShoppingNudge[];
-  sourceMessageIds: string[];
-  model: string;
-  tier: 'local' | 'server';
-  reason: string;
-  computeLocation: ComputeLocation;
-  dataEgressBytes: number;
-}
-
-export interface RSVPEvent {
-  title: string;
-  whenHint?: string;
-  location?: string;
-  rsvpBy?: string;
+export interface ConversationInsightDecision {
+  text: string;
   sourceMessageId?: string;
 }
 
-export interface EventRSVPResponse {
+export interface ConversationInsightsResponse {
   channelId: string;
-  events: RSVPEvent[];
+  topics: ConversationInsightTopic[];
+  actionItems: ConversationInsightActionItem[];
+  decisions: ConversationInsightDecision[];
+  sentiment: ConversationSentiment;
+  sentimentRationale?: string;
   sourceMessageIds: string[];
   model: string;
   tier: 'local' | 'server';

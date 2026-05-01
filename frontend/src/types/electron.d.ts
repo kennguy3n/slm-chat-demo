@@ -7,13 +7,11 @@ import type {
   ApprovalTemplate,
   ArtifactKind,
   ArtifactSection,
+  ConversationInsightsResponse,
   DraftArtifactResponse,
-  EventRSVPResponse,
   ExtractTasksResponse,
-  FamilyChecklistResponse,
   PrefillApprovalResponse,
   PrefillFormResponse,
-  ShoppingNudgesResponse,
   SmartReplyResponse,
   ThreadSummaryResponse,
   TranslateResponse,
@@ -31,113 +29,23 @@ interface ElectronStreamChunk {
   error?: string;
 }
 
-// ---------- trip-planner types ----------
-
-export interface TripPlannerMemoryFact {
-  id: string;
-  kind: string;
-  text: string;
-}
-
-export interface TripPlannerInputArgs {
-  destination: string;
-  duration: number;
-  dateRange?: { start: string; end: string };
-  focus?: string;
-  memoryFacts: TripPlannerMemoryFact[];
-}
-
-export interface TripPlannerItineraryItem {
-  title: string;
-  detail?: string;
-  sourceLabel?: string;
-  sourceId?: string;
-}
-
-export interface TripPlannerItineraryDay {
-  day: number;
-  weatherNote?: string;
-  items: TripPlannerItineraryItem[];
-}
-
-export interface TripPlannerItinerary {
-  destination: string;
-  durationDays: number;
-  summary: string;
-  days: TripPlannerItineraryDay[];
-  weatherSources: string[];
-  eventSources: string[];
-  attractionSources: string[];
-  memorySources: string[];
-}
-
-export interface TripPlannerWeather {
-  date: string;
-  summary: string;
-  highF?: number;
-  lowF?: number;
-}
-
-export interface TripPlannerEvent {
-  id: string;
-  title: string;
-  date: string;
-  whenHint?: string;
-  category?: string;
-  venue?: string;
-  source: string;
-}
-
-export interface TripPlannerAttraction {
-  id: string;
-  name: string;
-  category: string;
-  description: string;
-  source: string;
-}
-
-export interface TripPlannerSkillSource {
+// ---------- skill-source types ----------
+//
+// Shared by the guardrail-rewrite skill (and any future skills) that
+// surface their inputs as labelled "sources" in the privacy strip.
+export interface SkillSource {
   kind: 'message' | 'memory' | 'tool';
   id: string;
   label?: string;
 }
 
-export interface TripPlannerPrivacy {
+export interface SkillPrivacy {
   computeLocation: 'on_device' | 'confidential_server';
   modelName: string;
   tier: 'local' | 'server';
   reason: string;
   dataEgressBytes: number;
-  sources: TripPlannerSkillSource[];
-}
-
-export type TripPlannerSkillResult =
-  | {
-      status: 'ok';
-      skillId: string;
-      result: TripPlannerItinerary;
-      sources: TripPlannerSkillSource[];
-      confidence: number;
-      rawOutput: string;
-      privacy: TripPlannerPrivacy;
-    }
-  | {
-      status: 'refused';
-      skillId: string;
-      refusal: {
-        reason: string;
-        origin: 'pre_inference' | 'insufficient' | 'post_inference' | 'parse_failed';
-        refusalText: string;
-      };
-      privacy: TripPlannerPrivacy | null;
-    };
-
-export interface TripPlannerExecution {
-  weather: TripPlannerWeather[];
-  events: TripPlannerEvent[];
-  attractions: TripPlannerAttraction[];
-  prompt: string;
-  result: TripPlannerSkillResult;
+  sources: SkillSource[];
 }
 
 // ---------- guardrail-rewrite types ----------
@@ -163,10 +71,10 @@ export type GuardrailSkillResult =
       status: 'ok';
       skillId: string;
       result: GuardrailRewriteResult;
-      sources: TripPlannerSkillSource[];
+      sources: SkillSource[];
       confidence: number;
       rawOutput: string;
-      privacy: TripPlannerPrivacy;
+      privacy: SkillPrivacy;
     }
   | {
       status: 'refused';
@@ -176,7 +84,7 @@ export type GuardrailSkillResult =
         origin: 'pre_inference' | 'insufficient' | 'post_inference' | 'parse_failed';
         refusalText: string;
       };
-      privacy: TripPlannerPrivacy | null;
+      privacy: SkillPrivacy | null;
     };
 
 interface ElectronAIBridge {
@@ -247,24 +155,11 @@ interface ElectronAIBridge {
     bilingualPartnerLanguage?: string;
     viewerLanguage?: string;
   }): Promise<UnreadSummaryResponse>;
-  familyChecklist(req: {
+  conversationInsights(req: {
     channelId: string;
     messages: { id: string; channelId: string; senderId: string; content: string }[];
-    eventHint?: string;
-  }): Promise<FamilyChecklistResponse>;
-  shoppingNudges(req: {
-    channelId: string;
-    messages: { id: string; channelId: string; senderId: string; content: string }[];
-    existingItems: string[];
-  }): Promise<ShoppingNudgesResponse>;
-  eventRSVP(req: {
-    channelId: string;
-    messages: { id: string; channelId: string; senderId: string; content: string }[];
-  }): Promise<EventRSVPResponse>;
-  tripPlan(req: {
-    input: TripPlannerInputArgs;
-    channelId?: string;
-  }): Promise<TripPlannerExecution>;
+    viewerLanguage?: string;
+  }): Promise<ConversationInsightsResponse>;
   guardrailCheck(req: {
     input: { text: string; channelId?: string };
   }): Promise<GuardrailSkillResult>;

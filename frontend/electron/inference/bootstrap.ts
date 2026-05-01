@@ -29,7 +29,6 @@ import { DefaultLlamaCppBaseURL, LlamaCppAdapter } from './llamacpp.js';
 import { MockAdapter } from './mock.js';
 import { DefaultOllamaBaseURL, OllamaAdapter } from './ollama.js';
 import { InferenceRouter } from './router.js';
-import { MockSearchService, type SearchService } from './search-service.js';
 
 export interface InferenceStack {
   router: InferenceRouter;
@@ -45,9 +44,6 @@ export interface InferenceStack {
   hasServer: boolean;
   defaultServerModel: string;
   serverUrl?: string;
-  // The search service is used by the trip-planner skill. Phase 2 ships
-  // a mock implementation; Phase 6 swaps in a server-backed one.
-  search: SearchService;
 }
 
 export interface BootstrapOptions {
@@ -203,7 +199,6 @@ export async function bootstrapInference(
     }
   }
 
-  const search = new MockSearchService();
   return {
     router,
     status,
@@ -214,6 +209,5 @@ export async function bootstrapInference(
     hasServer,
     defaultServerModel: serverModel,
     serverUrl: serverURL,
-    search,
   };
 }
