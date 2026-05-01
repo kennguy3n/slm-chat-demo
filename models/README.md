@@ -73,7 +73,7 @@ on-device runtime:
 ```bash
 # In kennguy3n/llama.cpp (branch: prism):
 cmake -B build && cmake --build build --config Release -t llama-server
-./build/bin/llama-server -m /path/to/Bonsai-1.7B.gguf -c 1024 --port 11400
+./build/bin/llama-server -m /path/to/Bonsai-1.7B.gguf -c 4096 --parallel 1 --port 11400
 
 # Then in slm-chat-demo:
 cd frontend && npm run electron:dev

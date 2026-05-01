@@ -104,7 +104,7 @@ cmake -B build && cmake --build build --config Release -t llama-server
 
 curl -L -o Bonsai-1.7B.gguf \
   https://huggingface.co/prism-ml/Bonsai-1.7B-gguf/resolve/main/Bonsai-1.7B.gguf
-./build/bin/llama-server -m Bonsai-1.7B.gguf -c 2048 --port 11400
+./build/bin/llama-server -m Bonsai-1.7B.gguf -c 4096 --parallel 1 --port 11400
 
 # in another terminal
 cd slm-chat-demo/frontend && npm run electron:dev

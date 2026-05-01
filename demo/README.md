@@ -222,7 +222,7 @@ the same follow-up.
 
    ./build/bin/llama-server \
      -m ~/Bonsai-1.7B.gguf \
-     -c 2048 --host 127.0.0.1 --port 11400
+     -c 4096 --parallel 1 --host 127.0.0.1 --port 11400
 
    # In another shell:
    cd slm-chat-demo/frontend

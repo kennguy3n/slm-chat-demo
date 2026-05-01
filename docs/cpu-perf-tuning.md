@@ -108,8 +108,15 @@ curl -L -o ~/Bonsai-1.7B.gguf \
 
 ./build/bin/llama-server \
   -m ~/Bonsai-1.7B.gguf \
-  -c 2048 --host 127.0.0.1 --port 11400
+  -c 4096 --parallel 1 --host 127.0.0.1 --port 11400
 ```
+
+> **Why `--parallel 1`?** `llama-server` defaults to 4 parallel
+> slots and divides `-c` evenly across them, so `-c 2048` would give
+> each request a 512-token slot — too small for the summarize prompt
+> (header + few-shot + 15 thread messages). Pinning the server to a
+> single slot dedicates the full `n_ctx` to each request. See §6 for
+> details.
 
 Point the Electron shell at it via `LLAMACPP_BASE_URL`:
 
