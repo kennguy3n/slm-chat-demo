@@ -21,7 +21,7 @@ class StubAdapter implements Adapter {
     const out = this.outputs[req.taskType] ?? '';
     return {
       taskType: req.taskType,
-      model: req.model || 'bonsai-8b',
+      model: req.model || 'bonsai-1.7b',
       output: out,
       tokensUsed: Math.max(1, Math.floor(out.length / 4)),
       latencyMs: 0,

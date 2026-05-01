@@ -25,7 +25,7 @@ import type {
 
 class CannedAdapter implements Adapter {
   public lastReq: InferenceRequest | null = null;
-  constructor(public output: string, public modelLabel = 'bonsai-8b') {}
+  constructor(public output: string, public modelLabel = 'bonsai-1.7b') {}
   name() {
     return 'canned';
   }
@@ -345,7 +345,7 @@ describe('runSkill end-to-end', () => {
     expect(out.refusal.reason).toBe('no relevant chat context');
     expect(out.refusal.refusalText).toContain('no relevant chat context');
     expect(out.privacy).not.toBeNull();
-    expect(out.privacy?.modelName).toBe('bonsai-8b');
+    expect(out.privacy?.modelName).toBe('bonsai-1.7b');
   });
 
   it('refuses post-inference when output matches a prohibited pattern', async () => {

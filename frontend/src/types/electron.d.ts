@@ -269,7 +269,7 @@ interface ElectronAIBridge {
     input: { text: string; channelId?: string };
   }): Promise<GuardrailSkillResult>;
   // Phase 7 — LLM-driven knowledge extraction. The renderer hands
-  // up the channel's messages, the main process runs Bonsai-8B via
+  // up the channel's messages, the main process runs Bonsai-1.7B via
   // the InferenceRouter and returns entities mapped to the existing
   // KnowledgeEntity shape (so the panel can drop them straight into
   // its state without an adapter layer).

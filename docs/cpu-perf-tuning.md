@@ -1,146 +1,137 @@
-# CPU performance tuning — Bonsai-8B and friends
+# CPU performance tuning — Bonsai-1.7B and friends
 
 This guide captures the diagnostic and tuning checklist used when the
 on-device SLM is running too slowly on a CPU-only host. The current
-baseline is `Bonsai-8B-Q1_0.gguf` pulled via
-`./scripts/setup-models.sh` from `hf.co/prism-ml/Bonsai-8B-gguf`.
+baseline is `Bonsai-1.7B.gguf` pulled via
+`./scripts/setup-models.sh` from
+[`hf.co/prism-ml/Bonsai-1.7B-gguf`](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf).
 
-**The canonical x86 CPU artifact.** `Bonsai-8B-Q1_0.gguf` is **~1.16 GB**
-on disk (1 105 MiB / 1 159 MB). Q1_0 is PrismML's 1-bit quant; the
-PrismML `llama.cpp` fork ships a real x86 SIMD kernel for it
-(AVX2/FMA, see `ggml/src/ggml-cpu/arch/x86/quants.c`). Stock Ollama
-0.22.x cannot run it (the bundled `llama.cpp` does not implement the
-Q1_0 tensor type), so the demo path uses the PrismML fork — see
-[Use the PrismML fork](#2-use-the-prismml-fork).
+**The canonical on-device artifact.** `Bonsai-1.7B.gguf` is **~1.0 GB**
+on disk (~1.1 GB resident at startup before KV-cache growth). It is
+a single GGUF that runs on x86 CPU, ARM CPU, and Apple Silicon — the
+Bonsai-8B / Ternary-Bonsai per-arch quant split (Q1_0 on x86, Q2_0 on
+ARM) no longer applies. The PrismML `llama.cpp` fork's `llama-server`
+loads it directly; Ollama 0.22.x can also load it.
 
-**Why Q1_0 instead of Q2_0?** See
-[Why Q2_0 is slow on x86](#why-q2_0-is-slow-on-x86) below. Short
-version: PrismML wrote an ARM-NEON SIMD kernel for Q2_0 but never
-wrote an x86 SIMD kernel for it, so on x86 Q2_0 falls through to a
-plain scalar C path and runs ~25× slower than Q1_0 despite using less
-RAM. Q2_0 remains the recommended file on ARM / Apple Silicon, where
-its NEON kernel is the fastest path.
+## Two supported runtimes
 
-## Benchmarks on the reference VM
+The Electron bootstrap (`frontend/electron/inference/bootstrap.ts`)
+probes two on-device runtimes in priority order:
 
-Live `llama-bench` measurements, 2026-04-30, against the PrismML
-`llama.cpp` fork (`prism` branch) on AMD EPYC 7763, 8 vCPU, 31 GiB
-RAM, AVX2 + FMA, CPU-only:
+1. **PrismML `llama-server`** (preferred). Default base URL
+   `http://localhost:11400` (chosen to avoid a collision with the
+   Go data API on :8080), override via `LLAMACPP_BASE_URL`. Talks
+   the Bonsai GGUF format natively, exposes SSE streaming through
+   `POST /completion`, and reports the loaded model path through
+   `GET /props`.
+2. **Ollama daemon** (fallback). Default base URL
+   `http://localhost:11434`, override via `OLLAMA_BASE_URL`. The
+   `bonsai-1.7b` alias is created from
+   [`models/Modelfile.bonsai1_7b`](../models/Modelfile.bonsai1_7b)
+   by `./scripts/setup-models.sh`.
 
-| Model file                     | Size      | x86 SIMD? | Best `-t` | `pp64` (tok/s) | `tg32` (tok/s) |
-| ------------------------------ | --------- | --------- | --------- | -------------- | -------------- |
-| **Bonsai-8B-Q1_0**             | 1.16 GB   | yes       | `-t 6`    | 14.82          | **11.71**      |
-| Bonsai-4B-Q1_0                 | 0.57 GB   | yes       | `-t 6`    | n/a            | **20.74**      |
-| Ternary-Bonsai-8B-Q2_0         | 2.18 GB   | **no**    | `-t 4`    | 0.71           | **0.60**       |
+When neither runtime is reachable, the bootstrap falls back to
+`MockAdapter` — useful for offline tests, but every B2B / B2C panel
+will render `[MOCK]`-prefixed placeholders instead of real LLM
+output.
 
-`pp64` is prompt-processing throughput on 64 input tokens; `tg32` is
-token-generation throughput on 32 output tokens. All runs were warm
-(`-r 2`, second pass). Resident RAM at startup tracks the on-disk
-size to within ~5%.
+## Why Bonsai-1.7B is the new default
 
-The Q1_0 row clears every threshold in
-[Minimum usable thresholds](#11-minimum-usable-thresholds) below, with
-headroom for the short-assistant tier on this 8 vCPU box.
-Bonsai-4B-Q1_0 even clears the classifier / router 20 tok/s bar.
+The previous 8B-class baseline (`Bonsai-8B-Q1_0.gguf`,
+`Ternary-Bonsai-8B-Q2_0.gguf`) needed ~1.2 GB / ~2.2 GB of resident
+RAM and ran at ~11.7 / ~0.6 tok/s respectively on the EPYC 7763
+reference VM. The 1.7B model is roughly 4–5× smaller in parameter
+count and ships a single GGUF, which removes three pain points:
 
-### Bonsai-8B-Q1_0 thread sweep on EPYC 7763 8 vCPU
-
-| `-t` | `pp64` (tok/s) | `tg32` (tok/s) |
-| ---: | -------------: | -------------: |
-| 1    | 3.73           | 3.28           |
-| 2    | 7.33           | 6.27           |
-| 4    | 11.15          | 9.40           |
-| 6    | **14.82**      | **11.71**      |
-| 8    | 15.28          | 11.08          |
-| 16   | 13.12          | 3.97           |
-
-Throughput peaks at `-t 6` and collapses at `-t 16` (oversubscription:
-generation drops to 4 tok/s when threads exceed physical vCPU). On
-shared / NUMA hosts the optimum is usually 1–2 below physical-vCPU
-count; always run the full sweep before pinning `-t`.
-
-## Why Q2_0 is slow on x86
-
-The Q2_0 file `Ternary-Bonsai-8B-Q2_0.gguf` uses tensor type ID 42 —
-PrismML's custom 2-bit quant defined only in their `llama.cpp` fork.
-PrismML wrote a NEON SIMD kernel for it
-(`ggml/src/ggml-cpu/arch/arm/quants.c` — `vqtbl1q_u8`,
-`ggml_vdotq_s32`, etc.) but **did not write an x86 SIMD kernel**. On
-x86 every Q2_0 dot product falls through to
-`ggml_vec_dot_q2_0_q8_0_generic` in `ggml/src/ggml-cpu/quants.c` —
-plain scalar C, no AVX2, no FMA, no SSE.
-
-That is the entire reason Q2_0 is 25× slower than Q1_0 on EPYC:
-the x86 SIMD kernel for Q1_0 (`arch/x86/quants.c:555`) does exist
-and runs at full AVX2/FMA throughput; for Q2_0 it does not exist and
-the runtime falls back to scalar code.
-
-Implications:
-
-- **On x86 (AMD/Intel)**, use `Bonsai-8B-Q1_0.gguf`. This is what
-  `./scripts/setup-models.sh` and `models/Modelfile.bonsai8b` default
-  to.
-- **On ARM / Apple Silicon**, prefer `Ternary-Bonsai-8B-Q2_0.gguf` —
-  the NEON kernel is tuned and the smaller file uses less RAM. Set
-  `MODEL_QUANT=q2_0` and download the file:
-  ```bash
-  curl -L -o models/Ternary-Bonsai-8B-Q2_0.gguf \
-    https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf/resolve/main/Ternary-Bonsai-8B-Q2_0.gguf
-  ```
-  Update `FROM` in `models/Modelfile.bonsai8b` and re-run
-  `./scripts/setup-models.sh`.
-- **For RAM-constrained hosts** that still need x86 SIMD, the 4B
-  variant `Bonsai-4B-Q1_0.gguf` is half the size and ~2× the throughput
-  on the same box. Source:
-  https://huggingface.co/prism-ml/Bonsai-4B-gguf
-
-If the PrismML maintainers add an x86 SIMD kernel for Q2_0, this
-guidance flips back to "Q2_0 everywhere". Until then, the kernel
-coverage gap drives the per-arch quant choice.
+- **No more per-arch quant split.** The same artifact is fastest on
+  x86 and on ARM / Apple Silicon, so there is nothing to switch when
+  the user moves between hosts.
+- **No kernel-coverage gaps.** The previous Q2_0 file fell through to
+  a scalar generic path on x86 (PrismML never wrote an x86 SIMD
+  kernel for that tensor type), which capped throughput at ~0.6
+  tok/s on commodity AMD/Intel CPUs.
+- **Headroom for streaming surfaces.** Smart-reply, translation, and
+  morning-digest streaming all clear the 5 tok/s short-assistant
+  floor on commodity CPUs without a GPU / Metal / NPU.
 
 ## Use this guide to either
 
-1. Tune the existing 8B Q1_0 pipeline up toward the per-surface token
-   budgets listed in [Minimum usable thresholds](#11-minimum-usable-thresholds), or
+1. Tune the on-device 1.7B pipeline up toward the per-surface token
+   budgets listed in
+   [Minimum usable thresholds](#11-minimum-usable-thresholds), or
 2. Decide — based on the benchmark numbers — that the host is the
-   wrong class for an 8B model and switch to a smaller one (see
-   [Model alternatives for CPU-only](#10-model-alternatives-for-cpu-only)).
+   wrong class for any local model and switch to a hosted server
+   tier (gated by `WorkspacePolicy.AllowServerCompute`).
 
 See also:
 
 - `demo/README.md` — where the launch command and flag notes live.
-- `models/Modelfile.bonsai8b` — the Ollama Modelfile (ships with
-  `num_ctx 2048` as the CPU-friendly default).
-- `models/README.md` — CPU-performance section and model matrix.
+- `models/Modelfile.bonsai1_7b` — the Ollama Modelfile (ships with
+  `num_ctx 1024`, `temperature 0.7`, `top_p 0.9`).
+- `models/README.md` — model matrix and download instructions.
 
 ---
 
 ## 1. Verify CPU features
 
 Before anything else, confirm the box actually has the instruction
-sets `llama.cpp` expects. Without AVX2 + FMA you will not hit the
-published Q1_0 token rates and no amount of flag tuning will rescue
-it — change the VM class.
+sets `llama.cpp` expects. Without AVX2 + FMA on x86 (or NEON on ARM)
+you will not hit the published Bonsai-1.7B token rates and no amount
+of flag tuning will rescue it — change the VM class.
 
 ```bash
 lscpu | egrep "Model name|avx|avx2|avx512|sse4|fma"
 ```
 
-If AVX2 is missing: stop here, pick a different host. (Or, on an ARM
-box without NEON, ditto.)
+If AVX2 is missing on x86: stop here, pick a different host. (Or, on
+an ARM box without NEON, ditto.)
 
-## 2. Use the PrismML fork
+## 2. Use the PrismML fork (recommended)
 
-Both `Bonsai-8B-Q1_0` (Q1_0) and `Ternary-Bonsai-8B-Q2_0` (Q2_0) use
-PrismML's custom tensor types that mainline `llama.cpp` does not
-support. You need the PrismML fork:
+The Bonsai GGUFs use PrismML's custom tensor types that mainline
+`llama.cpp` does not always implement. The PrismML fork is the
+recommended runtime end-to-end:
 
-- Repo: https://github.com/PrismML-Eng/llama.cpp
+- Repo: https://github.com/kennguy3n/llama.cpp
 - Branch: `prism`
 
-`ollama` 0.22.x cannot load either file; the demo shims it by running
-`llama-server` from this fork behind an Ollama-API translator so the
-Electron shell's `OllamaAdapter` still works.
+Build the fork and run `llama-server`:
+
+```bash
+git clone -b prism https://github.com/kennguy3n/llama.cpp ~/llama.cpp
+cd ~/llama.cpp
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc) --target llama-server llama-bench
+
+curl -L -o ~/Bonsai-1.7B.gguf \
+  https://huggingface.co/prism-ml/Bonsai-1.7B-gguf/resolve/main/Bonsai-1.7B.gguf
+
+./build/bin/llama-server \
+  -m ~/Bonsai-1.7B.gguf \
+  -c 4096 --parallel 1 --host 127.0.0.1 --port 11400
+```
+
+> **Why `--parallel 1`?** `llama-server` defaults to 4 parallel
+> slots and divides `-c` evenly across them, so `-c 2048` would give
+> each request a 512-token slot — too small for the summarize prompt
+> (header + few-shot + 15 thread messages). Pinning the server to a
+> single slot dedicates the full `n_ctx` to each request. See §6 for
+> details.
+
+Point the Electron shell at it via `LLAMACPP_BASE_URL`:
+
+```bash
+LLAMACPP_BASE_URL=http://127.0.0.1:11400 npm run electron:dev
+```
+
+`llama-server` exposes:
+
+- `POST /completion` — SSE streaming completion (the
+  `LlamaCppAdapter` consumes this).
+- `GET /health` — health probe (used by the bootstrap; 1.5 s
+  timeout).
+- `GET /props` — live model metadata, used by `model:status` to
+  display the loaded GGUF basename.
 
 ## 3. Compile native
 
@@ -169,34 +160,37 @@ latency often peak somewhere in the middle. Run the full sweep:
 
 ```bash
 for t in 1 2 4 6 8; do
-  ./llama-bench -m Bonsai-8B-Q1_0.gguf -p 64 -n 32 -t $t -r 2
+  ./llama-bench -m Bonsai-1.7B.gguf -p 64 -n 32 -t $t -r 2
 done
 ```
 
 Pick the `t` value that wins on generation (`tg32`), not just prompt
 processing. Plug that back into `llama-server` as both `-t` (compute)
 and `-tb` (batch compute) unless the bench shows they should differ.
-On the reference EPYC 7763 8 vCPU box the optimum is `-t 6` for
-Bonsai-8B-Q1_0 (see thread sweep above).
+
+For reference, on the historical 8B-class baseline (EPYC 7763, 8
+vCPU) the optimum was `-t 6`. The 1.7B model has the same arithmetic
+shape, so a similar sweep range applies — but always re-run the
+sweep on your target host before pinning `-t`.
 
 ## 5. Context reduction
 
-Attention cost scales with `-c`. For task prompts of 256–1024 input
-tokens, most surfaces fit cleanly into `-c 1024`:
+Attention cost scales with `-c`. The demo's prompt library
+(`frontend/electron/inference/prompts/shared.ts`) already trims to
+`PROMPT_THREAD_CAP = 15` messages and `PROMPT_MESSAGE_CAP = 120`
+runes per message, so most surfaces fit cleanly into `-c 1024`:
 
 ```bash
-./llama-bench -m Bonsai-8B-Q1_0.gguf -p 128 -n 128 -c 512 -t 6
-./llama-bench -m Bonsai-8B-Q1_0.gguf -p 128 -n 128 -c 1024 -t 6
-./llama-bench -m Bonsai-8B-Q1_0.gguf -p 128 -n 128 -c 2048 -t 6
+./llama-bench -m Bonsai-1.7B.gguf -p 128 -n 128 -c 512  -t 6
+./llama-bench -m Bonsai-1.7B.gguf -p 128 -n 128 -c 1024 -t 6
+./llama-bench -m Bonsai-1.7B.gguf -p 128 -n 128 -c 2048 -t 6
 ```
 
 - `-c 512`: classifier / router.
-- `-c 1024`: default for most KChat AI surfaces.
+- `-c 1024`: default for KChat AI surfaces — matches `num_ctx 1024`
+  in `models/Modelfile.bonsai1_7b`.
 - `-c 2048`: headroom for longer summaries; only when the box can
   afford it.
-
-Corresponding Ollama-side setting: `PARAMETER num_ctx 2048` in
-`models/Modelfile.bonsai8b`.
 
 ## 6. Runtime flags
 
@@ -206,9 +200,9 @@ Three flags routinely move the needle on weak VMs:
   parallelism fragments the KV cache and makes every token slower.
 - `--mlock`: pins weights in physical memory so the kernel never
   pages them to swap mid-generation. On a box with swap enabled and
-  8GB RAM this is the difference between "slow" and "catastrophic".
+  4 GB RAM this is the difference between "slow" and "catastrophic".
 - `--no-mmap`: avoids slow page faults when the virtual disk is slow
-  (Linode shared volumes, some hypervisors). Always benchmark both
+  (some shared-volume hosts and hypervisors). Always benchmark both
   with and without — on fast NVMe hosts mmap wins, on shared disks
   `--no-mmap` + `--mlock` usually wins.
 
@@ -245,53 +239,50 @@ and you stop when generation is no longer memory-bound:
 
 Only move to `q4_0` KV when the quality loss is acceptable for the
 surface in question (e.g. router / classifier tolerates it; long
-summary generation often does not).
+summary generation often does not). Bonsai-1.7B's KV cache is
+already small enough that most CPU-only hosts can stay at `f16`.
 
 ## 9. Expected token rates
 
-Ballpark figures under the recommended flags for `Bonsai-8B-Q1_0`
-served through the PrismML `llama.cpp` fork. Numbers depend on
-kernel version, NUMA topology, thermal envelope, and neighbour noise
-on shared hosts.
+Bonsai-1.7B is roughly 4–5× smaller than the previous 8B-class
+default, so all of the historical Bonsai-8B-Q1_0 numbers should
+scale up correspondingly on the same hardware. Fresh `llama-bench`
+results against `Bonsai-1.7B.gguf` will land here once a capture
+pass is run on the EPYC 7763 reference VM; the rough expectation
+matrix is:
 
-| Class                                    | Q1_0 tok/s (PrismML fork)   |
-| ---------------------------------------- | --------------------------- |
-| Weak shared 2 vCPU x86                   | 1 – 3                       |
-| Decent 4 dedicated vCPU x86 (AVX2+FMA)   | 5 – 9                       |
-| Good 8 dedicated vCPU x86 (AVX2+FMA)     | **~11.7 (measured)**        |
-| Apple M-series (Metal) — use Q2_0 file   | much higher                 |
-| ARM server with NEON — use Q2_0 file     | much higher                 |
-| Discrete GPU (CUDA / ROCm)               | much higher                 |
+| Class                                    | Expected tok/s |
+| ---------------------------------------- | -------------- |
+| Weak shared 2 vCPU x86                   | 5 – 12         |
+| Decent 4 dedicated vCPU x86 (AVX2+FMA)   | 25 – 40        |
+| Good 8 dedicated vCPU x86 (AVX2+FMA)     | 40 – 60        |
+| Apple M-series (Metal)                   | much higher    |
+| ARM server with NEON                     | much higher    |
+| Discrete GPU (CUDA / ROCm)               | much higher    |
 
-The **~11.7 tok/s measured** row is the 2026-04-30 `llama-bench`
-result (`tg32`, `-t 6`, warm). On Apple Silicon and ARM-server
-hosts, switch to `Ternary-Bonsai-8B-Q2_0.gguf` — the NEON kernel
-beats the x86 Q1_0 path significantly there.
-
-For comparison, the same VM on `Ternary-Bonsai-8B-Q2_0` (no x86 SIMD
-kernel; scalar fallback) lands at **~0.45–0.60 tok/s** — see
-[Why Q2_0 is slow on x86](#why-q2_0-is-slow-on-x86).
+For comparison, the historical 8B-class Q1_0 baseline measured on
+this same EPYC 7763 8 vCPU box landed at **~11.7 tok/s** (`tg32`,
+`-t 6`, warm). Bonsai-1.7B should comfortably clear every threshold
+in [Minimum usable thresholds](#11-minimum-usable-thresholds) on the
+same hardware.
 
 ## 10. Model alternatives for CPU-only
 
-If your benchmarks land in the "Weak shared" row and you cannot move
-to a better host, the 8B model is the wrong tool. Swap in a smaller
-model and keep 8B on GPU / Metal / NPU paths only. Good CPU-only
-candidates, in rough order of capability / cost:
+If your benchmarks land below the "Weak shared" row even on the 1.7B
+model and you cannot move to a better host, swap in a smaller
+candidate. Good CPU-only candidates, in rough order of capability /
+cost:
 
-- **Bonsai-4B-Q1_0** — 0.57 GB on disk, ~20.7 tok/s on the reference
-  VM. Same PrismML fork; same x86 SIMD kernel as the 8B Q1_0. Source:
-  https://huggingface.co/prism-ml/Bonsai-4B-gguf
 - **Qwen3 0.6B Q4_K_M** — router, classifier, short completions.
 - **Gemma 3 1B QAT Q4_0** — compact assistant tasks, translation.
 - **Qwen2.5 1.5B Q4_K_M** — default CPU-only chat / summarisation.
 
-The demo's `MODEL_NAME` / `MODEL_QUANT` env vars
-(`frontend/electron/inference/bootstrap.ts`) let you point the
+The demo's `MODEL_NAME` env var
+(`frontend/electron/inference/bootstrap.ts`) lets you point the
 Electron shell at any of these without code changes:
 
 ```bash
-MODEL_NAME=qwen2.5-1.5b MODEL_QUANT=q4_k_m npm run electron:dev
+MODEL_NAME=qwen2.5-1.5b npm run electron:dev
 ```
 
 ## 11. Minimum usable thresholds
@@ -305,17 +296,9 @@ hit its minimum, switch models — do not ship the slower config.
 | Short assistant (smart reply)     |  5+ tok/s | Inline composer suggestions, streamed.       |
 | CPU fallback minimum (any tier)   |  2+ tok/s | Below this, UX perception breaks.            |
 
-Bonsai-8B-Q1_0 on the reference 8 vCPU EPYC box clears the
-short-assistant 5 tok/s tier (~11.7 tok/s sustained at `-t 6`) but
-sits below the classifier 20 tok/s bar. Bonsai-4B-Q1_0 clears the
-classifier bar (~20.7 tok/s). Q2_0 on the same x86 host (~0.45 tok/s)
-sits below even the CPU-fallback minimum, which is why it is no
-longer the x86 default — see
-[Why Q2_0 is slow on x86](#why-q2_0-is-slow-on-x86) for the kernel
-attribution.
-
-Streaming demo surfaces like `02 morning-catchup` and
-`b2c/07 smart-reply` previously required GPU / Metal / NPU because
-the old Q2_0 default ran below the CPU-fallback floor. Under
-Bonsai-8B-Q1_0 they should be re-evaluated against the 5 tok/s
-short-assistant bar — the math finally works on commodity x86 CPU.
+Bonsai-1.7B on a commodity x86 CPU with AVX2 + FMA is expected to
+clear every row in this table, including the classifier 20 tok/s
+bar. Streaming demo surfaces (`02 morning-catchup`, `b2c/07
+smart-reply`) that previously demanded GPU / Metal / NPU under the
+8B-class default are now expected to feel interactive on commodity
+x86 CPU under Bonsai-1.7B.

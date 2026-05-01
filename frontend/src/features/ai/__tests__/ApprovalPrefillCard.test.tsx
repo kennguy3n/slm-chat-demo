@@ -17,9 +17,9 @@ const sample: PrefillApprovalResponse = {
     risk: 'medium',
   },
   sourceMessageIds: ['msg_vendor_1', 'msg_vendor_2'],
-  model: 'bonsai-8b',
+  model: 'bonsai-1.7b',
   tier: 'local',
-  reason: 'Routed prefill_approval to on-device Bonsai-8B for stronger reasoning.',
+  reason: 'Routed prefill_approval to on-device Bonsai-1.7B for stronger reasoning.',
   computeLocation: 'on_device',
   dataEgressBytes: 0,
 };
@@ -107,7 +107,7 @@ describe('ApprovalPrefillCard', () => {
 
   it('renders the privacy strip with the model and on-device compute', () => {
     renderWithProviders(<ApprovalPrefillCard prefill={sample} />);
-    expect(screen.getByTestId('privacy-model')).toHaveTextContent('bonsai-8b');
+    expect(screen.getByTestId('privacy-model')).toHaveTextContent('bonsai-1.7b');
     expect(screen.getByTestId('privacy-compute')).toHaveTextContent('On-device');
   });
 });

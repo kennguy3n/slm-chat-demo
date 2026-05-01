@@ -62,7 +62,7 @@ function privacyDataForCard(card: KAppCard): PrivacyStripData {
           : 'Detected an event with a date and a location.';
   return {
     computeLocation: 'on_device',
-    modelName: 'bonsai-8b',
+    modelName: 'bonsai-1.7b',
     sources: [
       {
         kind: card.kind === 'task' || card.kind === 'event' ? 'message' : 'thread',
@@ -292,7 +292,7 @@ export function ChatSurface({ channel, users, currentUserId }: Props) {
                 digest={
                   digest ?? {
                     prompt: '',
-                    model: 'bonsai-8b',
+                    model: 'bonsai-1.7b',
                     sources: [],
                     computeLocation: 'on_device',
                     dataEgressBytes: 0,

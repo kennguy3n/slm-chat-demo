@@ -44,6 +44,7 @@ import {
   parseExtractTasksOutput,
   parsePrefillApprovalOutput,
 } from './prompts/index.js';
+import { PROMPT_MESSAGE_CAP, PROMPT_THREAD_CAP } from './prompts/shared.js';
 
 // truncateForPrompt caps a string at `max` runes (not bytes) so multi-
 // byte characters (emoji, CJK) are never split mid-codepoint.
@@ -298,7 +299,12 @@ export function classifyType(hint: string): ExtractedTask['type'] {
 
 // ---------- B2B thread summary ----------
 
-const THREAD_SUMMARY_MAX_MESSAGES = 30;
+// Outer caps mirror PROMPT_THREAD_CAP so the messages we slice here
+// are exactly the messages `formatThread` (used by every prompt
+// builder below) renders into the prompt. Without this alignment
+// the `sources` arrays would surface messages the model never saw,
+// breaking source-back-link attribution and the privacy strip.
+const THREAD_SUMMARY_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 export function buildThreadSummary(
   router: InferenceRouter,
@@ -307,7 +313,7 @@ export function buildThreadSummary(
   const messages = req.messages;
   const limited = messages.slice(0, THREAD_SUMMARY_MAX_MESSAGES);
   // Prompt construction lives in `prompts/summarize.ts` so the
-  // Bonsai-8B-tuned envelope (concise instructions, refusal
+  // Bonsai-1.7B-tuned envelope (concise instructions, refusal
   // contract, capped per-message length) can evolve without churn
   // in this orchestrator.
   const prompt = buildSummarizePrompt({
@@ -326,9 +332,9 @@ export function buildThreadSummary(
     excerpt: truncateForPrompt(m.content, 160),
   }));
 
-  let model = 'bonsai-8b';
+  let model = 'bonsai-1.7b';
   let tier: ThreadSummaryResponse['tier'] = 'local';
-  let reason = 'Thread summary routed to on-device Bonsai-8B.';
+  let reason = 'Thread summary routed to on-device Bonsai-1.7B.';
   const decision = router.decide({ taskType: 'summarize', prompt });
   if (decision.allow) {
     model = decision.model;
@@ -351,7 +357,7 @@ export function buildThreadSummary(
 
 // ---------- B2B KApps extract tasks ----------
 
-const KAPPS_EXTRACT_MAX_MESSAGES = 30;
+const KAPPS_EXTRACT_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 export async function runKAppsExtractTasks(
   adapter: Adapter,
@@ -468,7 +474,7 @@ export function matchSourceMessage(
 
 // ---------- B2B prefill approval ----------
 
-const PREFILL_APPROVAL_MAX_MESSAGES = 30;
+const PREFILL_APPROVAL_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 const APPROVAL_TEMPLATE_TITLES: Record<ApprovalTemplate, string> = {
   vendor: 'Vendor approval',
@@ -521,7 +527,7 @@ export async function runPrefillApproval(
   const sourceMessageIds = collectApprovalSources(fields, limited);
 
   const tier: Tier = decision.tier ?? 'local';
-  const reason = decision.reason || `Routed prefill_approval to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-8B'}.`;
+  const reason = decision.reason || `Routed prefill_approval to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-1.7B'}.`;
 
   return {
     threadId: req.threadId,
@@ -598,7 +604,7 @@ function collectApprovalSources(
 
 // ---------- B2B draft artifact section ----------
 
-const DRAFT_ARTIFACT_MAX_MESSAGES = 30;
+const DRAFT_ARTIFACT_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 const ARTIFACT_TYPE_HINT: Record<ArtifactKind, string> = {
   PRD: 'product requirements doc with goal, requirements, success metrics, risks',
@@ -651,8 +657,8 @@ export function buildDraftArtifact(
   // still wins when the confidential-server tier is wired in and the
   // dispatcher asks for it explicitly.
   let tier: Tier = 'local';
-  let model = 'bonsai-8b';
-  let reason = `Drafting a ${req.artifactType} routed to on-device Bonsai-8B.`;
+  let model = 'bonsai-1.7b';
+  let reason = `Drafting a ${req.artifactType} routed to on-device Bonsai-1.7B.`;
 
   const decision = router.decide({
     taskType: 'draft_artifact',
@@ -689,18 +695,59 @@ export function buildDraftArtifact(
 
 // ---------- B2C unread summary ----------
 
-const UNREAD_SUMMARY_MAX_MESSAGES = 20;
+// Aligned with PROMPT_THREAD_CAP so the digest prompt fits in the
+// same ~512-token input budget as every other B2B / B2C surface.
+const UNREAD_SUMMARY_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 // Per-channel cap for the standard multi-chat morning digest. The
-// bilingual variant lifts this so a single ~20-message conversation
-// is summarised in full.
+// bilingual variant uses UNREAD_SUMMARY_MAX_MESSAGES instead so the
+// most recent slice of a single conversation is summarised together.
 const PER_CHAT_MESSAGE_TAIL = 5;
+
+// ISO 639-1 → English language name lookup for the bilingual summary
+// prompt. The frontend stores `partnerLanguage` as a 2-letter ISO
+// code (e.g. `vi`), but the smaller Bonsai-1.7B model produces
+// noticeably better summaries when the language is named explicitly
+// rather than referenced by its code. Unknown codes pass through
+// unchanged so an operator-supplied full name still works.
+const LANGUAGE_CODE_NAMES: Record<string, string> = {
+  en: 'English',
+  vi: 'Vietnamese',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  it: 'Italian',
+  pt: 'Portuguese',
+  ja: 'Japanese',
+  ko: 'Korean',
+  zh: 'Chinese',
+  ru: 'Russian',
+  ar: 'Arabic',
+  hi: 'Hindi',
+  th: 'Thai',
+  id: 'Indonesian',
+  nl: 'Dutch',
+  pl: 'Polish',
+  tr: 'Turkish',
+  sv: 'Swedish',
+};
+
+export function languageNameFromCode(code: string): string {
+  if (!code) return code;
+  const trimmed = code.trim();
+  // Already a multi-character word? Treat as a full language name.
+  if (trimmed.length > 3 || !/^[a-z]{2,3}(-[a-z0-9]+)?$/i.test(trimmed)) {
+    return trimmed;
+  }
+  const base = trimmed.toLowerCase().split('-')[0]!;
+  return LANGUAGE_CODE_NAMES[base] ?? trimmed;
+}
 
 export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResponse {
   const sources: UnreadSummaryResponse['sources'] = [];
   const isBilingual = Boolean(req.bilingualPartnerLanguage);
-  const viewerLang = req.viewerLanguage?.trim() || 'English';
-  const partnerLang = req.bilingualPartnerLanguage?.trim() ?? '';
+  const viewerLang = languageNameFromCode(req.viewerLanguage?.trim() || 'English');
+  const partnerLang = languageNameFromCode(req.bilingualPartnerLanguage?.trim() ?? '');
 
   let prompt = '';
   if (isBilingual) {
@@ -729,13 +776,13 @@ export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResp
         sender: m.senderId,
         excerpt: truncateForPrompt(m.content, 160),
       });
-      prompt += `- [${ch.name}] ${m.senderId}: ${m.content}\n`;
+      prompt += `- [${ch.name}] ${m.senderId}: ${truncateForPrompt(m.content, PROMPT_MESSAGE_CAP)}\n`;
       if (sources.length >= UNREAD_SUMMARY_MAX_MESSAGES) break outer;
     }
   }
   return {
     prompt,
-    model: 'bonsai-8b',
+    model: 'bonsai-1.7b',
     sources,
     computeLocation: 'on_device',
     dataEgressBytes: 0,
@@ -749,7 +796,7 @@ export function buildUnreadSummary(req: UnreadSummaryRequest): UnreadSummaryResp
 // fields one per line ("<field>: <value>"), parses the output back
 // into a Record<string, string>, and surfaces source provenance.
 
-const PREFILL_FORM_MAX_MESSAGES = 30;
+const PREFILL_FORM_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 export async function runPrefillForm(
   router: InferenceRouter,
@@ -780,7 +827,7 @@ export async function runPrefillForm(
   const parsed = parseFormFields(resp.output, fields);
   const sourceMessageIds = collectFormSources(parsed, limited);
   const tier: Tier = decision.tier ?? 'local';
-  const reason = decision.reason || `Routed prefill_form to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-8B'}.`;
+  const reason = decision.reason || `Routed prefill_form to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-1.7B'}.`;
 
   return {
     threadId: req.threadId,

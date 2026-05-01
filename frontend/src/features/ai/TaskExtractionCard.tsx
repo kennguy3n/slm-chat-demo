@@ -45,7 +45,7 @@ interface Props {
 // thread view for B2B) is responsible for instantiating a real TaskCard
 // and adding it to the channel.
 //
-// PrivacyStrip renders below with on-device / Bonsai-8B / 0
+// PrivacyStrip renders below with on-device / Bonsai-1.7B / 0
 // bytes egress so the eight elements from PROPOSAL.md §4.3 are always
 // present.
 export function TaskExtractionCard({

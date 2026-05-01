@@ -393,7 +393,7 @@ export function AIEmployeePanel({ employee, channels, recipeCatalog, onChange }:
             result: {
               status: 'ok',
               output: run.resultSummary ?? '(no summary available)',
-              model: 'bonsai-8b',
+              model: 'bonsai-1.7b',
               tier: 'local',
               reason:
                 'Drafted on-device. Review before anything is written to the workspace.',

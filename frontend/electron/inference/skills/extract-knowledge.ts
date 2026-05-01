@@ -3,7 +3,7 @@
 // The renderer's KnowledgeGraphPanel previously hit
 // `POST /api/channels/{id}/knowledge/extract`, which ran a pure
 // regex/keyword heuristic in `backend/internal/services/knowledge.go`.
-// The redesign adds an LLM path on top: we ask Bonsai-8B to identify
+// The redesign adds an LLM path on top: we ask Bonsai-1.7B to identify
 // decisions, owners, risks, requirements, and deadlines from the
 // channel's messages and project them onto the existing
 // KnowledgeEntity shape so the rest of the graph (renderer + API)
@@ -97,7 +97,7 @@ export async function runExtractKnowledge(
   // `decide()` method returns a reason string containing the literal
   // word `fallback` whenever the local adapter is unavailable and it
   // routes through the MockAdapter (see `router.ts:155-156`). The
-  // adapter's reported `model` name is `bonsai-8b` either way, so it
+  // adapter's reported `model` name is `bonsai-1.7b` either way, so it
   // is *not* a reliable signal for this distinction.
   const decisionReason = router.lastDecision().reason.toLowerCase();
   const adapterSource: 'ollama' | 'mock' = decisionReason.includes('fallback')
@@ -123,7 +123,7 @@ export async function runExtractKnowledge(
       ...(row.dueDate ? { dueDate: row.dueDate } : {}),
       status: 'open',
       createdAt,
-      // Bonsai-8B-Q1_0 is genuinely noisier than the larger
+      // Bonsai-1.7B is genuinely noisier than the larger
       // confidential-server model, so we mark LLM-extracted entities
       // with a slightly lower confidence than the regex heuristic
       // (which the user can audit + delete in the panel).

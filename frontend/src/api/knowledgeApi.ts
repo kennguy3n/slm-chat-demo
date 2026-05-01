@@ -10,7 +10,7 @@ import { fetchChannelMessages } from './chatApi';
 //
 // The Phase 7 redesign added an LLM-driven extraction path on top of
 // the regex heuristic: when running inside the Electron shell with
-// Ollama reachable, `extractKnowledge` first asks Bonsai-8B to extract
+// Ollama reachable, `extractKnowledge` first asks Bonsai-1.7B to extract
 // entities (`window.electronAI.extractKnowledge`). If the bridge is
 // unavailable or the LLM call fails for any reason we fall back to
 // the legacy server-side regex extractor at the URL above.

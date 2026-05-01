@@ -25,9 +25,9 @@ interface OllamaGenerateRequest {
   // family GGUFs. When true (the Ollama default for those families)
   // the model emits a long `<think>…</think>` preamble into the
   // `thinking` field and leaves `response` empty until the thinking
-  // budget runs out — on a CPU-only VM with Bonsai-8B that can burn
-  // the entire streaming window before a single user-visible token
-  // arrives. We default to `false` throughout the app so every
+  // budget runs out — on a CPU-only VM with a small SLM that can
+  // burn the entire streaming window before a single user-visible
+  // token arrives. We default to `false` throughout the app so every
   // on-device call produces direct response tokens.
   think?: boolean;
 }
@@ -54,14 +54,11 @@ export interface OllamaAdapterOptions {
   baseURL?: string;
   model?: string;
   fetchImpl?: typeof fetch;
-  // Quantisation label reported via status(). This is the value the
-  // DeviceCapabilityPanel surfaces as the active quant; it should
-  // match whatever GGUF is actually loaded (e.g. 'q1_0' for the
-  // PrismML Bonsai-8B-Q1_0 build, 'q2_0' for the ARM/Apple-Silicon
-  // Ternary-Bonsai-8B-Q2_0 file, 'q4_k_m' for a mainline llama.cpp
-  // build). Defaults to 'q1_0' — the demo's pinned Bonsai-8B-Q1_0
-  // artifact. See the comment in `bootstrap.ts` for why the bare
-  // `bonsai-8b` / `q4_k_m` pair is no longer the default.
+  // Quantisation label reported via status(). The Bonsai-1.7B GGUF
+  // ships as a single artifact, so the default is the generic
+  // 'default' label — operators running an alternative quant can
+  // override via the MODEL_QUANT env var so the
+  // DeviceCapabilityPanel surfaces the right label.
   quant?: string;
 }
 
@@ -74,13 +71,10 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
 
   constructor(opts: OllamaAdapterOptions = {}) {
     this.baseURL = (opts.baseURL || DefaultOllamaBaseURL).replace(/\/$/, '');
-    // Pinned to the Q1_0-suffixed alias. The bare `bonsai-8b` alias
-    // is intentionally *not* the default because hosts that already
-    // have an F16 or Q4 GGUF under that name silently load a 16 GB
-    // resident model instead of the ~1.1 GB Q1_0 quant the demo
-    // targets. See the comment in `bootstrap.ts`.
-    this.model = opts.model || 'bonsai-8b-q1_0';
-    this.quant = opts.quant || 'q1_0';
+    // Default alias matches `scripts/setup-models.sh` and the
+    // Modelfile in `models/` (a single Bonsai-1.7B GGUF artifact).
+    this.model = opts.model || 'bonsai-1.7b';
+    this.quant = opts.quant || 'default';
     this.fetchInjected = Boolean(opts.fetchImpl);
     this.fetchImpl = opts.fetchImpl || ((...a) => fetch(...(a as Parameters<typeof fetch>)));
   }
@@ -90,11 +84,10 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
   }
 
   async run(req: InferenceRequest, signal?: AbortSignal): Promise<InferenceResponse> {
-    // We always use streaming under the hood — a Bonsai-8B-Q1_0
-    // translation takes a handful of seconds on CPU (~22 s for a
-    // 256-token draft on 8 vCPU EPYC), and Electron's fetch will
-    // abort a non-streaming response long before the model finishes.
-    // Streaming keeps bytes flowing so the connection never idles.
+    // We always use streaming under the hood — Bonsai-1.7B is fast
+    // enough that small completions return in ~1 s on commodity
+    // CPUs, but longer drafts still need streaming to keep bytes
+    // flowing past Node's fetch body timeout.
     const model = req.model || this.model;
     const t0 = Date.now();
     let output = '';
@@ -138,8 +131,8 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     // enforces a 5-minute bodyTimeout on slow streams even with keep-
     // alive heartbeats, and Electron's main-process fetch inherits
     // that. Using http.request gives us a raw socket with no body
-    // timer so longer streams (e.g. Q2_0 on ARM, or any quant on a
-    // weaker host) can keep flowing without the body timeout firing.
+    // timer so longer streams on weaker hosts can keep flowing
+    // without the body timeout firing.
 
     yield* this.httpStream(body, signal);
   }
@@ -361,7 +354,7 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
     // Report only on the model this adapter represents — finding any
     // other model in /api/ps does NOT mean this adapter's model is
     // loaded. Strip Ollama's optional `:tag` suffix (e.g.
-    // "bonsai-8b:q4_k_m") on BOTH sides of the comparison: the
+    // "bonsai-1.7b:q4_k_m") on BOTH sides of the comparison: the
     // operator may set MODEL_NAME to a tagged name and the daemon may
     // report a different tag, but matching bare-vs-bare lets us track
     // the model regardless of quantisation.
@@ -375,21 +368,17 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
       return { loaded: false, model: this.model, quant: this.quant, ramUsageMB: 0, sidecar: 'running' };
     }
     const ramUsageMB = Math.floor((match.size ?? 0) / (1024 * 1024));
-    // Sanity check the resident size against the expected quant.
-    // Q1_0 and Q2_0 GGUFs for the 8B Bonsai family land at
-    // ~1.1–2.2 GB; anything over ~3 GB almost certainly means the
-    // alias is pointing at the wrong GGUF (a bare `bonsai-8b` alias
-    // accidentally bound to an F16 or Q4 file, for example). Emit a
-    // loud warning — inference may still work, but the UI will
-    // misrepresent the on-device cost.
-    const lowerBoundQuant = ['q1_0', 'q2_0', 'q3_0', 'q4_0'].some((q) =>
-      this.quant.toLowerCase().startsWith(q),
-    );
-    if (lowerBoundQuant && ramUsageMB > 3_000) {
+    // Sanity check the resident size against the expected GGUF.
+    // Bonsai-1.7B lands at ~1.0–1.2 GB; anything over ~3 GB almost
+    // certainly means the alias is pointing at the wrong GGUF (a
+    // mid-sized model bound to the same alias name, for example).
+    // Emit a loud warning — inference may still work, but the UI
+    // will misrepresent the on-device cost.
+    if (ramUsageMB > 3_000) {
       console.warn(
         `[ollama] model "${match.name || match.model || this.model}" loaded at ` +
-          `${ramUsageMB} MB resident but quant=${this.quant} expects ~1-2 GB. ` +
-          `Check that the Ollama alias points at the Q1_0/Q2_0 GGUF ` +
+          `${ramUsageMB} MB resident; the Bonsai-1.7B target expects ~1 GB. ` +
+          `Check that the Ollama alias points at the Bonsai-1.7B GGUF ` +
           `(see scripts/setup-models.sh).`,
       );
     }

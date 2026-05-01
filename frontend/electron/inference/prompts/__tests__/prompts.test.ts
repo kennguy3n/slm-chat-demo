@@ -3,10 +3,10 @@
 //
 //   1. The build*Prompt helper produces a string that mentions the
 //      input messages and the expected output schema, and stays
-//      under the rough Bonsai-8B-Q1_0 system-instruction budget
+//      under the rough Bonsai-1.7B system-instruction budget
 //      (≤ 2000 chars including the rendered thread).
 //   2. The parseOutput helper recovers structured rows from the
-//      slightly-noisier formats Bonsai-8B emits in practice — extra
+//      slightly-noisier formats Bonsai-1.7B emits in practice — extra
 //      whitespace, mixed bullet markers, occasional headers, single
 //      missing fields, and the explicit `INSUFFICIENT:` refusal.
 

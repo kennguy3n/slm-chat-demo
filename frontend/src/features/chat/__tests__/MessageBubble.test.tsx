@@ -57,7 +57,7 @@ describe('MessageBubble (bilingual channel)', () => {
       original: incoming.content,
       translated: "Hi Alice! I'm free this Saturday. Which restaurant?",
       targetLanguage: 'en',
-      model: 'bonsai-8b',
+      model: 'bonsai-1.7b',
       computeLocation: 'on_device',
       dataEgressBytes: 0,
     };
@@ -86,7 +86,7 @@ describe('MessageBubble (bilingual channel)', () => {
       translated:
         'Đúng quán đó luôn! Mình nghe nói phở ở đó rất ngon. Hẹn nhau khoảng buổi trưa nhé?',
       targetLanguage: 'vi',
-      model: 'bonsai-8b',
+      model: 'bonsai-1.7b',
       computeLocation: 'on_device',
       dataEgressBytes: 0,
     };

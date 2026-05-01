@@ -29,13 +29,17 @@ Each phase has a goal, a list of deliverables, and explicit exit criteria. The i
 
 ## Phase 1 — Local LLM MVP
 
-**Goal:** Prove efficient local AI with Bonsai-8B (prism-ml/Bonsai-8B-gguf) as the single on-device model.
+**Goal:** Prove efficient local AI with Bonsai-1.7B
+(`prism-ml/Bonsai-1.7B-gguf`) as the single on-device model. Two
+runtimes are supported with priority order: `llama-server` from the
+PrismML `llama.cpp` fork (preferred) and an Ollama daemon (fallback).
 
 **Deliverables:**
 
 - Local model status panel (loaded/unloaded, model name, memory usage)
-- Electron main-process inference adapter to Ollama (TypeScript;
-  llama.cpp and Unsloth follow as additional adapters)
+- Electron main-process inference adapters: `LlamaCppAdapter` (PrismML
+  `llama-server`, primary) and `OllamaAdapter` (fallback). `MockAdapter`
+  remains the offline fallback for tests.
 - On-device routing for all non-server tasks (the router only distinguishes `local` vs. `server`)
 - Streaming responses over IPC (`ai:stream` + chunk events)
 - Privacy strip with real model name and compute location

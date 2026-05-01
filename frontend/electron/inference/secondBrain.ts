@@ -1,7 +1,7 @@
 // Phase 2 B2C "second brain" task helpers — family checklists,
 // shopping-list nudges, and community event/RSVP cards. All three
 // surfaces share the same shape: read recent chat messages, run a
-// single on-device inference (Bonsai-8B), parse the model output deterministically, and
+// single on-device inference (Bonsai-1.7B), parse the model output deterministically, and
 // match items back to the messages that produced them.
 //
 // The router still owns tier selection. We pass `taskType: 'extract_tasks'`
@@ -25,8 +25,12 @@ import type {
 import type { InferenceRouter } from './router.js';
 import { truncateForPrompt } from './tasks.js';
 import { INSUFFICIENT_RULE, detectInsufficient } from './skill-framework.js';
+import { PROMPT_THREAD_CAP } from './prompts/shared.js';
 
-const SECOND_BRAIN_MAX_MESSAGES = 30;
+// Second-Brain helpers don't use the prompts/ library yet, but the
+// outer cap is kept in lock-step with PROMPT_THREAD_CAP so the
+// 1024-token window stays inside budget across every B2C surface.
+const SECOND_BRAIN_MAX_MESSAGES = PROMPT_THREAD_CAP;
 
 // ---------- family checklist ----------
 
@@ -70,7 +74,7 @@ export async function runFamilyChecklist(
 
   const sourceMessageIds = uniqueSourceIds(items, limited);
   const tier: Tier = decision.tier ?? 'local';
-  const reason = decision.reason || `Routed family checklist to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-8B'}.`;
+  const reason = decision.reason || `Routed family checklist to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-1.7B'}.`;
   const title = req.eventHint
     ? `Checklist — ${truncateForPrompt(req.eventHint, 60)}`
     : 'Family checklist';
@@ -177,7 +181,7 @@ export async function runShoppingNudges(
 
   const sourceMessageIds = uniqueSourceIds(nudges, limited);
   const tier: Tier = decision.tier ?? 'local';
-  const reason = decision.reason || `Routed shopping nudges to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-8B'}.`;
+  const reason = decision.reason || `Routed shopping nudges to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-1.7B'}.`;
 
   return {
     channelId: req.channelId,
@@ -251,7 +255,7 @@ export async function runEventRSVP(
 
   const sourceMessageIds = uniqueSourceIds(events, limited);
   const tier: Tier = decision.tier ?? 'local';
-  const reason = decision.reason || `Routed RSVP extraction to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-8B'}.`;
+  const reason = decision.reason || `Routed RSVP extraction to ${tier === 'server' ? 'confidential server' : 'on-device Bonsai-1.7B'}.`;
 
   return {
     channelId: req.channelId,

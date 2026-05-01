@@ -120,7 +120,7 @@ func Seed(m *Memory) {
 		},
 		{
 			// New cross-functional launch channel added during the
-			// B2B real-LLM redesign so Bonsai-8B has a multi-topic
+			// B2B real-LLM redesign so Bonsai-1.7B has a multi-topic
 			// thread (marketing / eng / sales) to demonstrate
 			// summarisation and task extraction over a richer chat.
 			ID:          "ch_product_launch",
@@ -484,7 +484,7 @@ func seedMessages(m *Memory, base time.Time) {
 
 	// B2B — vendor-management thread. Drives the approval-prefill demo
 	// (PROPOSAL 5.3). The B2B real-LLM redesign expanded this thread to
-	// 12 messages so Bonsai-8B has enough pricing, risk, compliance, and
+	// 12 messages so Bonsai-1.7B has enough pricing, risk, compliance, and
 	// decision content to populate the approval card autonomously.
 	addMsg(m, "msg_vend_root", "ch_vendor_management", "msg_vend_root", "user_dave", "Need to lock vendor pricing for the Q3 logging contract — three bids on the table and Finance wants the decision by next Tuesday.", base.Add(-50*time.Minute))
 	addMsg(m, "msg_vend_r1", "ch_vendor_management", "msg_vend_root", "user_eve", "What are the bids, and where do they sit on SOC 2 and GDPR?", base.Add(-48*time.Minute))
@@ -541,7 +541,7 @@ func seedMessages(m *Memory, base time.Time) {
 	addMsg(m, "msg_gen_stand_r3", "ch_general", "msg_gen_stand_root", "user_alice", "Will do, posting tonight. Also reminder: company holiday Friday — no standup.", base.Add(-6*time.Minute))
 
 	// B2B — product-launch thread. Cross-functional discussion
-	// (marketing / engineering / sales) so Bonsai-8B can demonstrate
+	// (marketing / engineering / sales) so Bonsai-1.7B can demonstrate
 	// multi-topic summarisation and multi-owner task extraction.
 	addMsg(m, "msg_pl_root", "ch_product_launch", "msg_pl_root", "user_alice", "Kicking off the v2.0 launch planning. Target ship date: June 14. Three workstreams need owners — marketing, engineering hardening, and sales enablement.", base.Add(-25*time.Minute))
 	addMsg(m, "msg_pl_r1", "ch_product_launch", "msg_pl_root", "user_eve", "Marketing — I'll own the launch blog, press kit, and the customer email blast. Draft blog by June 7, press kit by June 10. Need a hero quote from Alice.", base.Add(-23*time.Minute))

@@ -3,22 +3,24 @@
 KChat SLM Demo is an Electron desktop app that proves the AI features
 inside KChat — summaries, drafts, translation, task extraction, approval
 prefill, knowledge graph — can run on-device using a quantized local
-small language model. Inference is owned by the Electron main process,
-served through a local Ollama daemon (or `MockAdapter` when Ollama is
-not running) and routed by a single `InferenceRouter` with two
-destinations: an on-device `local` tier and a policy-gated `server`
-tier for confidential-server tasks. A small Go data API supplies
-chats, threads, workspaces, and seeded KApp cards. No AI traffic
-leaves the device.
+small language model. Inference is owned by the Electron main process
+and served by one of two on-device runtimes (`llama-server` from the
+PrismML llama.cpp fork *or* an Ollama daemon) with `MockAdapter` as
+the offline fallback. A single `InferenceRouter` picks between an
+on-device `local` tier and a policy-gated `server` tier for
+confidential-server tasks. A small Go data API supplies chats,
+threads, workspaces, and seeded KApp cards. No AI traffic leaves the
+device.
 
 Every B2B AI surface (thread summary, task extraction, approval
 prefill, artifact drafting, knowledge extraction) routes through the
-real on-device Bonsai-8B-Q1_0 model when Ollama is reachable; the
-`MockAdapter` is for tests only and now emits clearly-labelled
-`[MOCK]` placeholders so it's obvious in the UI when the real model
-isn't running. Prompt construction and parsing for these flows live
-in the dedicated [`frontend/electron/inference/prompts/`](./frontend/electron/inference/prompts/)
-library so prompts can be tuned for the 8B model class without
+real on-device Bonsai-1.7B model when llama-server or Ollama is
+reachable; the `MockAdapter` is for tests only and now emits
+clearly-labelled `[MOCK]` placeholders so it's obvious in the UI
+when the real model isn't running. Prompt construction and parsing
+for these flows live in the dedicated
+[`frontend/electron/inference/prompts/`](./frontend/electron/inference/prompts/)
+library so prompts can be tuned for the 1.7B model class without
 chasing parsers through `tasks.ts`.
 
 The same product surface ships in two contexts:
@@ -42,7 +44,7 @@ For the full product thesis, system design, phasing, and progress see
 | ------------ | ----- |
 | Shell        | Electron 31 (main + preload + renderer), TypeScript |
 | Renderer     | React + TypeScript + Vite, TanStack Router / Query, Zustand, Vitest + RTL |
-| Inference    | Electron main process (`frontend/electron/inference/`) — `MockAdapter`, `OllamaAdapter`, `ConfidentialServerAdapter`, and an `InferenceRouter` that picks `local` vs. `server` per task |
+| Inference    | Electron main process (`frontend/electron/inference/`) — `LlamaCppAdapter` (PrismML llama.cpp `llama-server`), `OllamaAdapter`, `MockAdapter`, `ConfidentialServerAdapter`, and an `InferenceRouter` that picks `local` vs. `server` per task. The bootstrap probes llama-server first, then Ollama, then falls back to the mock |
 | IPC          | `contextBridge.exposeInMainWorld('electronAI', …)` exposes `run`, `stream`, `route`, the per-skill helpers (`smartReply`, `translate`, `summarizeThread`, `prefillApproval`, `draftArtifact`, …), and the `model:*` and `egress:*` channels |
 | Local memory | `features/memory/memoryStore.ts` — IndexedDB (`kchat-slm-memory` / `facts`) with an in-memory fallback. Users add / edit / remove facts; the AI never auto-writes. 0 B egress |
 | Data API     | Go 1.25 + chi router + chi/cors, in-memory store |
@@ -75,20 +77,46 @@ suite runs.
 
 ## Run with a real local model (required for the B2B demo)
 
-The Electron main process auto-detects an Ollama daemon on
-`http://localhost:11434` (or `OLLAMA_BASE_URL`). When reachable, the
-router wires a single Ollama adapter bound to `MODEL_NAME` (default
-`bonsai-8b`); otherwise it falls back to `MockAdapter`. The fallback
-is fine for B2C smoke-testing and tests, but every B2B demo flow
-(thread summary, task extraction, approval prefill, artifact draft,
-knowledge graph) is designed to run against the real on-device LLM
-— without Ollama the panels show `[MOCK]` placeholder text.
+The Electron main process probes its on-device runtimes in priority
+order when it boots:
 
-The default `bonsai-8b` is an *alias*, not an upstream Ollama tag —
-[`models/Modelfile.bonsai8b`](./models/Modelfile.bonsai8b) wraps the
-Q1_0 GGUF file from
-[`prism-ml/Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Bonsai-8B-gguf)
-(`Bonsai-8B-Q1_0.gguf`, ~1.16 GB on disk). The bundled script handles
+1. **`llama-server`** from the PrismML `llama.cpp` fork on
+   `http://localhost:11400` (override with `LLAMACPP_BASE_URL`).
+   This is the recommended runtime — it speaks the Bonsai GGUF
+   format natively and supports streaming via SSE. The :11400
+   default avoids a collision with the Go data API on :8080.
+2. **Ollama** on `http://localhost:11434` (override with
+   `OLLAMA_BASE_URL`). The bootstrap creates an `OllamaAdapter`
+   bound to `MODEL_NAME` (default `bonsai-1.7b`).
+3. **`MockAdapter`** offline fallback — fine for B2C smoke testing
+   and tests, but every B2B demo flow shows `[MOCK]` placeholders
+   when no real runtime is reachable.
+
+### Option A (recommended): llama-server
+
+Build the PrismML `llama.cpp` fork once and point it at the
+Bonsai-1.7B GGUF:
+
+```bash
+git clone https://github.com/kennguy3n/llama.cpp.git
+cd llama.cpp && git checkout prism
+cmake -B build && cmake --build build --config Release -t llama-server
+
+curl -L -o Bonsai-1.7B.gguf \
+  https://huggingface.co/prism-ml/Bonsai-1.7B-gguf/resolve/main/Bonsai-1.7B.gguf
+./build/bin/llama-server -m Bonsai-1.7B.gguf -c 4096 --parallel 1 --port 11400
+
+# in another terminal
+cd slm-chat-demo/frontend && npm run electron:dev
+```
+
+### Option B: Ollama
+
+The default `bonsai-1.7b` is an *alias*, not an upstream Ollama
+tag — [`models/Modelfile.bonsai1_7b`](./models/Modelfile.bonsai1_7b)
+wraps the GGUF file from
+[`prism-ml/Bonsai-1.7B-gguf`](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf)
+(`Bonsai-1.7B.gguf`, ~1.0 GB on disk). The bundled script handles
 the download and alias creation:
 
 ```bash
@@ -101,24 +129,20 @@ cd frontend && npm run electron:dev
 To set the alias up by hand:
 
 ```bash
-curl -L -o models/Bonsai-8B-Q1_0.gguf \
-  https://huggingface.co/prism-ml/Bonsai-8B-gguf/resolve/main/Bonsai-8B-Q1_0.gguf
-ollama create bonsai-8b -f models/Modelfile.bonsai8b
+curl -L -o models/Bonsai-1.7B.gguf \
+  https://huggingface.co/prism-ml/Bonsai-1.7B-gguf/resolve/main/Bonsai-1.7B.gguf
+ollama create bonsai-1.7b -f models/Modelfile.bonsai1_7b
 ```
 
-Stock Ollama 0.22.x can `create` the alias but cannot run inference
-against the Q1_0 GGUF; the CPU-only demo path uses the PrismML
-`llama.cpp` fork behind an Ollama-API shim. ARM / Apple Silicon
-hosts get the fastest path from the Q2_0 GGUF in
-[`prism-ml/Ternary-Bonsai-8B-gguf`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-gguf);
-set `MODEL_QUANT=q2_0` and update the Modelfile. Full per-arch
-quant choice, kernel attribution, and tuning matrix in
-[`docs/cpu-perf-tuning.md`](./docs/cpu-perf-tuning.md). Modelfile
-knobs and local-GGUF fallback instructions live in
+Bonsai-1.7B ships as a single GGUF, so there is no per-arch quant
+split to manage — the same artifact runs on x86 CPU, ARM CPU, and
+Apple Silicon. Full performance numbers and CPU-tuning guidance
+live in [`docs/cpu-perf-tuning.md`](./docs/cpu-perf-tuning.md).
+Modelfile knobs and the local-GGUF fallback instructions live in
 [`models/README.md`](./models/README.md). Override the alias at
 runtime with `MODEL_NAME=some-other-alias`; if it resolves to a
-model the daemon hasn't pulled, the bootstrap falls back to
-`MockAdapter` and `DeviceCapabilityPanel` surfaces the fallback.
+model that neither runtime has loaded, the bootstrap falls back to
+`MockAdapter` and the `DeviceCapabilityPanel` surfaces the fallback.
 
 ## Bilingual chat demo (B2C)
 
@@ -130,7 +154,7 @@ mounts, so opening the app drops you straight into the conversation.
 | Surface | What you see | What the SLM does |
 | ------- | ------------ | ----------------- |
 | Chat bubble | A two-panel translation card per message — original on top, translation below, with per-language flag labels (🇺🇸 English / 🇻🇳 Vietnamese). The panel in **your** preferred language is the primary one; the other panel is muted. | One `translate` call per visible bubble, batched into a single IPC round-trip on render. `MessageList` sets `partnerLanguage="vi"` on the channel so outgoing English bubbles also auto-translate to Vietnamese for context. |
-| Privacy strip | Expandable strip on every translation showing `compute: on-device`, `model: bonsai-8b`, `egress: 0 B`, plus the source-message pin. | None — the strip just reflects the response metadata. |
+| Privacy strip | Expandable strip on every translation showing `compute: on-device`, `model: bonsai-1.7b`, `egress: 0 B`, plus the source-message pin. | None — the strip just reflects the response metadata. |
 | **Summary** tab (right rail) | A bilingual conversation summary, written in your preferred language, listing topics, action items, and decisions. | A `summarize` task with a bilingual-aware prompt (see `frontend/electron/inference/tasks.ts` → `buildUnreadSummary`). The mock adapter switches its canned digest when it detects a bilingual prompt. |
 | **Memory** tab | Local-only IndexedDB-backed `AIMemoryPage`. Add/remove facts the model never auto-writes. | None (storage only — 0 B egress). |
 | **Stats** tab | Per-task `MetricsDashboard` (translate runs, tokens, latency, egress). | Reads from the local `activityLog`. |
@@ -138,9 +162,11 @@ mounts, so opening the app drops you straight into the conversation.
 The demo runs end-to-end against `MockAdapter` (no Ollama needed —
 hand-curated translations seeded in
 [`frontend/electron/inference/mock.ts`](./frontend/electron/inference/mock.ts))
-and against a real `OllamaAdapter` bound to `bonsai-8b`. Switching
-between the two is automatic: the bootstrap pings Ollama on startup
-and falls back to the mock when it isn't reachable.
+and against the real `LlamaCppAdapter` (PrismML `llama-server`) or
+`OllamaAdapter` bound to `bonsai-1.7b`. Switching between the three
+is automatic: the bootstrap pings llama-server first, then Ollama,
+and finally falls back to the mock when neither runtime is
+reachable.
 
 ## Project structure
 
@@ -152,7 +178,7 @@ slm-chat-demo/
 ├── frontend/
 │   ├── electron/
 │   │   ├── inference/
-│   │   │   ├── prompts/    Bonsai-8B prompt library (one module per
+│   │   │   ├── prompts/    Bonsai-1.7B prompt library (one module per
 │   │   │   │               B2B task type — buildPrompt + parseOutput)
 │   │   │   ├── recipes/    AI Employee recipes
 │   │   │   ├── skills/     Composable skills (trip planner, guardrail,
@@ -183,7 +209,7 @@ cd backend  && go test ./...    # Go's standard testing + httptest
 ```
 
 Optional: opt-in live-LLM integration tests against a running Ollama
-daemon (otherwise skipped). Loads Bonsai-8B and runs the prompt
+daemon (otherwise skipped). Loads Bonsai-1.7B and runs the prompt
 library through `OllamaAdapter`:
 
 ```bash
@@ -227,7 +253,7 @@ Annotated captures of every PROPOSAL.md §5 demo flow live in
 [`demo/`](./demo/README.md). Each screenshot maps to one of the four
 flows (Morning Catch-up, Task Extraction, Approval Prefill, PRD
 Draft) and shows the on-device privacy strip
-(`compute: on-device`, `model: bonsai-8b`, `egress: 0 B`) where
+(`compute: on-device`, `model: bonsai-1.7b`, `egress: 0 B`) where
 applicable.
 
 ## Current status
@@ -254,8 +280,7 @@ have not yet shipped:
 - **NATS JetStream** — durable async messaging fabric.
 - **MinIO / S3** — object storage for artifacts and binary blobs.
 - **Meilisearch** — full-text search index.
-- **`LlamaCppAdapter`** — second on-device runtime (currently a stub
-  that throws `not yet implemented`).
+
 - **Unsloth Studio** — fine-tuning workflow.
 
 ## Links

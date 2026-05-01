@@ -18,14 +18,14 @@ describe('MockAdapter', () => {
       expect(resp.output.length).toBeGreaterThan(0);
       expect(resp.onDevice).toBe(true);
       expect(resp.taskType).toBe(t);
-      expect(resp.model).toBe('bonsai-8b');
+      expect(resp.model).toBe('bonsai-1.7b');
     }
   });
 
   it('respects the request model override', async () => {
     const m = new MockAdapter();
-    const resp = await m.run({ taskType: 'draft_artifact', prompt: '', model: 'bonsai-8b-override' });
-    expect(resp.model).toBe('bonsai-8b-override');
+    const resp = await m.run({ taskType: 'draft_artifact', prompt: '', model: 'bonsai-1.7b-override' });
+    expect(resp.model).toBe('bonsai-1.7b-override');
   });
 
   it('streams a single delta then done', async () => {
