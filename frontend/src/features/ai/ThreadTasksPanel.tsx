@@ -49,6 +49,14 @@ export function ThreadTasksPanel({ channel }: Props) {
     const myRunId = runIdRef.current;
     setRunning(true);
     setErr(null);
+    // Drop the previous response so TaskExtractionCard unmounts: its
+    // `useState<TaskItem[]>(initial)` initializer only runs on first
+    // mount, so without this the card would keep showing the stale
+    // task list (or stale internal accept/discard state) after a
+    // re-extract or a channel switch. Mirrors ThreadSummaryPanel.run()
+    // clearing setSummary(null) at ThreadSummaryPanel.tsx.
+    setResponse(null);
+    setGeneratedAt(null);
     void (async () => {
       try {
         const messages = await fetchChannelMessages(channelId, {
@@ -170,6 +178,11 @@ export function ThreadTasksPanel({ channel }: Props) {
       )}
       {!err && response && items.length > 0 && (
         <TaskExtractionCard
+          // Force a remount whenever the underlying extraction changes
+          // so the card's `useState<TaskItem[]>(initial)` initializer
+          // re-runs against the new tasks. Defends against a future
+          // refactor that keeps `response` truthy across runs.
+          key={`${response.channelId}:${generatedAt?.toISOString() ?? 'pending'}`}
           title={`${items.length} ${items.length === 1 ? 'task' : 'tasks'} extracted`}
           tasks={items}
           sourceMessageId={items[0]?.sourceMessageId}

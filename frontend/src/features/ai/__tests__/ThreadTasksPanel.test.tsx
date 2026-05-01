@@ -119,6 +119,60 @@ describe('ThreadTasksPanel', () => {
     );
   });
 
+  // Regression: re-extracting on the same channel must replace the rendered
+  // task list with the new payload. TaskExtractionCard initialises its task
+  // list with `useState<TaskItem[]>(initial)` (only runs on first mount),
+  // so unless ThreadTasksPanel.run() clears `response` (unmounting the
+  // card) and TaskExtractionCard is keyed off the run, the second call's
+  // tasks would be silently dropped and the operator would still see the
+  // previous run's titles.
+  it('renders the new task list after re-extracting on the same channel', async () => {
+    const newTasks: KAppsExtractTasksResponse = {
+      ...fakeTasks,
+      tasks: [
+        {
+          title: 'Sign the Acme amended SOW v2',
+          owner: 'user_alice',
+          status: 'open',
+          sourceMessageId: 'msg_vend_r12',
+        },
+      ],
+    };
+    vi.spyOn(kappsApi, 'extractKAppTasks').mockReset();
+    vi.spyOn(kappsApi, 'extractKAppTasks')
+      .mockResolvedValueOnce(fakeTasks)
+      .mockResolvedValueOnce(newTasks);
+
+    renderWithProviders(<ThreadTasksPanel channel={channel} />);
+
+    // First auto-extract lands.
+    await waitFor(() =>
+      expect(screen.getByTestId('task-extraction-card')).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByTestId('task-extraction-badge'));
+    expect(
+      (screen.getByTestId('task-extraction-input-0') as HTMLInputElement).value,
+    ).toBe('File the Acme Logs approval');
+    expect(screen.getAllByTestId(/task-extraction-item-/)).toHaveLength(2);
+
+    // Re-extract on the same channel — the second mocked payload should
+    // replace the list, not be silently dropped behind the card's stale
+    // internal state.
+    await userEvent.click(screen.getByTestId('thread-tasks-panel-run'));
+    await waitFor(() =>
+      expect(kappsApi.extractKAppTasks).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('task-extraction-card')).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByTestId('task-extraction-badge'));
+
+    expect(screen.getAllByTestId(/task-extraction-item-/)).toHaveLength(1);
+    expect(
+      (screen.getByTestId('task-extraction-input-0') as HTMLInputElement).value,
+    ).toBe('Sign the Acme amended SOW v2');
+  });
+
   // Regression: a mid-flight channel switch must not fire `extractKAppTasks`
   // for the abandoned channel. The inference router runs --parallel 1, so a
   // stale on-device LLM call serially blocks the new channel's extraction
