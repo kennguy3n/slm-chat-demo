@@ -1011,7 +1011,16 @@ export async function runConversationInsights(
 // most ≥4-character tokens with `text`. Returns undefined when no
 // message has any meaningful overlap so the renderer can fall back
 // to "no source" rather than back-link to a coincidental hit.
-function findSourceMessage(
+//
+// A score of 1 — exactly one ≥4-character token in common — is
+// usually a coincidence (e.g. an action item "Book a table" and any
+// message that happens to mention "table"). We require a score of at
+// least 2 once the insight text itself contributes more than one
+// qualifying token, so the back-link only fires when the candidate
+// message reflects a substantive overlap. Insights short enough to
+// produce only one qualifying token still get to match on score=1
+// because requiring more would make the link unreachable for them.
+export function findSourceMessage(
   messages: { id: string; content: string }[],
   text: string,
 ): string | undefined {
@@ -1020,6 +1029,7 @@ function findSourceMessage(
     .split(/[^a-z0-9\u00C0-\uFFFF]+/)
     .filter((w) => w.length >= 4);
   if (tokens.length === 0) return undefined;
+  const minScore = tokens.length >= 2 ? 2 : 1;
   let bestId: string | undefined;
   let bestScore = 0;
   for (const m of messages) {
@@ -1033,6 +1043,7 @@ function findSourceMessage(
       bestId = m.id;
     }
   }
+  if (bestScore < minScore) return undefined;
   return bestId;
 }
 

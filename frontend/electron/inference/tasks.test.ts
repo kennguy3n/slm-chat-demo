@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDraftArtifact,
   buildThreadSummary,
+  findSourceMessage,
   parseBatchTranslations,
   parseFormFields,
   parseKAppsExtractedTasks,
@@ -537,5 +538,55 @@ describe('runTranslateBatch (single-call optimisation)', () => {
       'Chào Alice',
       'Chào Alice',
     ]);
+  });
+});
+
+describe('findSourceMessage', () => {
+  // Multi-token insight text against a transcript where the best match
+  // is a single coincidental token. The previous implementation returned
+  // that message id; the score≥2 threshold drops it back to undefined.
+  it('returns undefined when the best score is a coincidental single-token hit', () => {
+    const messages = [
+      { id: 'm1', content: 'I just bought a brand new wooden table for the kitchen' },
+      { id: 'm2', content: 'Sounds great, see you Saturday' },
+    ];
+    // "Book a table at Pho 79 tonight" → tokens [book, table, tonight]
+    // (length≥4). "table" appears in m1, "book"/"tonight" do not appear
+    // anywhere. Best score = 1; min score (since tokens.length≥2) = 2.
+    expect(findSourceMessage(messages, 'Book a table at Pho 79 tonight')).toBeUndefined();
+  });
+
+  it('returns the message id when at least two tokens overlap', () => {
+    const messages = [
+      { id: 'm1', content: 'I just bought a brand new wooden table for the kitchen' },
+      { id: 'm2', content: 'Saturday we should book a table for dinner together' },
+    ];
+    // m2 has "book", "table", "Saturday", "dinner" → score = 3 against
+    // tokens [book, table, tonight, dinner] (4 tokens). Should pick m2.
+    expect(findSourceMessage(messages, 'Book a table tonight, dinner together')).toBe('m2');
+  });
+
+  it('still matches a one-token insight on score=1 (otherwise unreachable)', () => {
+    // Insight text reduces to a single ≥4-character token, so requiring
+    // score≥2 would always return undefined for it. The implementation
+    // relaxes the threshold to 1 in that case.
+    const messages = [
+      { id: 'm1', content: 'Phở 79 was excellent' },
+      { id: 'm2', content: 'See you tomorrow' },
+    ];
+    expect(findSourceMessage(messages, 'excellent')).toBe('m1');
+  });
+
+  it('returns undefined when no message has any qualifying overlap', () => {
+    const messages = [
+      { id: 'm1', content: 'Saturday lunch sounds good' },
+      { id: 'm2', content: 'See you then' },
+    ];
+    expect(findSourceMessage(messages, 'Book a table tonight')).toBeUndefined();
+  });
+
+  it('returns undefined when the insight has zero ≥4-character tokens', () => {
+    const messages = [{ id: 'm1', content: 'phở table book' }];
+    expect(findSourceMessage(messages, 'a b c')).toBeUndefined();
   });
 });
