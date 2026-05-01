@@ -6,12 +6,11 @@ baseline is `Bonsai-1.7B.gguf` pulled via
 `./scripts/setup-models.sh` from
 [`hf.co/prism-ml/Bonsai-1.7B-gguf`](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf).
 
-**The canonical on-device artifact.** `Bonsai-1.7B.gguf` is **~1.0 GB**
-on disk (~1.1 GB resident at startup before KV-cache growth). It is
-a single GGUF that runs on x86 CPU, ARM CPU, and Apple Silicon — the
-Bonsai-8B / Ternary-Bonsai per-arch quant split (Q1_0 on x86, Q2_0 on
-ARM) no longer applies. The PrismML `llama.cpp` fork's `llama-server`
-loads it directly; Ollama 0.22.x can also load it.
+**The canonical on-device artifact.** `Bonsai-1.7B.gguf` is **~237 MB**
+on disk (~300 MB resident at startup before KV-cache growth). It is
+a single GGUF that runs on x86 CPU, ARM CPU, and Apple Silicon — no
+per-arch quant split is required. The PrismML `llama.cpp` fork's
+`llama-server` loads it directly; Ollama 0.22.x can also load it.
 
 ## Two supported runtimes
 
@@ -35,21 +34,18 @@ When neither runtime is reachable, the bootstrap falls back to
 will render `[MOCK]`-prefixed placeholders instead of real LLM
 output.
 
-## Why Bonsai-1.7B is the new default
+## Why Bonsai-1.7B is the on-device default
 
-The previous 8B-class baseline (`Bonsai-8B-Q1_0.gguf`,
-`Ternary-Bonsai-8B-Q2_0.gguf`) needed ~1.2 GB / ~2.2 GB of resident
-RAM and ran at ~11.7 / ~0.6 tok/s respectively on the EPYC 7763
-reference VM. The 1.7B model is roughly 4–5× smaller in parameter
-count and ships a single GGUF, which removes three pain points:
+The demo ships a single on-device artifact — `Bonsai-1.7B.gguf` —
+because it gives three properties that simplify the operator story:
 
-- **No more per-arch quant split.** The same artifact is fastest on
-  x86 and on ARM / Apple Silicon, so there is nothing to switch when
-  the user moves between hosts.
-- **No kernel-coverage gaps.** The previous Q2_0 file fell through to
-  a scalar generic path on x86 (PrismML never wrote an x86 SIMD
-  kernel for that tensor type), which capped throughput at ~0.6
-  tok/s on commodity AMD/Intel CPUs.
+- **One artifact, every host.** The same GGUF is fastest on x86,
+  ARM, and Apple Silicon, so there is nothing to switch when the
+  user moves between hosts.
+- **No kernel-coverage gaps.** The PrismML `llama.cpp` fork has SIMD
+  kernels for every tensor type the file uses on every supported
+  arch, so commodity AMD / Intel / ARM CPUs do not fall through to
+  a scalar generic path.
 - **Headroom for streaming surfaces.** Smart-reply, translation, and
   morning-digest streaming all clear the 5 tok/s short-assistant
   floor on commodity CPUs without a GPU / Metal / NPU.
@@ -168,9 +164,9 @@ Pick the `t` value that wins on generation (`tg32`), not just prompt
 processing. Plug that back into `llama-server` as both `-t` (compute)
 and `-tb` (batch compute) unless the bench shows they should differ.
 
-For reference, on the historical 8B-class baseline (EPYC 7763, 8
-vCPU) the optimum was `-t 6`. The 1.7B model has the same arithmetic
-shape, so a similar sweep range applies — but always re-run the
+For reference, on the EPYC 7763, 8 vCPU box used as the canonical
+benchmark host the optimum is `-t 6`; on a 4 vCPU laptop class
+host it tends to be `-t 3` or `-t 4`. Always re-run the
 sweep on your target host before pinning `-t`.
 
 ## 5. Context reduction
@@ -244,10 +240,10 @@ already small enough that most CPU-only hosts can stay at `f16`.
 
 ## 9. Expected token rates
 
-Bonsai-1.7B is roughly 4–5× smaller than the previous 8B-class
-default, so all of the historical Bonsai-8B-Q1_0 numbers should
-scale up correspondingly on the same hardware. Fresh `llama-bench`
-results against `Bonsai-1.7B.gguf` will land here once a capture
+Bonsai-1.7B is sized so that streaming on commodity CPUs lands
+comfortably above the interactive-latency floor on every demo
+surface. Fresh `llama-bench` results against `Bonsai-1.7B.gguf`
+will land here once a capture
 pass is run on the EPYC 7763 reference VM; the rough expectation
 matrix is:
 
@@ -260,9 +256,7 @@ matrix is:
 | ARM server with NEON                     | much higher    |
 | Discrete GPU (CUDA / ROCm)               | much higher    |
 
-For comparison, the historical 8B-class Q1_0 baseline measured on
-this same EPYC 7763 8 vCPU box landed at **~11.7 tok/s** (`tg32`,
-`-t 6`, warm). Bonsai-1.7B should comfortably clear every threshold
+Bonsai-1.7B should comfortably clear every threshold
 in [Minimum usable thresholds](#11-minimum-usable-thresholds) on the
 same hardware.
 
@@ -299,6 +293,5 @@ hit its minimum, switch models — do not ship the slower config.
 Bonsai-1.7B on a commodity x86 CPU with AVX2 + FMA is expected to
 clear every row in this table, including the classifier 20 tok/s
 bar. Streaming demo surfaces (`02 morning-catchup`, `b2c/07
-smart-reply`) that previously demanded GPU / Metal / NPU under the
-8B-class default are now expected to feel interactive on commodity
-x86 CPU under Bonsai-1.7B.
+smart-reply`) feel interactive on commodity x86 CPU under
+Bonsai-1.7B without requiring a GPU / Metal / NPU.

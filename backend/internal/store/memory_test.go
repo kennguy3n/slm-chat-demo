@@ -65,10 +65,15 @@ func TestListChannelsForUserFiltersByContext(t *testing.T) {
 		}
 	}
 
-	// Carol should appear in the neighborhood community channel only.
+	// Carol is no longer a member of any seeded channel after the
+	// 2026-05-01 B2C ground-zero LLM redesign collapsed the B2C
+	// surface to a single bilingual VI↔EN DM. The empty result
+	// here documents that fact — the user record is still seeded so
+	// existing references in form templates and AI activity logs
+	// continue to resolve.
 	carol := m.ListChannelsForUser("user_carol", "")
-	if len(carol) != 1 || carol[0].ID != "ch_neighborhood" {
-		t.Errorf("expected carol to be a member of only ch_neighborhood, got %+v", carol)
+	if len(carol) != 0 {
+		t.Errorf("expected carol to have no seeded channels after B2C redesign, got %+v", carol)
 	}
 }
 
@@ -76,14 +81,17 @@ func TestChannelMessagesAndThreadMessages(t *testing.T) {
 	m := store.NewMemory()
 	store.Seed(m)
 
-	famMsgs := m.ListChannelMessages("ch_family")
-	if len(famMsgs) < 5 {
-		t.Fatalf("expected at least 5 top-level family messages, got %d", len(famMsgs))
+	// The bilingual VI↔EN DM is the headline B2C demo channel and
+	// carries enough back-and-forth for the translation, summary,
+	// smart-reply, and conversation-insights flows.
+	dmMsgs := m.ListChannelMessages("ch_dm_alice_minh")
+	if len(dmMsgs) < 5 {
+		t.Fatalf("expected at least 5 top-level DM messages, got %d", len(dmMsgs))
 	}
 	// Sorted ascending by createdAt.
-	for i := 1; i < len(famMsgs); i++ {
-		if famMsgs[i].CreatedAt.Before(famMsgs[i-1].CreatedAt) {
-			t.Errorf("messages not sorted ascending: %v before %v", famMsgs[i].CreatedAt, famMsgs[i-1].CreatedAt)
+	for i := 1; i < len(dmMsgs); i++ {
+		if dmMsgs[i].CreatedAt.Before(dmMsgs[i-1].CreatedAt) {
+			t.Errorf("messages not sorted ascending: %v before %v", dmMsgs[i].CreatedAt, dmMsgs[i-1].CreatedAt)
 		}
 	}
 

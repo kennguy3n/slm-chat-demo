@@ -28,10 +28,12 @@ func TestSeededChannelsHaveEnoughMessages(t *testing.T) {
 	store.Seed(m)
 
 	channels := []string{
-		"ch_dm_alice_bob",
+		// B2C surface — collapsed to the bilingual VI↔EN DM in the
+		// 2026-05-01 ground-zero LLM redesign. Every other B2C demo
+		// flow (translation, summary, smart reply, task extraction,
+		// conversation insights) now exercises the on-device LLM
+		// against this single channel rather than seeded mocks.
 		"ch_dm_alice_minh",
-		"ch_family",
-		"ch_neighborhood",
 		"ch_general",
 		"ch_engineering",
 		"ch_vendor_management",
@@ -59,71 +61,18 @@ func TestSeededChannelsHaveEnoughMessages(t *testing.T) {
 	}
 }
 
-// TestB2CChannelsCoverDemoFlows verifies the four B2C PROPOSAL.md §5
-// demonstration flows still have the anchor messages they depend on
-// after enrichment:
-//
-//   - §5.1 Morning Catch-up — family + neighborhood + DM have enough
-//     cross-channel activity for the digest to summarise.
-//   - §5.2 Task extraction — family `msg_fam_1` still carries the
-//     field-trip form + sunscreen message.
-//   - §5.2 RSVP event card — neighborhood `msg_comm_1` carries the
-//     block-party invitation; additional events (garage sale, lost pet,
-//     volunteer request) demonstrate multi-event extraction.
-//   - §5.2 Smart reply — DM has enough back-and-forth to seed
-//     reply-style suggestions; one line is Spanish for the translation
-//     demo.
+// TestB2CChannelsCoverDemoFlows verifies the redesigned B2C anchor
+// scenario — a single bilingual VI↔EN DM — still has enough
+// material for every B2C demo flow (translation, conversation
+// summary, smart reply, task extraction, conversation insights)
+// driven by the on-device LLM. The 2026-05-01 ground-zero redesign
+// removed the family / neighborhood / Bob channels and the
+// hand-curated event/task cards they backed.
 func TestB2CChannelsCoverDemoFlows(t *testing.T) {
 	m := store.NewMemory()
 	store.Seed(m)
 
-	// 5.2 task-extraction anchor.
-	msg, ok := m.GetMessage("msg_fam_1")
-	if !ok {
-		t.Fatal("expected msg_fam_1 (task-extraction anchor) to be seeded")
-	}
-	if !strings.Contains(msg.Content, "Field trip") || !strings.Contains(msg.Content, "sunscreen") {
-		t.Errorf("msg_fam_1 no longer mentions field trip + sunscreen: %q", msg.Content)
-	}
-
-	// 5.2 RSVP event-card anchor.
-	if _, ok := m.GetMessage("msg_comm_1"); !ok {
-		t.Fatal("expected msg_comm_1 (block-party RSVP anchor) to be seeded")
-	}
-
-	// Additional neighborhood events referenced in the enriched seed.
-	neigh := m.ListChannelMessages("ch_neighborhood")
-	joined := strings.Join(contents(neigh), "\n")
-	for _, keyword := range []string{"garage sale", "lost pet", "volunteer"} {
-		if !strings.Contains(strings.ToLower(joined), keyword) {
-			t.Errorf("ch_neighborhood missing enrichment keyword %q", keyword)
-		}
-	}
-
-	// 5.1 Morning Catch-up needs multi-day family activity.
-	fam := m.ListChannelMessages("ch_family")
-	if len(fam) < 8 {
-		t.Fatalf("expected at least 8 top-level family messages for morning-catchup digest, got %d", len(fam))
-	}
-	famJoined := strings.Join(contents(fam), "\n")
-	for _, keyword := range []string{"piano recital", "parent-teacher", "birthday"} {
-		if !strings.Contains(strings.ToLower(famJoined), strings.ToLower(keyword)) {
-			t.Errorf("ch_family missing enrichment keyword %q", keyword)
-		}
-	}
-
-	// Inline-translation demo requires at least one non-English line.
-	dm := m.ListChannelMessages("ch_dm_alice_bob")
-	if len(dm) < 6 {
-		t.Fatalf("expected at least 6 DM messages, got %d", len(dm))
-	}
-	dmJoined := strings.Join(contents(dm), "\n")
-	if !strings.Contains(dmJoined, "restaurante") && !strings.Contains(dmJoined, "siempre") {
-		t.Errorf("ch_dm_alice_bob missing the Spanish line used by the translation demo")
-	}
-
-	// English ↔ Vietnamese translation demo has its own channel and
-	// is now the headline B2C demo. Needs enough back-and-forth to
+	// English ↔ Vietnamese translation demo is the headline B2C demo. Needs enough back-and-forth to
 	// demonstrate the SLM handling both directions across many turns,
 	// alternating senders so every bubble exercises a translation in
 	// the partner's language.

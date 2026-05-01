@@ -5,10 +5,10 @@ import { GuardrailRewriteCard } from '../GuardrailRewriteCard';
 import { renderWithProviders } from '../../../test/renderWithProviders';
 import type {
   GuardrailRewriteResult,
-  TripPlannerPrivacy,
+  SkillPrivacy,
 } from '../../../types/electron';
 
-const privacy: TripPlannerPrivacy = {
+const privacy: SkillPrivacy = {
   computeLocation: 'on_device',
   modelName: 'bonsai-1.7b',
   tier: 'local',

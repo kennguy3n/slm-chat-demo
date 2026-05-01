@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { Channel, User } from '../types/workspace';
 import { ChatSurface } from '../features/chat/ChatSurface';
+import { ConversationInsightsPanel } from '../features/ai/ConversationInsightsPanel';
 import { DeviceCapabilityPanel } from '../features/ai/DeviceCapabilityPanel';
 import { MorningDigestPanel } from '../features/ai/MorningDigestPanel';
 import { MetricsDashboard } from '../features/ai/MetricsDashboard';
-import { AIMemoryPage } from '../features/memory/AIMemoryPage';
 
 interface Props {
   chats: Channel[];
@@ -15,11 +15,11 @@ interface Props {
   currentUserId?: string;
 }
 
-type RightPanelTab = 'summary' | 'memory' | 'stats';
+type RightPanelTab = 'summary' | 'insights' | 'stats';
 
 const RIGHT_TABS: { id: RightPanelTab; label: string }[] = [
   { id: 'summary', label: 'Summary' },
-  { id: 'memory', label: 'Memory' },
+  { id: 'insights', label: 'Insights' },
   { id: 'stats', label: 'Stats' },
 ];
 
@@ -29,24 +29,33 @@ const RIGHT_TABS: { id: RightPanelTab; label: string }[] = [
 // translation on every bubble).
 const DEFAULT_B2C_CHANNEL_ID = 'ch_dm_alice_minh';
 
-// B2CLayout is the messaging-first consumer layout. The redesigned
-// right rail focuses on surfaces that exercise the on-device LLM:
-// a bilingual conversation summary, the local-only AI Memory page,
-// and the on-device metrics dashboard. Family / shopping / events /
-// trip panels lived here in earlier phases but were removed because
-// they relied on canned MockAdapter outputs rather than real local
-// inference.
+// B2CLayout is the messaging-first consumer surface, redesigned in
+// the 2026-05-01 ground-zero LLM pass to exercise the on-device
+// model on every visible affordance:
+//
+//   • Per-bubble translation (TranslationCaption)
+//   • Smart-reply suggestions (SmartReplyBar)
+//   • Task extraction over chat messages (TaskExtractionCard)
+//   • Conversation summary (Summary tab → MorningDigestPanel)
+//   • Conversation insights — topics/action items/decisions/sentiment
+//     (Insights tab → ConversationInsightsPanel)
+//   • Real LLM usage metrics (Stats tab → MetricsDashboard)
+//
+// The earlier family / shopping / event / trip-planner panels were
+// removed because they were anchored to MockAdapter seed data rather
+// than real local inference.
 export function B2CLayout({ chats, users, currentUserId }: Props) {
   const { selectedChatId, setSelectedChatId } = useWorkspaceStore();
   const [rightTab, setRightTab] = useState<RightPanelTab>('summary');
 
-  const sections = useMemo(() => {
-    return {
-      personal: chats.filter((c) => c.kind === 'dm'),
-      family: chats.filter((c) => c.kind === 'family'),
-      community: chats.filter((c) => c.kind === 'community'),
-    };
-  }, [chats]);
+  // Single-section sidebar: every B2C demo flow now anchors on the
+  // bilingual DM, so the layout no longer carves out separate Family
+  // / Community sections (those were tied to seeded channels that
+  // existed only to back mock-driven cards).
+  const personalChats = useMemo(
+    () => chats.filter((c) => c.kind === 'dm'),
+    [chats],
+  );
 
   // Auto-select the bilingual DM on first mount so the demo opens on
   // the headline scenario. Only fires when nothing else is selected
@@ -67,24 +76,10 @@ export function B2CLayout({ chats, users, currentUserId }: Props) {
       <aside className="sidebar" aria-label="B2C sidebar">
         <SidebarSection
           title="Personal chats"
-          chats={sections.personal}
+          chats={personalChats}
           selectedId={selectedChatId}
           onSelect={setSelectedChatId}
           emptyLabel="No personal chats"
-        />
-        <SidebarSection
-          title="Family groups"
-          chats={sections.family}
-          selectedId={selectedChatId}
-          onSelect={setSelectedChatId}
-          emptyLabel="No family groups"
-        />
-        <SidebarSection
-          title="Community groups"
-          chats={sections.community}
-          selectedId={selectedChatId}
-          onSelect={setSelectedChatId}
-          emptyLabel="No community groups"
         />
       </aside>
 
@@ -97,7 +92,7 @@ export function B2CLayout({ chats, users, currentUserId }: Props) {
         <nav
           className="rightpanel__tabs"
           role="tablist"
-          aria-label="Second brain"
+          aria-label="On-device LLM panels"
           data-testid="b2c-right-tabs"
         >
           {RIGHT_TABS.map((t) => (
@@ -120,7 +115,7 @@ export function B2CLayout({ chats, users, currentUserId }: Props) {
         <div className="rightpanel__body" data-testid={`b2c-right-body-${rightTab}`}>
           {/*
            * All panels stay mounted; we hide inactive ones with `hidden` so
-           * that user-curated state (memory facts, generated summary)
+           * that user-curated state (generated summary, generated insights)
            * survives a tab switch instead of being thrown away by an
            * unmount.
            */}
@@ -130,8 +125,8 @@ export function B2CLayout({ chats, users, currentUserId }: Props) {
               users={users}
             />
           </div>
-          <div role="tabpanel" hidden={rightTab !== 'memory'}>
-            <AIMemoryPage />
+          <div role="tabpanel" hidden={rightTab !== 'insights'}>
+            <ConversationInsightsPanel channel={selected} users={users} />
           </div>
           <div role="tabpanel" hidden={rightTab !== 'stats'}>
             <MetricsDashboard />

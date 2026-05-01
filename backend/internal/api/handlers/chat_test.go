@@ -106,9 +106,15 @@ func TestListChatsRejectsInvalidContext(t *testing.T) {
 	}
 }
 
-func TestChatMessagesReturnsSeededFamilyMessages(t *testing.T) {
+// TestChatMessagesReturnsSeededBilingualMessages exercises the
+// redesigned headline B2C channel (Alice ↔ Minh, EN ↔ VI). The
+// 2026-05-01 ground-zero LLM redesign collapsed B2C to this single
+// channel so every demo flow (translation, summary, smart reply,
+// task extraction, conversation insights) hits the on-device LLM
+// against a real bilingual conversation rather than seeded mocks.
+func TestChatMessagesReturnsSeededBilingualMessages(t *testing.T) {
 	h := newTestServer()
-	rec := doGet(t, h, "/api/chats/ch_family/messages", "user_alice")
+	rec := doGet(t, h, "/api/chats/ch_dm_alice_minh/messages", "user_alice")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
@@ -119,18 +125,19 @@ func TestChatMessagesReturnsSeededFamilyMessages(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	if len(body.Messages) == 0 {
-		t.Fatalf("expected family messages")
+		t.Fatalf("expected bilingual DM messages")
 	}
-	// Sanity: the field-trip sentinel string is part of the seeded data.
+	// Sanity: at least one Vietnamese sentinel string appears in the
+	// seeded conversation.
 	found := false
 	for _, m := range body.Messages {
-		if contains(m.Content, "Field trip form") {
+		if contains(m.Content, "phở") || contains(m.Content, "chè") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected to find 'Field trip form' message in seed")
+		t.Errorf("expected to find a Vietnamese sentinel ('phở' or 'chè') in seeded DM")
 	}
 }
 

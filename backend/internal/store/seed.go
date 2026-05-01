@@ -48,19 +48,18 @@ func Seed(m *Memory) {
 	m.PutWorkspace(acme)
 
 	// Channels — B2C.
+	//
+	// The B2C ground-zero LLM redesign (2026-05-01) collapsed the B2C
+	// surface to a single channel: the bilingual Alice ↔ Minh DM.
+	// Every B2C demo flow (translation, conversation summary, smart
+	// reply, task extraction, conversation insights) routes through
+	// the on-device LLM rather than mock-seeded outputs, so the
+	// previous family / community / Bob channels (which existed only
+	// to drive seed-coupled cards) have been removed.
 	channels := []models.Channel{
 		{
-			ID:          "ch_dm_alice_bob",
-			WorkspaceID: personal.ID,
-			DomainID:    "dom_personal",
-			Name:        "Bob Martinez",
-			Kind:        models.ChannelDM,
-			Context:     models.ContextB2C,
-			MemberIDs:   []string{"user_alice", "user_bob"},
-		},
-		{
-			// Demo channel for the English ↔ Vietnamese translation
-			// flow. Alice and Minh alternate languages so the Translate
+			// Demo channel for the English ↔ Vietnamese bilingual flow.
+			// Alice and Minh alternate languages so the Translate
 			// affordance has meaningful work to do on every bubble.
 			ID:              "ch_dm_alice_minh",
 			WorkspaceID:     personal.ID,
@@ -70,24 +69,6 @@ func Seed(m *Memory) {
 			Context:         models.ContextB2C,
 			MemberIDs:       []string{"user_alice", "user_minh"},
 			PartnerLanguage: "vi",
-		},
-		{
-			ID:          "ch_family",
-			WorkspaceID: personal.ID,
-			DomainID:    "dom_personal",
-			Name:        "Family Group",
-			Kind:        models.ChannelFamily,
-			Context:     models.ContextB2C,
-			MemberIDs:   []string{"user_alice", "user_bob"},
-		},
-		{
-			ID:          "ch_neighborhood",
-			WorkspaceID: personal.ID,
-			DomainID:    "dom_personal",
-			Name:        "Neighborhood Community",
-			Kind:        models.ChannelCommunity,
-			Context:     models.ContextB2C,
-			MemberIDs:   []string{"user_alice", "user_carol"},
 		},
 
 		// Channels — B2B.
@@ -398,23 +379,8 @@ func seedFormTemplates(m *Memory) {
 }
 
 func seedMessages(m *Memory, base time.Time) {
-	// B2C — Alice <-> Bob DM.
-	//
-	// Kept deliberately conversational so the B2C thread-summary and
-	// smart-reply demos have a believable social exchange to work
-	// with. Includes one Spanish line so the inline-translation demo
-	// has a realistic source message.
-	addMsg(m, "msg_dm_1", "ch_dm_alice_bob", "", "user_bob", "hey, are you free for dinner Thursday?", base.Add(-3*time.Hour))
-	addMsg(m, "msg_dm_2", "ch_dm_alice_bob", "", "user_alice", "yes! 7pm at the usual place?", base.Add(-3*time.Hour+5*time.Minute))
-	addMsg(m, "msg_dm_3", "ch_dm_alice_bob", "", "user_bob", "perfect, I'll book it", base.Add(-3*time.Hour+6*time.Minute))
-	addMsg(m, "msg_dm_4", "ch_dm_alice_bob", "", "user_alice", "btw — should we invite Carol? she's back in town this week", base.Add(-3*time.Hour+10*time.Minute))
-	addMsg(m, "msg_dm_5", "ch_dm_alice_bob", "", "user_bob", "good idea, I'll ping her. want me to pick you up on the way?", base.Add(-3*time.Hour+15*time.Minute))
-	addMsg(m, "msg_dm_6", "ch_dm_alice_bob", "", "user_alice", "heads up: I might be 10 min late Thursday — dentist appointment runs till 6:45", base.Add(-2*time.Hour-30*time.Minute))
-	addMsg(m, "msg_dm_7", "ch_dm_alice_bob", "", "user_bob", "no stress, I'll grab the booth and order us water", base.Add(-2*time.Hour-29*time.Minute))
-	addMsg(m, "msg_dm_8", "ch_dm_alice_bob", "", "user_alice", "¿nos vemos a las siete en el restaurante de siempre?", base.Add(-2*time.Hour-20*time.Minute))
-	addMsg(m, "msg_dm_9", "ch_dm_alice_bob", "", "user_bob", "sí! 7pm confirmed — Carol is in too, she'll meet us there", base.Add(-2*time.Hour-18*time.Minute))
-
-	// B2C — Alice ↔ Minh (English / Vietnamese). The redesigned B2C
+	// B2C — Alice ↔ Minh (English / Vietnamese).
+	// The redesigned B2C
 	// demo is centred on this channel: every bubble exercises the SLM
 	// Translate affordance, both directions (EN→VI for Alice's lines
 	// and VI→EN for Minh's). Topics are a relatable weekend-meetup
@@ -438,49 +404,6 @@ func seedMessages(m *Memory, base time.Time) {
 	addMsg(m, "msg_minh_14", "ch_dm_alice_minh", "", "user_minh", "Hẹn gặp bạn! Mình chắc chắn bạn sẽ thích đồ ăn Việt Nam. À, nhớ mang theo ô phòng khi trời mưa nhé.", viBase.Add(30*time.Minute))
 	addMsg(m, "msg_minh_15", "ch_dm_alice_minh", "", "user_alice", "Good call on the umbrella — the forecast does show some rain. Thanks for the heads up!", viBase.Add(33*time.Minute))
 	addMsg(m, "msg_minh_16", "ch_dm_alice_minh", "", "user_minh", "Không có gì! Thời tiết mùa này hay thay đổi lắm. Thôi mình đi đặt bàn trước nhé. Tạm biệt!", viBase.Add(35*time.Minute))
-
-	// B2C — Family group. Drives two demo flows:
-	//  - Morning Catch-up digest (PROPOSAL 5.1) needs multiple days of
-	//    events (field trip, piano recital, parent-teacher night,
-	//    birthday) so the summary has something meaningful to condense.
-	//  - Task-extraction demo (PROPOSAL 5.2) anchors off `msg_fam_1`.
-	addMsg(m, "msg_fam_1", "ch_family", "", "user_bob", "Mom: Field trip form due Friday, please sign. Also we need sunscreen.", base.Add(-2*time.Hour))
-	addMsg(m, "msg_fam_2", "ch_family", "", "user_alice", "got it — I'll sign the form tonight and grab sunscreen on the way home", base.Add(-2*time.Hour+10*time.Minute))
-	addMsg(m, "msg_fam_3", "ch_family", "", "user_bob", "thanks!", base.Add(-2*time.Hour+11*time.Minute))
-
-	// Yesterday — piano recital and grocery planning.
-	addMsg(m, "msg_fam_4", "ch_family", "", "user_alice", "don't forget Lily's piano recital is Saturday at 2pm. dress code: smart casual.", base.Add(-26*time.Hour))
-	addMsg(m, "msg_fam_5", "ch_family", "", "user_bob", "on my calendar. do we need to buy flowers for her?", base.Add(-26*time.Hour+5*time.Minute))
-	addMsg(m, "msg_fam_6", "ch_family", "", "user_alice", "yes, pick them up day-of so they're fresh — small bouquet, nothing fancy", base.Add(-26*time.Hour+10*time.Minute))
-	addMsg(m, "msg_fam_7", "ch_family", "", "user_bob", "grocery run tomorrow — here's the list: milk, eggs, bread, apples, lunchbox snacks", base.Add(-25*time.Hour))
-	addMsg(m, "msg_fam_8", "ch_family", "", "user_alice", "add pasta + a jar of marinara. Lily asked for spaghetti Wednesday.", base.Add(-25*time.Hour+10*time.Minute))
-
-	// Two days ago — school + shared calendar items.
-	addMsg(m, "msg_fam_9", "ch_family", "", "user_bob", "parent-teacher night Thursday 6pm at Oakridge Elementary — both of us?", base.Add(-48*time.Hour))
-	addMsg(m, "msg_fam_10", "ch_family", "", "user_alice", "I'll go. you're on bedtime duty that night.", base.Add(-48*time.Hour+5*time.Minute))
-
-	// Today, late — birthday reminder + weekend plan so the morning
-	// catch-up has something to summarize for "things coming up".
-	addMsg(m, "msg_fam_11", "ch_family", "", "user_alice", "reminder: Grandma's birthday is next Tuesday — we need a card + gift idea", base.Add(-45*time.Minute))
-	addMsg(m, "msg_fam_12", "ch_family", "", "user_bob", "I'll grab a card this weekend. she's been into gardening lately — small potted plant?", base.Add(-44*time.Minute))
-	addMsg(m, "msg_fam_13", "ch_family", "", "user_alice", "weekend plan: Saturday = recital + ice cream after; Sunday = park if the weather holds", base.Add(-30*time.Minute))
-
-	// B2C — Neighborhood community. Drives the RSVP event-card demo,
-	// so the channel now carries *multiple* distinct events (block
-	// party, garage sale, lost pet notice, volunteer request) instead
-	// of a single event. Only the block party has an existing seeded
-	// event card — the others demonstrate that the LLM can discover
-	// additional events from chat text.
-	addMsg(m, "msg_comm_1", "ch_neighborhood", "", "user_carol", "Block party Saturday May 16, 4pm at Maple Park. Bring a side dish!", base.Add(-90*time.Minute))
-	addMsg(m, "msg_comm_2", "ch_neighborhood", "", "user_alice", "in! happy to bring drinks", base.Add(-85*time.Minute))
-	addMsg(m, "msg_comm_3", "ch_neighborhood", "", "user_carol", "rain plan: we'll move to the community center if it's wet", base.Add(-80*time.Minute))
-
-	addMsg(m, "msg_comm_4", "ch_neighborhood", "", "user_carol", "garage sale fundraiser next Sunday May 17, 9am–1pm at 142 Oak St. proceeds go to the school library.", base.Add(-70*time.Minute))
-	addMsg(m, "msg_comm_5", "ch_neighborhood", "", "user_alice", "I have a box of books and two old bikes — happy to donate", base.Add(-65*time.Minute))
-	addMsg(m, "msg_comm_6", "ch_neighborhood", "", "user_carol", "lost pet: orange tabby 'Momo', last seen near Maple & 3rd on Wednesday evening. please DM if you spot him.", base.Add(-60*time.Minute))
-	addMsg(m, "msg_comm_7", "ch_neighborhood", "", "user_alice", "sorry to hear! I'll keep an eye out on my morning walk.", base.Add(-55*time.Minute))
-	addMsg(m, "msg_comm_8", "ch_neighborhood", "", "user_carol", "volunteer request: need 3 people Saturday at 3pm to help set up the block party. DM me if you can come early.", base.Add(-40*time.Minute))
-	addMsg(m, "msg_comm_9", "ch_neighborhood", "", "user_alice", "count me in for setup", base.Add(-35*time.Minute))
 
 	// B2B — vendor-management thread. Drives the approval-prefill demo
 	// (PROPOSAL 5.3). The B2B real-LLM redesign expanded this thread to
@@ -556,43 +479,17 @@ func seedMessages(m *Memory, base time.Time) {
 	addMsg(m, "msg_pl_r10", "ch_product_launch", "msg_pl_root", "user_eve", "Confirmed. I'll set the public ship-date as June 14 in the press kit and draft a contingency note for the design partner.", base.Add(-5*time.Minute))
 }
 
-// seedCards loads four sample KApp cards covering each card kind so the
-// frontend's KAppCardRenderer demo has realistic data:
+// seedCards loads sample KApp cards so the frontend's KAppCardRenderer
+// demo has realistic data. The B2C ground-zero LLM redesign
+// (2026-05-01) removed the seed-coupled B2C task and event cards —
+// every B2C card now comes from the real on-device LLM at runtime
+// (task extraction, conversation insights). The remaining seeded
+// cards are B2B-only:
 //
-//   - a Task extracted from the family-group "field trip / sunscreen"
-//     message (PROPOSAL.md 5.2);
 //   - an Approval drafted from the vendor-management thread (PROPOSAL.md 5.3);
 //   - an Artifact drafted from the engineering inline-translation thread
-//     (PROPOSAL.md 5.4);
-//   - an Event from the neighborhood block-party message.
+//     (PROPOSAL.md 5.4).
 func seedCards(m *Memory, base time.Time) {
-	dueFriday := base.Add(72 * time.Hour)
-	startsSat := time.Date(2026, 5, 16, 16, 0, 0, 0, time.UTC)
-
-	m.PutCard(models.Card{
-		Kind:     models.CardKindTask,
-		ThreadID: "msg_fam_1",
-		Task: &models.Task{
-			ID:              "task_sunscreen",
-			ChannelID:       "ch_family",
-			SourceThreadID:  "msg_fam_1",
-			SourceMessageID: "msg_fam_1",
-			Title:           "Buy sunscreen for field trip",
-			Owner:           "user_alice",
-			DueDate:         &dueFriday,
-			Status:          models.TaskStatusOpen,
-			AIGenerated:     true,
-			History: []models.TaskHistoryEntry{
-				{
-					At:     base.Add(-2 * time.Hour).Add(2 * time.Minute),
-					Actor:  "ai",
-					Action: "extracted",
-					Note:   "extracted from message msg_fam_1",
-				},
-			},
-		},
-	})
-
 	m.PutCard(models.Card{
 		Kind:     models.CardKindApproval,
 		ThreadID: "msg_vend_root",
@@ -672,20 +569,6 @@ func seedCards(m *Memory, base time.Time) {
 		},
 	})
 
-	m.PutCard(models.Card{
-		Kind: models.CardKindEvent,
-		Event: &models.Event{
-			ID:              "evt_block_party",
-			ChannelID:       "ch_neighborhood",
-			SourceMessageID: "msg_comm_1",
-			Title:           "Neighborhood block party",
-			StartsAt:        startsSat,
-			Location:        "Maple Park",
-			RSVP:            models.EventRSVPAccepted,
-			AttendeeCount:   12,
-			AIGenerated:     true,
-		},
-	})
 }
 
 func addMsg(m *Memory, id, channelID, threadID, senderID, content string, t time.Time) {

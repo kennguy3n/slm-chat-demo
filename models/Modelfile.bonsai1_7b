@@ -26,12 +26,12 @@ FROM ./Bonsai-1.7B.gguf
 
 PARAMETER temperature 0.7
 PARAMETER top_p 0.9
-# num_ctx: Bonsai-1.7B has a smaller effective context than the 8B
-# sibling and CPU-only inference on this size benefits from a tight
-# window. 1024 covers every prompt the demo emits (the redesigned
-# task prompts in `frontend/electron/inference/tasks.ts` and
-# `secondBrain.ts` cap their inputs to ~120-char snippets and ~15
-# messages so the full prompt + completion stays well under 1024).
+# num_ctx: Bonsai-1.7B benefits from a tight window on CPU-only
+# hosts. 1024 covers every prompt the demo emits — the task prompts
+# in `frontend/electron/inference/tasks.ts` and the prompt library
+# in `frontend/electron/inference/prompts/` cap their inputs to
+# ~120-char snippets and ~15 messages so the full prompt + completion
+# stays well under 1024 tokens.
 PARAMETER num_ctx 1024
 
 SYSTEM """You run on-device inside KChat for privacy. Be concise. Follow the requested output format exactly. Never invent facts. If you cannot complete the task, reply: INSUFFICIENT: <reason>"""

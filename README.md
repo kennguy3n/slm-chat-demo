@@ -116,7 +116,7 @@ The default `bonsai-1.7b` is an *alias*, not an upstream Ollama
 tag — [`models/Modelfile.bonsai1_7b`](./models/Modelfile.bonsai1_7b)
 wraps the GGUF file from
 [`prism-ml/Bonsai-1.7B-gguf`](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf)
-(`Bonsai-1.7B.gguf`, ~1.0 GB on disk). The bundled script handles
+(`Bonsai-1.7B.gguf`, ~237 MB on disk). The bundled script handles
 the download and alias creation:
 
 ```bash
@@ -153,20 +153,22 @@ mounts, so opening the app drops you straight into the conversation.
 
 | Surface | What you see | What the SLM does |
 | ------- | ------------ | ----------------- |
-| Chat bubble | A two-panel translation card per message — original on top, translation below, with per-language flag labels (🇺🇸 English / 🇻🇳 Vietnamese). The panel in **your** preferred language is the primary one; the other panel is muted. | One `translate` call per visible bubble, batched into a single IPC round-trip on render. `MessageList` sets `partnerLanguage="vi"` on the channel so outgoing English bubbles also auto-translate to Vietnamese for context. |
+| Chat bubble | A two-panel translation card per message — original on top, translation below, with per-language flag labels (🇺🇸 English / 🇻🇳 Vietnamese). The panel in **your** preferred language is the primary one; the other panel is muted. | One `translate` call per visible bubble against the real on-device LLM, batched into a single IPC round-trip on render. `MessageList` sets `partnerLanguage="vi"` on the channel so outgoing English bubbles also auto-translate to Vietnamese for context. |
+| Smart-reply bar | 2–3 contextual reply suggestions under the composer. | A `smart_reply` call against the on-device LLM, prompt budget capped at the last 6 messages. |
 | Privacy strip | Expandable strip on every translation showing `compute: on-device`, `model: bonsai-1.7b`, `egress: 0 B`, plus the source-message pin. | None — the strip just reflects the response metadata. |
-| **Summary** tab (right rail) | A bilingual conversation summary, written in your preferred language, listing topics, action items, and decisions. | A `summarize` task with a bilingual-aware prompt (see `frontend/electron/inference/tasks.ts` → `buildUnreadSummary`). The mock adapter switches its canned digest when it detects a bilingual prompt. |
-| **Memory** tab | Local-only IndexedDB-backed `AIMemoryPage`. Add/remove facts the model never auto-writes. | None (storage only — 0 B egress). |
+| **Summary** tab (right rail) | A bilingual conversation summary, written in your preferred language, listing topics, action items, and decisions. | A `summarize` task with a bilingual-aware prompt (see `frontend/electron/inference/tasks.ts` → `buildUnreadSummary`) routed through the on-device LLM. |
+| **Insights** tab (right rail) | LLM-extracted topics, action items, decisions, and a sentiment label with a one-sentence rationale. | A `conversation-insights` task driven by `frontend/electron/inference/prompts/conversation-insights.ts` → pipe-delimited TOPICS / ACTIONS / DECISIONS / SENTIMENT output → `parseConversationInsightsOutput`. |
 | **Stats** tab | Per-task `MetricsDashboard` (translate runs, tokens, latency, egress). | Reads from the local `activityLog`. |
 
-The demo runs end-to-end against `MockAdapter` (no Ollama needed —
-hand-curated translations seeded in
-[`frontend/electron/inference/mock.ts`](./frontend/electron/inference/mock.ts))
-and against the real `LlamaCppAdapter` (PrismML `llama-server`) or
-`OllamaAdapter` bound to `bonsai-1.7b`. Switching between the three
-is automatic: the bootstrap pings llama-server first, then Ollama,
-and finally falls back to the mock when neither runtime is
-reachable.
+Every visible affordance now exercises the real on-device LLM (via
+`LlamaCppAdapter` against `llama-server`, or `OllamaAdapter` against
+the `bonsai-1.7b` alias). The `MockAdapter` is intentionally seedless
+— when neither runtime is reachable, every translation, summary,
+smart reply, and insight returns an obvious `[MOCK]`-prefixed
+placeholder so the operator can immediately tell the LLM is offline.
+
+The bootstrap pings llama-server first, then Ollama, and finally
+falls back to the mock when neither runtime is reachable.
 
 ## Project structure
 
@@ -181,7 +183,7 @@ slm-chat-demo/
 │   │   │   ├── prompts/    Bonsai-1.7B prompt library (one module per
 │   │   │   │               B2B task type — buildPrompt + parseOutput)
 │   │   │   ├── recipes/    AI Employee recipes
-│   │   │   ├── skills/     Composable skills (trip planner, guardrail,
+│   │   │   ├── skills/     Composable skills (guardrail rewrite,
 │   │   │   │               LLM knowledge extractor)
 │   │   │   ├── adapter.ts, ollama.ts, mock.ts, router.ts, …
 │   │   │   └── tasks.ts    B2B/B2C task helpers (delegates to prompts/)
@@ -250,11 +252,12 @@ signed builds.
 ## Demo screenshots
 
 Annotated captures of every PROPOSAL.md §5 demo flow live in
-[`demo/`](./demo/README.md). Each screenshot maps to one of the four
-flows (Morning Catch-up, Task Extraction, Approval Prefill, PRD
-Draft) and shows the on-device privacy strip
-(`compute: on-device`, `model: bonsai-1.7b`, `egress: 0 B`) where
-applicable.
+[`demo/`](./demo/README.md). The B2C set was re-captured in Phase 8
+against the live `LlamaCppAdapter` running Bonsai-1.7B — every
+translation, summary, smart-reply, and conversation-insights tile
+in the screenshots is real on-device LLM output, with the privacy
+strip showing `compute: on-device`, `model: bonsai-1.7b`,
+`egress: 0 B`.
 
 ## Current status
 
@@ -267,6 +270,7 @@ applicable.
 | Phase 4 — AI Employees and recipe engine    | Complete    | 100% | Three seeded employees, recipe registry, queue, budget controls, output gate, mode badges. |
 | Phase 5 — Connectors and knowledge graph    | Complete    | 100% | Drive + OneDrive mock connectors, channel-scoped retrieval, source picker, knowledge graph, citations, ACL sync. |
 | Phase 6 — Confidential server mode          | In progress | ~85% | ConfidentialServerAdapter, RedactionEngine, EgressTracker, policy admin, audit export, SSO/SCIM, encryption-key + tenant-storage models. |
+| Phase 8 — B2C ground-zero LLM redesign      | Complete    | 100% | Stripped mock-coupled second-brain surfaces, rebuilt B2C around the on-device LLM (every translation, summary, smart-reply, insights, task extraction is now a real model call), added `ConversationInsightsPanel` + `conversation-insights` prompt + IPC handler, re-captured all B2C demo screenshots. |
 
 See [PROGRESS.md](./PROGRESS.md) for the per-task tracker and
 changelog.

@@ -1,13 +1,15 @@
 // MockAdapter — deterministic stand-in for the on-device LLM, used
 // **only in tests and as a last-resort fallback when Ollama is
-// unreachable**. Every B2B demo flow now routes through the real
-// `OllamaAdapter` whenever the daemon is up, and the canned outputs
-// here are intentionally generic + clearly labelled `[MOCK] …` so it
-// is obvious from the privacy strip and any captured artefact when
-// the real model wasn't running.
+// unreachable**. Every demo flow (B2B *and* B2C) now routes through
+// the real `OllamaAdapter` / `LlamaCppAdapter` whenever a runtime is
+// up. The canned outputs here are intentionally generic + clearly
+// labelled `[MOCK] …` so it is obvious from the privacy strip and
+// any captured artefact when the real model wasn't running.
 //
-// The B2C translation seed table is preserved because the
-// translation tests assert on specific bidirectional pairs.
+// The B2C ground-zero LLM redesign (2026-05-01) removed the seeded
+// translation table so every translation, summary, and conversation
+// insight in the demo exercises the real on-device model rather
+// than hand-curated lookups.
 
 import type {
   Adapter,
@@ -52,38 +54,21 @@ export class MockAdapter implements Adapter {
 function mockOutputFor(req: InferenceRequest): string {
   switch (req.taskType) {
     case 'summarize':
-      // Two layers:
-      //  1. Bilingual chat summary (B2C bilingual demo) — detected via
-      //     `mockIsBilingualSummary` on the prompt body. Returns a
-      //     hand-curated EN summary that calls out decisions, action
-      //     items, and that the chat spans EN ↔ VI.
-      //  2. Generic [MOCK] placeholder — the Phase 7 B2B redesign
-      //     stripped seed-coupled summaries here so it's obvious in
-      //     screenshots / privacy strips when the real LLM didn't run.
-      //     Bullets are shaped like the prompt library's expected
-      //     output so parsers in tests stay happy.
-      if (mockIsBilingualSummary(req.prompt ?? '')) {
-        return [
-          'Bilingual conversation summary — English ↔ Vietnamese, summarised on-device:',
-          '• Plan: Alice and Minh confirmed Saturday lunch at the new',
-          '  Vietnamese restaurant downtown, meeting at 12 noon.',
-          '• Order: Minh will book a table for two and pre-order phở bò,',
-          '  gỏi cuốn (fresh spring rolls), Vietnamese iced coffee, and',
-          '  chè ba màu for dessert; mild spice level for Alice.',
-          '• Action items: Minh to make the reservation; Alice to bring',
-          '  an umbrella (rain in the forecast).',
-          '• Tone: friendly, looking forward to it. Conversation ran across',
-          '  two languages — Alice in English, Minh in Vietnamese — with',
-          '  every bubble translated on-device.',
-        ].join('\n');
-      }
+      // Generic [MOCK] placeholder — the B2C redesign stripped the
+      // seeded bilingual summary here so it's obvious in screenshots
+      // / privacy strips when the real LLM didn't run. Bullets are
+      // shaped like the prompt library's expected output so parsers
+      // in tests stay happy.
       return [
         '- [MOCK] Decision: routing summary placeholder produced by MockAdapter.',
-        '- [MOCK] Open question: real Bonsai-1.7B output replaces this when llama-server or Ollama is reachable.',
+        '- [MOCK] Open question: real Bonsai output replaces this when llama-server or Ollama is reachable.',
         '- [MOCK] Owner: alice (placeholder).',
         '- [MOCK] Deadline: this week (placeholder).',
       ].join('\n');
     case 'translate':
+      // No seeded translation table anymore. The MockAdapter just
+      // surfaces the source text wrapped with [MOCK] so the missing
+      // model is unmistakable in screenshots and tests.
       return mockTranslate(req.prompt ?? '');
     case 'extract_tasks':
       // Generic mock task list — pipe-delimited so the KApps parser
@@ -134,126 +119,11 @@ function mockOutputFor(req: InferenceRequest): string {
   }
 }
 
-// Hand-seeded bidirectional translations used by the B2C translation
-// tests. Keys are the source text (lowercased + trimmed); values map
-// the target language to the translated string. The mock adapter
-// matches loosely so small whitespace or punctuation drift in the
-// prompt doesn't break the lookup.
-//
-// Exported for tests.
-export const SEEDED_TRANSLATIONS: Record<string, Record<string, string>> = {
-  // ---- Alice ↔ Minh (English ↔ Vietnamese) ---------------------------
-  // Each English line gets a Vietnamese translation; each Vietnamese
-  // line gets an English translation. Keeps the bilingual demo
-  // working even when Ollama isn't running.
-  'hey minh! are you free this saturday? i was thinking we could check out that new vietnamese restaurant downtown.':
-    {
-      vi:
-        'Chào Minh! Thứ Bảy này bạn rảnh không? Mình đang nghĩ tụi mình thử nhà hàng Việt Nam mới mở ở trung tâm.',
-    },
-  'chào alice! thứ bảy này mình rảnh. nhà hàng nào vậy? mình nghe nói có một quán phở mới mở ở trung tâm.':
-    {
-      en:
-        "Hi Alice! I'm free this Saturday. Which restaurant? I heard there's a new pho place that just opened downtown.",
-    },
-  "yes! that's the one. i heard their pho is amazing. want to meet around noon?":
-    {
-      vi:
-        'Đúng quán đó luôn! Mình nghe nói phở ở đó rất ngon. Hẹn nhau khoảng buổi trưa nhé?',
-    },
-  'trưa được nha! mình sẽ đặt bàn trước. bạn có ăn được cay không?': {
-    en:
-      "Noon works! I'll book a table in advance. Can you handle spicy food?",
-  },
-  'i can handle a little spice but not too much 😄 can you order for us since you know vietnamese food better?':
-    {
-      vi:
-        'Mình ăn cay được chút thôi, không quá cay nha 😄 Bạn gọi giúp tụi mình được không, vì bạn rành đồ Việt hơn?',
-    },
-  'được rồi, mình sẽ gọi món cho. mình sẽ chọn phở bò và gỏi cuốn. bạn muốn uống gì?':
-    {
-      en:
-        "Okay, I'll order for us. I'll pick beef pho and fresh spring rolls. What would you like to drink?",
-    },
-  "iced vietnamese coffee sounds perfect! i've been wanting to try the real thing.":
-    {
-      vi:
-        'Cà phê sữa đá Việt Nam nghe tuyệt vời! Mình muốn thử bản chính gốc lâu rồi.',
-    },
-  'cà phê sữa đá là lựa chọn tuyệt vời! mình cũng sẽ gọi thêm chè cho tráng miệng.':
-    {
-      en:
-        "Iced milk coffee is a great choice! I'll also order some chè for dessert.",
-    },
-  "what's chè? i don't think i've tried that before.": {
-    vi: 'Chè là gì vậy? Hình như mình chưa thử bao giờ.',
-  },
-  'chè là món tráng miệng truyền thống của việt nam, có nhiều loại lắm. mình sẽ chọn chè ba màu cho bạn thử - rất ngon!':
-    {
-      en:
-        "Chè is a traditional Vietnamese dessert — there are many kinds. I'll pick chè ba màu (three-colour) for you to try — it's really good!",
-    },
-  'that sounds amazing! i love trying new desserts. should i bring anything?': {
-    vi:
-      'Nghe ngon quá! Mình rất thích thử món tráng miệng mới. Mình có cần mang theo gì không?',
-  },
-  'không cần đâu, chỉ cần mang theo sự háo hức thôi! 😊 gặp bạn lúc 12 giờ trưa thứ bảy nhé.':
-    {
-      en:
-        "No need, just bring your appetite! 😊 See you at 12 noon on Saturday.",
-    },
-  "perfect! see you saturday at noon. can't wait! 🎉": {
-    vi: 'Tuyệt vời! Hẹn gặp trưa thứ Bảy. Mình háo hức quá! 🎉',
-  },
-  'hẹn gặp bạn! mình chắc chắn bạn sẽ thích đồ ăn việt nam. à, nhớ mang theo ô phòng khi trời mưa nhé.':
-    {
-      en:
-        "See you then! I'm sure you'll love Vietnamese food. Oh, remember to bring an umbrella in case it rains.",
-    },
-  'good call on the umbrella — the forecast does show some rain. thanks for the heads up!':
-    {
-      vi:
-        'Ý kiến hay đó — dự báo có mưa thật. Cảm ơn bạn đã nhắc!',
-    },
-  'không có gì! thời tiết mùa này hay thay đổi lắm. thôi mình đi đặt bàn trước nhé. tạm biệt!':
-    {
-      en:
-        "No problem! The weather changes a lot this season. I'll go book the table now. Bye!",
-    },
-
-  // ---- Alice ↔ Bob (Spanish snippet) --------------------------------
-  '¿nos vemos a las siete en el restaurante de siempre?': {
-    en: 'See you at seven at our usual restaurant?',
-  },
-  "sí! 7pm confirmed — carol is in too, she'll meet us there": {
-    es: '¡Sí! 7 de la tarde confirmado — Carol también se apunta, nos vemos allí.',
-  },
-};
-
-// mockIsBilingualSummary inspects a summarize prompt and returns true
-// when it carries the bilingual marker `buildUnreadSummary` writes
-// (Vietnamese / English bilingual chat) or contains enough Vietnamese
-// diacritic content to be a clear bilingual conversation summary.
-// Exported for tests.
-export function mockIsBilingualSummary(prompt: string): boolean {
-  if (!prompt) return false;
-  // Explicit marker the bilingual prompt writes ("Vietnamese ↔
-  // English bilingual chat" or similar) — phrase order may vary.
-  const lower = prompt.toLowerCase();
-  if (lower.includes('bilingual chat') || lower.includes('bilingual conversation')) {
-    return true;
-  }
-  // Heuristic: a Vietnamese diacritic + at least one Vietnamese word
-  // strongly correlates with the Alice ↔ Minh demo channel.
-  const viDiacritic = /[ăâđêôơưỳ]/i;
-  return viDiacritic.test(prompt) && /phở|chè|cà phê/.test(prompt);
-}
-
-function extractSource(prompt: string): string {
-  // runTranslate wraps the text as `...\n\nMessage: <source>`. If that
-  // envelope is present, extract the source. Otherwise treat the full
-  // prompt as the source so ad-hoc callers (tests, one-off demos) still
-  // get a useful translation.
+// extractPromptText pulls the source `Message: <body>` out of the
+// translate envelope built by `runTranslate`. Falls back to the
+// trimmed prompt body for ad-hoc callers (tests, one-off demos) so
+// the mock surface still produces something visible.
+function extractPromptText(prompt: string): string {
   const idx = prompt.lastIndexOf('Message:');
   if (idx >= 0) {
     return prompt.slice(idx + 'Message:'.length).trim();
@@ -261,27 +131,15 @@ function extractSource(prompt: string): string {
   return prompt.trim();
 }
 
-function extractTarget(prompt: string): string {
-  // runTranslate prefaces the prompt with "Translate the following chat
-  // message into <lang>". Extract the language so we can pick the right
-  // seeded translation. Defaults to English.
-  const m = prompt.match(/into ([A-Za-z]{2,})[.\s]/);
-  if (m && m[1]) return m[1].trim().toLowerCase();
-  return 'en';
-}
-
+// mockTranslate returns a clearly-labelled `[MOCK] <source>` string
+// when the real LLM is not reachable. The B2C ground-zero redesign
+// removed the hand-curated bilingual translation table — every
+// translation in the demo now requires the on-device model to
+// produce a real result, and the placeholder makes a missing model
+// obvious in screenshots / privacy strips.
 export function mockTranslate(prompt: string): string {
-  const source = extractSource(prompt) || '(no source text)';
-  const target = extractTarget(prompt);
-  const key = source.toLowerCase().trim();
-  const targetKey = target.toLowerCase().slice(0, 2);
-  const seeded = SEEDED_TRANSLATIONS[key];
-  if (seeded && seeded[targetKey]) {
-    return seeded[targetKey];
-  }
-  // Fallback: still produce something useful and clearly labelled so
-  // the demo surfaces don't render empty / identical strings.
-  return `[${targetKey}] ${source}`;
+  const source = extractPromptText(prompt) || '(no source text)';
+  return `[MOCK] ${source}`;
 }
 
 export function estimateTokens(s: string): number {

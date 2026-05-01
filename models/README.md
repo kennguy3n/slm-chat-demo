@@ -16,7 +16,7 @@ inference routes through this alias when running against Ollama.
 
 | Alias        | Modelfile                | Base GGUF           | Size on disk | Tier  | Use case                              |
 |--------------|--------------------------|---------------------|--------------|-------|---------------------------------------|
-| `bonsai-1.7b`| `Modelfile.bonsai1_7b`   | `Bonsai-1.7B.gguf`  | ~1.0 GB      | local | Summaries, drafts, smart replies, tasks |
+| `bonsai-1.7b`| `Modelfile.bonsai1_7b`   | `Bonsai-1.7B.gguf`  | ~237 MB      | local | Summaries, drafts, smart replies, tasks |
 
 Source: [prism-ml/Bonsai-1.7B-gguf](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf)
 → [`Bonsai-1.7B.gguf`](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf/blob/main/Bonsai-1.7B.gguf).
@@ -27,11 +27,11 @@ Source: [prism-ml/Bonsai-1.7B-gguf](https://huggingface.co/prism-ml/Bonsai-1.7B-
 ./scripts/setup-models.sh
 ```
 
-The script downloads `Bonsai-1.7B.gguf` (~1.0 GB) from HuggingFace
+The script downloads `Bonsai-1.7B.gguf` (~237 MB) from HuggingFace
 into `models/` if it isn't already present, then creates the
 `bonsai-1.7b` Ollama alias from the Modelfile in this directory.
 After it runs, `ollama list` should show a row for `bonsai-1.7b:latest`
-at ~1.0 GB.
+at ~237 MB.
 
 The Modelfile references the GGUF by local path so the canonical
 artifact is what lands in `ollama list` (Ollama's
@@ -51,11 +51,10 @@ cd frontend && npm run electron:dev
 
 ## CPU performance
 
-`Bonsai-1.7B.gguf` is roughly 1.0 GB on disk and ~1.1 GB resident at
-startup before KV-cache growth. Because the model is much smaller
-than the previous Bonsai-8B target, both the x86 and ARM CPU paths
-clear the demo's interactive-latency tier comfortably; per-arch
-quant selection is no longer the dominant performance lever.
+`Bonsai-1.7B.gguf` is roughly 237 MB on disk and ~300 MB resident at
+startup before KV-cache growth. Both the x86 and ARM CPU paths
+clear the demo's interactive-latency tier comfortably at this size;
+per-arch quant selection is not a performance lever for the demo.
 
 The Modelfile in this directory defaults to `num_ctx 1024` so
 CPU-only hosts don't pay an unnecessary attention cost — every

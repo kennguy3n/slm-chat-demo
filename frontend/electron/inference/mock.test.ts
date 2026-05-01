@@ -100,64 +100,38 @@ describe('MockAdapter', () => {
       expect(resp.output).not.toMatch(/inline translation/i);
     });
 
-    // Bilingual conversation summary path — the mock should switch
-    // its summarize output when the prompt looks like a bilingual
-    // chat digest (the redesigned B2C demo). The check here is loose
-    // (fuzz-resistant against prompt copy edits) but covers the
-    // critical signals the renderer surfaces.
-    it('summarize output is bilingual when prompt mentions a bilingual chat', async () => {
+    // Bilingual / seeded translation paths were removed in the B2C
+    // ground-zero redesign — the MockAdapter now always emits a
+    // generic [MOCK] placeholder for translate so missing local
+    // models surface unambiguously in screenshots and privacy strips.
+    it('translate output is a labelled [MOCK] placeholder, not a seeded translation', async () => {
+      const prompt =
+        'Translate the following chat message into English.\n\n' +
+        'Message: Chào Alice! Thứ Bảy này mình rảnh.';
+      const resp = await adapter.run({ taskType: 'translate', prompt });
+      expect(resp.output).toMatch(/\[MOCK\]/);
+      // The pre-redesign seed table answered this prompt with the
+      // word "Saturday". Confirm the seed table is gone.
+      expect(resp.output).not.toMatch(/Saturday/);
+      // The source body is echoed back so it's visible the model
+      // didn't run — the original Vietnamese text appears verbatim.
+      expect(resp.output).toMatch(/Chào Alice/);
+    });
+
+    // Bilingual summarize path was also removed — the MockAdapter no
+    // longer special-cases a bilingual chat prompt and just returns
+    // the generic [MOCK] bullet list.
+    it('summarize output stays generic even for a bilingual chat prompt', async () => {
       const prompt =
         'Summarise the following English ↔ Vietnamese bilingual chat ' +
-        'for an English-speaking reader. Write the summary in English. ' +
-        'phở, cà phê sữa đá, chè ba màu.';
+        'for an English-speaking reader.';
       const resp = await adapter.run({ taskType: 'summarize', prompt });
-      expect(resp.output).toMatch(/bilingual/i);
-      expect(resp.output).toMatch(/English/);
-      expect(resp.output).toMatch(/Vietnamese/);
-      // Surfaces enriched seed vocabulary so the demo summary feels
-      // grounded in the actual conversation.
-      expect(resp.output).toMatch(/phở/);
+      expect(resp.output).toMatch(/\[MOCK\]/);
+      // The pre-redesign seed surfaced "phở", "chè ba màu", and
+      // "Vietnamese" verbatim. Confirm none of those leak through.
+      expect(resp.output).not.toMatch(/phở/);
+      expect(resp.output).not.toMatch(/chè ba màu/);
     });
-  });
-});
-
-describe('mockTranslate (seeded bilingual outputs)', () => {
-  // Keys are taken straight from the enriched seed.go content. These
-  // tests guard against drift between the seeded VI/EN messages and
-  // the mock adapter's hand-curated translations: a regression where
-  // a seeded message no longer has a matching mock output would
-  // otherwise be invisible until you ran the full demo.
-  it.each([
-    {
-      prompt:
-        'Translate the following chat message into English.\n\n' +
-        'Message: Chào Alice! Thứ Bảy này mình rảnh. Nhà hàng nào vậy? Mình nghe nói có một quán phở mới mở ở trung tâm.',
-      expectMatch: /Saturday/i,
-    },
-    {
-      prompt:
-        'Translate the following chat message into English.\n\n' +
-        'Message: Trưa được nha! Mình sẽ đặt bàn trước. Bạn có ăn được cay không?',
-      expectMatch: /spicy/i,
-    },
-    {
-      prompt:
-        'Translate the following chat message into English.\n\n' +
-        'Message: Cà phê sữa đá là lựa chọn tuyệt vời! Mình cũng sẽ gọi thêm chè cho tráng miệng.',
-      expectMatch: /dessert/i,
-    },
-    {
-      prompt:
-        'Translate the following chat message into Vietnamese.\n\n' +
-        "Message: Hey Minh! Are you free this Saturday? I was thinking we could check out that new Vietnamese restaurant downtown.",
-      expectMatch: /Thứ Bảy|Việt Nam/,
-    },
-  ])('returns a plausible translation for seeded line', async ({ prompt, expectMatch }) => {
-    const adapter = new MockAdapter();
-    const resp = await adapter.run({ taskType: 'translate', prompt });
-    expect(resp.output).toMatch(expectMatch);
-    // Translations should never echo the raw `[lang] source` fallback.
-    expect(resp.output).not.toMatch(/^\[[a-z]{2}\]\s/);
   });
 });
 

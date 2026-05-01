@@ -313,7 +313,7 @@ func TestAttachRejectsUnknownChannel(t *testing.T) {
 func TestAttachRejectsCrossWorkspaceChannel(t *testing.T) {
 	h := newTestServer()
 	// ws_personal channel must not be attachable to an Acme connector.
-	body := bytes.NewBufferString(`{"channelId":"ch_dm_alice_bob"}`)
+	body := bytes.NewBufferString(`{"channelId":"ch_dm_alice_minh"}`)
 	rec := doRequest(t, h, "POST", "/api/connectors/conn_gdrive_acme/channels", "user_alice", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for cross-workspace attach, got %d: %s", rec.Code, rec.Body.String())

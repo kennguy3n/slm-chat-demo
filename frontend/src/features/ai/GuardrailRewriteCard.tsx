@@ -1,7 +1,7 @@
 import type {
   GuardrailRewriteResult,
-  TripPlannerPrivacy,
-  TripPlannerSkillSource,
+  SkillPrivacy,
+  SkillSource,
 } from '../../types/electron';
 import type { PrivacyStripSource } from '../../types/ai';
 import { PrivacyStrip } from './PrivacyStrip';
@@ -9,7 +9,7 @@ import { PrivacyStrip } from './PrivacyStrip';
 interface Props {
   original: string;
   result: GuardrailRewriteResult;
-  privacy: TripPlannerPrivacy;
+  privacy: SkillPrivacy;
   onAccept: (rewrite: string) => void;
   onKeep: () => void;
   onEdit: () => void;
@@ -107,7 +107,7 @@ export function GuardrailRewriteCard({
   );
 }
 
-function toPrivacySource(s: TripPlannerSkillSource): PrivacyStripSource {
+function toPrivacySource(s: SkillSource): PrivacyStripSource {
   const kind: PrivacyStripSource['kind'] =
     s.kind === 'tool' ? 'connector' : s.kind === 'memory' ? 'memory' : 'message';
   return { kind, id: s.id, label: s.label ?? s.id };

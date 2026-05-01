@@ -60,6 +60,16 @@ export {
   type KnowledgeRow,
   type KnowledgeKind,
 } from './extract-knowledge.js';
+export {
+  buildConversationInsightsPrompt,
+  parseConversationInsightsOutput,
+  type ConversationInsightsInput,
+  type ConversationInsightsOutput,
+  type ConversationInsightTopicRow,
+  type ConversationInsightActionRow,
+  type ConversationInsightDecisionRow,
+  type ConversationSentiment,
+} from './conversation-insights.js';
 
 // Shared utilities that several prompt modules use.
 export { truncateRunes, formatThread, INSUFFICIENT_PREFIX, isInsufficient } from './shared.js';
