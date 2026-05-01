@@ -413,7 +413,20 @@ the IPC bridge and keep AI surfaces responsive on slow CPU hosts.
   sentinel under `translateQueryKey(messageId, targetLanguage)` so
   per-message hooks in `MessageBubble` do not also fire their own
   `ai:translate` requests; on success the list writes each
-  `TranslateResponse` into the cache.
+  `TranslateResponse` into the cache. Each batch item also carries
+  up to **3 preceding messages** from the same channel as
+  conversation context: chat lines are typically short (e.g. "Yes!
+  That's the one." or "Trưa được nha!") and a 1.7B model fed an
+  isolated bubble has no idea what the conversation is about and
+  hallucinates unrelated content. The context block is rendered in
+  the **system role** of the Qwen3 chat template (not the user
+  turn) — empirically, Bonsai-1.7B regurgitates context verbatim
+  when context shares the user turn with the line to translate, but
+  treats it as background metadata when delivered via system. The
+  translate call also pins `temperature: 0` so each translation is
+  greedy and deterministic; at any non-zero temperature the model
+  occasionally produces a free-form rewrite of the source instead
+  of a translation.
 - **Auto-run morning digest.** `MorningDigestPanel` runs the digest
   once on mount (via a `startedRef`-guarded `useEffect`) and caches
   the completed result under `DIGEST_CACHE_KEY` in react-query, so
@@ -710,12 +723,19 @@ The preload script exposes `window.electronAI` to the renderer via
   dataEgressBytes }`.
 - `ai:translate` returns both the original and the translated message.
   Request (`TranslateRequest`): `{ messageId, channelId,
-  targetLanguage?, original }`. Response (`TranslateResponse`):
+  targetLanguage?, original, context? }`. Response (`TranslateResponse`):
   `{ messageId, channelId, original, translated, targetLanguage,
-  model, computeLocation, dataEgressBytes }`.
+  model, computeLocation, dataEgressBytes }`. The optional
+  `context: { sender, text }[]` array carries up to 3 preceding
+  messages from the same channel; the main process renders them
+  into a `Recent conversation:` block in the system role of the
+  translate prompt so short / ambiguous chat lines have enough
+  grounding for the on-device 1.7B model.
 - `ai:translate-batch` runs N translations in a single prompt and
   returns one `TranslateResponse` per input item. Request
-  (`TranslateBatchRequest`): `{ items: TranslateRequest[] }`. Response
+  (`TranslateBatchRequest`): `{ items: TranslateRequest[] }` — each
+  item may carry its own `context` window so per-item disambiguation
+  is independent across the batch. Response
   (`TranslateBatchResponse`): `{ items: TranslateResponse[] }`. The
   renderer (`MessageList`) seeds the per-message react-query cache
   with a `null` sentinel under `translateQueryKey(messageId,
