@@ -21,6 +21,12 @@ interface OllamaGenerateRequest {
   prompt: string;
   stream: boolean;
   keep_alive?: number;
+  // Optional system instruction. Ollama wires this into the
+  // model's chat template before issuing the completion call, which
+  // is the only way to make instruct models (Bonsai-1.7B is fine-
+  // tuned from Qwen3) treat `prompt` as a user turn rather than as
+  // raw next-token continuation.
+  system?: string;
   // Disables reasoning-model "thinking" mode on qwen3 / deepseek-r1
   // family GGUFs. When true (the Ollama default for those families)
   // the model emits a long `<think>…</think>` preamble into the
@@ -120,6 +126,7 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
       stream: true,
       think: false,
     };
+    if (req.system) body.system = req.system;
 
     // Tests inject fetchImpl directly — keep using fetch in that path.
     if (this.fetchInjected) {

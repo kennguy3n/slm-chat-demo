@@ -45,6 +45,38 @@ interface LlamaCppCompletionRequest {
   // Cache the prompt prefix when possible to speed up repeated calls
   // with the same skeleton.
   cache_prompt: boolean;
+  // Stop sequences. The Qwen3 chat template emits `<|im_end|>` at
+  // the end of each turn; pinning it as a stop token guarantees a
+  // single-turn answer instead of letting the model imitate further
+  // turns of the chat (which a small 1.7B model loves to do).
+  stop?: string[];
+}
+
+// Qwen3 chat template tokens. The PrismML Bonsai weights are fine-
+// tuned from Qwen3 and expect this exact framing — sending raw text
+// to `/completion` makes the model fall back to next-token
+// continuation (i.e. it ignores the system instruction and
+// hallucinates), which is the root cause of the bad demo translations
+// captured before this fix.
+const QWEN3_IM_START = '<|im_start|>';
+const QWEN3_IM_END = '<|im_end|>';
+
+// Format a (system, user) pair into the Qwen3 chat-template prompt
+// llama-server's `/completion` endpoint expects. We append an empty
+// `<think></think>` block so the model skips the reasoning preamble
+// the Qwen3 base template would otherwise produce — Bonsai inherits
+// that behaviour and on a 1.7B model the thinking trace can consume
+// the entire token budget before the answer arrives.
+export function formatQwen3Chat(prompt: string, system?: string): string {
+  const sys = (system ?? '').trim();
+  const user = (prompt ?? '').trim();
+  let out = '';
+  if (sys) {
+    out += `${QWEN3_IM_START}system\n${sys}${QWEN3_IM_END}\n`;
+  }
+  out += `${QWEN3_IM_START}user\n${user}${QWEN3_IM_END}\n`;
+  out += `${QWEN3_IM_START}assistant\n<think>\n\n</think>\n\n`;
+  return out;
 }
 
 interface LlamaCppCompletionFrame {
@@ -127,13 +159,21 @@ export class LlamaCppAdapter implements Adapter, StatusProvider, Loader {
     req: InferenceRequest,
     signal?: AbortSignal,
   ): AsyncGenerator<StreamChunk, void, void> {
+    const formatted = formatQwen3Chat(req.prompt ?? '', req.system);
     const body: LlamaCppCompletionRequest = {
-      prompt: req.prompt ?? '',
+      prompt: formatted,
       stream: true,
-      temperature: 0.7,
+      // Lower temperature than the previous default — a 1.7B model
+      // hallucinates faster at higher temps, and translation is a
+      // task where determinism is preferable to creative phrasing.
+      temperature: 0.2,
       top_p: 0.9,
-      n_predict: DefaultMaxTokens,
+      n_predict: req.maxTokens && req.maxTokens > 0 ? req.maxTokens : DefaultMaxTokens,
       cache_prompt: true,
+      // Halt at the end of the assistant turn so the model can't
+      // start a fake next-user turn. (The /completion endpoint does
+      // not honour `<|im_end|>` as an EOG token automatically.)
+      stop: [QWEN3_IM_END, '<|endoftext|>'],
     };
 
     // Tests inject fetchImpl directly — keep using fetch in that path.

@@ -47,9 +47,12 @@ import {
   buildExtractTasksPrompt,
   buildPrefillApprovalPrompt,
   buildDraftArtifactPrompt,
+  buildTranslatePrompt,
   parseConversationInsightsOutput,
   parseExtractTasksOutput,
   parsePrefillApprovalOutput,
+  parseTranslateOutput,
+  parseTranslateBatchOutput,
 } from './prompts/index.js';
 import { PROMPT_MESSAGE_CAP, PROMPT_THREAD_CAP } from './prompts/shared.js';
 
@@ -130,15 +133,37 @@ export async function runTranslate(
   req: TranslateRequest,
 ): Promise<TranslateResponse> {
   const target = (req.targetLanguage ?? '').trim() || 'en';
-  const prompt =
-    `Translate the following chat message into ${target}. Preserve tone, names, and emoji. ` +
-    `Respond with the translation only, no commentary.\n\nMessage: ${req.text}`;
+  const source = (req.sourceLanguage ?? '').trim();
+  // Skip the model call entirely when source and target match — the
+  // small Bonsai-1.7B model otherwise loves to "translate" English
+  // into English by inventing new content (hallucination), which
+  // looks like a bug to the user. Returning the original verbatim
+  // is also faithful to the user's intent ("translate to English"
+  // when the bubble is already English ⇒ identity).
+  if (source && source === target) {
+    return {
+      messageId: req.messageId,
+      channelId: req.channelId,
+      original: req.text,
+      translated: req.text,
+      targetLanguage: target,
+      model: 'identity',
+      computeLocation: 'on_device',
+      dataEgressBytes: 0,
+    };
+  }
+  const { system, user } = buildTranslatePrompt({
+    text: req.text,
+    targetLanguage: target,
+    sourceLanguage: source || undefined,
+  });
   const resp = await adapter.run({
     taskType: 'translate',
-    prompt,
+    prompt: user,
+    system,
     channelId: req.channelId,
   });
-  const translated = resp.output.trim() || req.text;
+  const translated = parseTranslateOutput(resp.output) || req.text;
   return {
     messageId: req.messageId,
     channelId: req.channelId,
@@ -151,69 +176,50 @@ export async function runTranslate(
   };
 }
 
-// runTranslateBatch sends every message in a single prompt so the
-// model only pays the prompt-eval / load cost once. The response is a
-// JSON array keyed by index; missing entries fall back to the
-// original text so the renderer never blanks out.
+// runTranslateBatch translates every item in the request and returns
+// the results in input order. Implementation note: the previous
+// "single batched prompt" optimisation looked attractive on paper
+// (one prompt-eval cost instead of N) but in practice the 1.7B
+// Bonsai model is not strong enough at instruction-following to
+// consistently produce a clean `<N>. <translation>` list — it
+// frequently echoes the source text or the bracketed language
+// annotation back verbatim. Sequential per-item `runTranslate`
+// calls trade a bit of throughput for reliable, anchorable
+// translations (each call sees a clean single-item Qwen3 chat
+// template with explicit "from <SRC> to <DST>" framing).
+//
+// Performance: the demo's `llama-server` process is started with
+// `--parallel 1`, so even if we fanned out N parallel requests
+// they'd serialize anyway. With `cache_prompt: true` the system
+// instruction prefix is cached across calls and only the tail
+// (the per-item `Text: …`) re-tokenises, so per-item is much
+// closer to single-call cost than it was on the previous adapter.
 export async function runTranslateBatch(
   adapter: Adapter,
   req: TranslateBatchRequest,
 ): Promise<TranslateBatchResponse> {
   const items = req.items;
   if (items.length === 0) return { results: [] };
-  if (items.length === 1) {
-    const only = items[0]!;
+  const results: TranslateResponse[] = [];
+  for (const it of items) {
     const one = await runTranslate(adapter, {
-      messageId: only.messageId,
-      channelId: only.channelId,
-      text: only.text,
-      targetLanguage: only.targetLanguage,
+      messageId: it.messageId,
+      channelId: it.channelId,
+      text: it.text,
+      targetLanguage: it.targetLanguage,
+      sourceLanguage: it.sourceLanguage,
     });
-    return { results: [one] };
+    results.push(one);
   }
-  const channelId = items[0]!.channelId;
-  const lines = items
-    .map((it, i) => `${i + 1}. (to ${it.targetLanguage}) ${truncateForPrompt(it.text, 400)}`)
-    .join('\n');
-  const prompt =
-    'Translate each of the following chat messages into the language indicated in parentheses. ' +
-    'Preserve tone, names, and emoji. Output one translation per line in the exact format ' +
-    '`<N>. <translation>` with nothing else — no commentary, no repetition of the original.\n\n' +
-    lines;
-  const resp = await adapter.run({
-    taskType: 'translate',
-    prompt,
-    channelId,
-    maxTokens: Math.max(256, items.reduce((s, it) => s + it.text.length, 0)),
-  });
-  const parsed = parseBatchTranslations(resp.output, items.length);
-  const results: TranslateResponse[] = items.map((it, i) => ({
-    messageId: it.messageId,
-    channelId: it.channelId,
-    original: it.text,
-    translated: parsed[i]?.trim() || it.text,
-    targetLanguage: it.targetLanguage,
-    model: resp.model,
-    computeLocation: 'on_device',
-    dataEgressBytes: 0,
-  }));
   return { results };
 }
 
+// Legacy export retained for any out-of-tree caller that still
+// imports it. Internally tasks.ts now uses
+// `parseTranslateBatchOutput` from the prompt module which also
+// strips per-line label / `(to xx)` echo prefixes.
 export function parseBatchTranslations(out: string, expected: number): string[] {
-  const result: string[] = new Array(expected).fill('');
-  if (!out) return result;
-  const lines = out.split('\n');
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    const m = line.match(/^\s*\(?(\d+)[.):\]]?\s+(.+)$/);
-    if (!m) continue;
-    const idx = Number.parseInt(m[1]!, 10) - 1;
-    if (idx < 0 || idx >= expected) continue;
-    if (!result[idx]) result[idx] = m[2]!.trim();
-  }
-  return result;
+  return parseTranslateBatchOutput(out, expected);
 }
 
 // ---------- extract tasks (B2C) ----------

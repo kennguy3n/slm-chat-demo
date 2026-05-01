@@ -29,6 +29,12 @@ export interface InferenceRequest {
   taskType: TaskType;
   model?: string;
   prompt?: string;
+  // Optional system instruction. Adapters that talk to instruct
+  // models (Bonsai-1.7B is fine-tuned from Qwen3) wrap this into the
+  // model's chat template so the runtime treats `prompt` as a user
+  // turn, not raw next-token continuation. When omitted the prompt
+  // is sent as a user-only turn.
+  system?: string;
   channelId?: string;
   maxTokens?: number;
   // Phase 6 — explicit tier selection so the dispatcher can ask for
@@ -144,6 +150,12 @@ export interface TranslateRequest {
   channelId: string;
   text: string;
   targetLanguage?: string;
+  // ISO-639-1 source language (`'en'`, `'vi'`, …). When supplied the
+  // prompt anchors the model with an explicit "translate from <SRC>
+  // to <DST>" instruction; without it the model has to infer the
+  // direction, which a small instruct model (Bonsai-1.7B) sometimes
+  // gets wrong on idiomatic Vietnamese.
+  sourceLanguage?: string;
 }
 
 export interface TranslateResponse {
@@ -165,6 +177,9 @@ export interface TranslateBatchItem {
   channelId: string;
   text: string;
   targetLanguage: string;
+  // Optional source-language hint (ISO-639-1). See `TranslateRequest`
+  // for why we plumb this through.
+  sourceLanguage?: string;
 }
 
 export interface TranslateBatchRequest {

@@ -48,6 +48,7 @@ export function MessageList({
       channelId: string;
       text: string;
       targetLanguage: string;
+      sourceLanguage: string;
     }[] = [];
     for (const m of messages) {
       const target = computeTranslationTarget(m.content, pref, partnerLanguage, detect);
@@ -65,6 +66,11 @@ export function MessageList({
         channelId: m.channelId,
         text: m.content,
         targetLanguage: target,
+        // Plumbing the detected source language down to the prompt
+        // anchors the model with an explicit "from <SRC> to <DST>"
+        // instruction, which avoids the EN→EN echo and EN→VI ↔
+        // VI→EN confusion the 1.7B model otherwise drops into.
+        sourceLanguage: detect(m.content),
       });
     }
     if (items.length === 0) return;

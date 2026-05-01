@@ -70,6 +70,16 @@ export {
   type ConversationInsightDecisionRow,
   type ConversationSentiment,
 } from './conversation-insights.js';
+export {
+  buildTranslatePrompt,
+  buildTranslateBatchPrompt,
+  parseTranslateOutput,
+  parseTranslateBatchOutput,
+  languageLabel,
+  type TranslateBuilderInput,
+  type TranslateBatchBuilderInput,
+  type TranslatePromptParts,
+} from './translate.js';
 
 // Shared utilities that several prompt modules use.
 export { truncateRunes, formatThread, INSUFFICIENT_PREFIX, isInsufficient } from './shared.js';
