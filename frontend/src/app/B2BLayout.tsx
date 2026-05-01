@@ -5,7 +5,8 @@ import type { Channel, User, Workspace } from '../types/workspace';
 import { ChatSurface } from '../features/chat/ChatSurface';
 import { ThreadPanel } from '../features/chat/ThreadPanel';
 import { DeviceCapabilityPanel } from '../features/ai/DeviceCapabilityPanel';
-import { TasksKApp } from '../features/kapps/TasksKApp';
+import { ThreadSummaryPanel } from '../features/ai/ThreadSummaryPanel';
+import { ThreadTasksPanel } from '../features/ai/ThreadTasksPanel';
 import { fetchAIEmployees } from '../api/aiEmployeeApi';
 import type { AIEmployee } from '../types/aiEmployee';
 import {
@@ -13,8 +14,7 @@ import {
   AIEmployeeList,
   AIEmployeePanel,
 } from '../features/ai-employees';
-import { ConnectorPanel, KnowledgeGraphPanel } from '../features/knowledge';
-import { PolicyAdminPanel } from '../features/ai/PolicyAdminPanel';
+import { KnowledgeGraphPanel } from '../features/knowledge';
 
 
 interface Props {
@@ -26,27 +26,37 @@ interface Props {
   currentUserId?: string;
 }
 
-type RightRailTab =
-  | 'tasks'
-  | 'ai-employees'
-  | 'connectors'
-  | 'knowledge'
-  | 'policy';
+type RightRailTab = 'summary' | 'tasks' | 'knowledge' | 'ai-employees';
 
 const RIGHT_TABS: { id: RightRailTab; label: string }[] = [
+  { id: 'summary', label: 'Summary' },
   { id: 'tasks', label: 'Tasks' },
-  { id: 'ai-employees', label: 'AI Employees' },
-  { id: 'connectors', label: 'Connectors' },
   { id: 'knowledge', label: 'Knowledge' },
-  { id: 'policy', label: 'Policy' },
+  { id: 'ai-employees', label: 'AI Employees' },
 ];
 
-// B2BLayout renders the workspace -> domain -> channel hierarchy in the
-// sidebar (PROPOSAL.md §4.1, Phase 3). Each domain is a collapsible
-// section; channels with no domain fall under "Direct messages".
-// Phase 3 added a "Tasks" right-panel tab that mounts TasksKApp.
-// Phase 4 adds an "AI Employees" tab + a compact list of seeded
-// employees under the channel tree.
+// The B2B redesign opens on the vendor-management thread because
+// it has the longest seeded conversation, the richest decision
+// content, and is the canonical surface for the approval-prefill
+// demo flow (PROPOSAL.md §5.3).
+const DEFAULT_B2B_CHANNEL_ID = 'ch_vendor_management';
+
+// B2BLayout renders the workspace -> domain -> channel hierarchy in
+// the sidebar (PROPOSAL.md §4.1, Phase 3). The Phase 9 ground-zero
+// LLM redesign collapsed the right-rail to four tabs that all run
+// real on-device inference:
+//
+//   - Summary  → ThreadSummaryPanel (ai:summarize-thread)
+//   - Tasks    → ThreadTasksPanel   (ai:kapps-extract-tasks)
+//   - Knowledge → KnowledgeGraphPanel (ai:extract-knowledge)
+//   - AI Employees → AIEmployeePanel (recipe runs hit the LLM)
+//
+// The previous Connectors / Policy tabs were removed from the
+// primary right-rail because they were CRUD over seeded data and
+// did not exercise the on-device LLM. Their components still live
+// under `features/knowledge/ConnectorPanel.tsx` and
+// `features/ai/PolicyAdminPanel.tsx` and can be re-mounted from a
+// dedicated admin surface when needed.
 export function B2BLayout({ workspace, channels, users, currentUserId }: Props) {
   const {
     selectedChatId,
@@ -57,7 +67,7 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
     toggleDomainExpanded,
   } = useWorkspaceStore();
 
-  const [rightTab, setRightTab] = useState<RightRailTab>('tasks');
+  const [rightTab, setRightTab] = useState<RightRailTab>('summary');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
@@ -106,6 +116,20 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace?.id]);
+
+  // Auto-select the vendor-management channel on first mount so the
+  // demo opens on the headline B2B scenario (rich seeded thread →
+  // real on-device summary + task extraction). Only fires when
+  // nothing else is selected and the channel actually exists.
+  useEffect(() => {
+    if (selectedChatId) return;
+    const target = channels.find((c) => c.id === DEFAULT_B2B_CHANNEL_ID);
+    if (target) {
+      setSelectedChatId(target.id);
+      if (target.domainId) setSelectedDomainId(target.domainId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channels]);
 
   const selected = channels.find((c) => c.id === selectedChatId) ?? null;
 
@@ -240,29 +264,16 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
           ))}
         </nav>
         <div className="rightpanel__body" data-testid={`b2b-right-body-${rightTab}`}>
+          {/*
+           * All panels stay mounted with `hidden` so that user-curated
+           * state (a streamed summary, an extracted task list) survives
+           * a tab switch without re-running on-device inference.
+           */}
+          <div role="tabpanel" hidden={rightTab !== 'summary'}>
+            <ThreadSummaryPanel channel={selected} />
+          </div>
           <div role="tabpanel" hidden={rightTab !== 'tasks'}>
-            <TasksKApp channelId={selected?.id ?? null} />
-          </div>
-          <div role="tabpanel" hidden={rightTab !== 'ai-employees'}>
-            <AIEmployeePanel
-              employee={selectedEmployee}
-              channels={channels}
-              recipeCatalog={AI_EMPLOYEE_RECIPES}
-              onChange={handleEmployeeChange}
-            />
-          </div>
-          <div role="tabpanel" hidden={rightTab !== 'connectors'}>
-            {workspace && selected ? (
-              <ConnectorPanel
-                workspaceId={workspace.id}
-                channelId={selected.id}
-                channelName={selected.name}
-              />
-            ) : (
-              <p className="connector-panel__empty">
-                Select a channel to manage connectors.
-              </p>
-            )}
+            <ThreadTasksPanel channel={selected} />
           </div>
           <div role="tabpanel" hidden={rightTab !== 'knowledge'}>
             {selected ? (
@@ -276,14 +287,13 @@ export function B2BLayout({ workspace, channels, users, currentUserId }: Props) 
               </p>
             )}
           </div>
-          <div role="tabpanel" hidden={rightTab !== 'policy'}>
-            {workspace ? (
-              <PolicyAdminPanel workspaceId={workspace.id} />
-            ) : (
-              <p className="policy-admin-panel__empty">
-                Select a workspace to view its AI policy.
-              </p>
-            )}
+          <div role="tabpanel" hidden={rightTab !== 'ai-employees'}>
+            <AIEmployeePanel
+              employee={selectedEmployee}
+              channels={channels}
+              recipeCatalog={AI_EMPLOYEE_RECIPES}
+              onChange={handleEmployeeChange}
+            />
           </div>
         </div>
       </aside>

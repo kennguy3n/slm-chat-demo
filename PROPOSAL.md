@@ -329,7 +329,31 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
    `ai:translate-batch` IPC call, so the whole conversation
    renders translation cards in one round-trip.
 
-### 5.3 B2B "Vendor approval"
+### 5.3 B2B "Thread summary + task extraction"
+
+Phase 9 elevated this flow to the first thing visible in the
+B2B right rail.
+
+1. User opens `#vendor-management` (auto-selected on first
+   mount of the B2B layout) — a 12-message thread covering
+   pricing, SOC 2 compliance, single-region risk, and the final
+   decision.
+2. The right-rail **Summary** tab (`ThreadSummaryPanel`)
+   auto-runs `ai:summarize-thread` against the thread's primary
+   message. The Phase 7 prompt library
+   (`summarize.ts`) builds the prompt; the result streams in
+   via `streamAITask` and renders inside `ThreadSummaryCard`
+   with the standard `PrivacyStrip`.
+3. The right-rail **Tasks** tab (`ThreadTasksPanel`) auto-runs
+   `ai:kapps-extract-tasks` against the same thread and renders
+   the structured `<title> | <owner> | <due>` tasks with
+   source-message backlinks via the existing
+   `TaskExtractionCard`.
+4. Both panels cache per-channel via `useQueryClient`; switching
+   channels and switching back replays the cached output
+   without re-running inference.
+
+### 5.4 B2B "Vendor approval"
 
 1. User opens `#vendor-management` in the workspace. The seeded
    thread contains 12 messages with explicit pricing, SOC 2
@@ -352,7 +376,7 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
 8. An **immutable decision log** entry is written (who, when, model,
    sources, egress). The card flips to **Approved** with a permalink.
 
-### 5.4 B2B "Draft PRD with Nina PM AI"
+### 5.5 B2B "Draft PRD with Nina PM AI"
 
 1. User opens the Action Launcher and picks **Create → PRD**.
 2. The **Brief Builder** opens: user selects the source thread (e.g.
@@ -371,13 +395,30 @@ Four end-to-end flows are shipped in the demo to prove the thesis.
 6. Publishing creates **Artifact v1** and posts a card back in the
    channel with a link to the artifact and the full source list.
 
-> All four B2B flows above route through the real on-device LLM
-> via `OllamaAdapter` when Ollama is reachable. The `MockAdapter`
-> still satisfies the contract for unit tests but emits clearly
-> `[MOCK]`-labelled placeholders so the demo path is unambiguous.
-> The Phase 7 prompt library
+### 5.6 B2B "Knowledge graph from #vendor-management"
+
+1. User stays on `#vendor-management` and switches the right
+   rail to the **Knowledge** tab.
+2. `KnowledgeGraphPanel` runs `ai:extract-knowledge`. The Phase
+   7 `extract-knowledge.ts` skill prompts the on-device LLM
+   for five entity classes — Decisions, Owners, Risks,
+   Requirements, Deadlines — and emits each with a
+   source-message backlink.
+3. Each entity is rendered with a confidence badge, optional
+   actor pills (owners), and a due-date chip (deadlines).
+   Clicking the source link scrolls the chat surface to the
+   originating message.
+
+> All B2B flows above route through the real on-device LLM via
+> `LlamaCppAdapter` (preferred) or `OllamaAdapter` when a runtime
+> is reachable. The `MockAdapter` still satisfies the contract
+> for unit tests but emits clearly `[MOCK]`-labelled placeholders
+> so the demo path is unambiguous. The Phase 7 prompt library
 > ([`frontend/electron/inference/prompts/`](./frontend/electron/inference/prompts/))
-> centralises every B2B prompt template and parser.
+> centralises every B2B prompt template and parser, and Phase 9's
+> `ThreadSummaryPanel` / `ThreadTasksPanel` consume it through
+> the same `streamAITask` pipeline as every other on-device
+> surface.
 
 ---
 

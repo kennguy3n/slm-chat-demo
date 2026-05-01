@@ -54,6 +54,9 @@ describe('B2BLayout', () => {
       workspaceId: 'ws_acme',
       selectedChatId: null,
       selectedThreadId: null,
+      // Reset domain expansion so the auto-expand effect runs.
+      expandedDomainIds: [],
+      selectedDomainId: null,
     });
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ messages: [] }), {
@@ -73,5 +76,24 @@ describe('B2BLayout', () => {
     expect(screen.getByRole('button', { name: /# engineering/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /# vendor-management/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /direct messages/i })).toBeInTheDocument();
+  });
+
+  it('renders the Phase 9 right-rail tab structure (Summary | Tasks | Knowledge | AI Employees)', () => {
+    renderWithProviders(<B2BLayout workspace={acme} channels={channels} users={{}} />);
+    // Expected tabs.
+    expect(screen.getByTestId('b2b-right-tab-summary')).toBeInTheDocument();
+    expect(screen.getByTestId('b2b-right-tab-tasks')).toBeInTheDocument();
+    expect(screen.getByTestId('b2b-right-tab-knowledge')).toBeInTheDocument();
+    expect(screen.getByTestId('b2b-right-tab-ai-employees')).toBeInTheDocument();
+    // Removed tabs.
+    expect(screen.queryByTestId('b2b-right-tab-connectors')).toBeNull();
+    expect(screen.queryByTestId('b2b-right-tab-policy')).toBeNull();
+  });
+
+  it('defaults to the Summary tab and mounts the ThreadSummaryPanel', () => {
+    renderWithProviders(<B2BLayout workspace={acme} channels={channels} users={{}} />);
+    const summaryTab = screen.getByTestId('b2b-right-tab-summary');
+    expect(summaryTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('thread-summary-panel')).toBeInTheDocument();
   });
 });

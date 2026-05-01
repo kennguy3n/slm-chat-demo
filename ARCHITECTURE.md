@@ -77,12 +77,14 @@ Meilisearch land in later phases.
 | 10 | `DeviceCapabilityPanel` | RAM, WebGPU support, sidecar status, currently-loaded model. |
 | 11 | `SourcePicker` | Three-tab picker (Channels / Threads / Files) that scopes which surfaces an AI Employee may read. |
 | 12 | `OutputReview` | Human review gate that renders AI-generated content with Accept / Edit / Discard controls before any KApp write. |
-| 13 | `ConnectorPanel` | B2B right-rail "Connectors" tab listing workspace connectors and per-channel attach status. |
+| 13 | `ConnectorPanel` | Workspace-connector listing (per-channel attach status). Demoted off the B2B primary right-rail in Phase 9; remains available as an admin surface. |
 | 14 | `PermissionPreview` | "AI will read from…" sheet rendered between `SourcePicker` confirm and dispatch with a `0 bytes will leave this device` badge. |
 | 15 | `CitationChip` / `CitationRenderer` | Inline citation rendering: parses `[source:id]` markers and emits numbered chips plus a "Sources (N)" footer. |
-| 16 | `KnowledgeGraphPanel` | B2B right-rail "Knowledge" tab with five collapsible sections (Decisions, Owners, Risks, Requirements, Deadlines). |
+| 16 | `KnowledgeGraphPanel` | B2B right-rail **Knowledge** tab with five collapsible sections (Decisions, Owners, Risks, Requirements, Deadlines). Drives `ai:extract-knowledge`. |
 | 17 | `EgressSummaryPanel` | Total egress bytes, per-channel / per-model breakdowns, recent timeline, Reset. |
-| 18 | `PolicyAdminPanel` | B2B right-rail "Policy" tab driving `GET / PATCH /api/workspaces/{id}/policy`. |
+| 18 | `PolicyAdminPanel` | Workspace policy editor (`GET / PATCH /api/workspaces/{id}/policy`). Demoted off the B2B primary right-rail in Phase 9; remains available as an admin surface. |
+| 19 | `ThreadSummaryPanel` | B2B right-rail **Summary** tab. Auto-runs `ai:summarize-thread` against the active channel's primary thread, streams via `streamAITask`, caches per-channel via `useQueryClient`, renders `ThreadSummaryCard` + `PrivacyStrip`. Phase 9. |
+| 20 | `ThreadTasksPanel` | B2B right-rail **Tasks** tab. Auto-runs `ai:kapps-extract-tasks` against the active channel, surfaces owner / due / source provenance through the existing `TaskExtractionCard`, caches per-channel. Phase 9. |
 
 #### Module notes
 
@@ -114,6 +116,26 @@ Meilisearch land in later phases.
 - **`PolicyAdminPanel`** PATCHes only on dirty state and exposes
   toggles for `allowServerCompute`, `requireRedaction`,
   `maxEgressBytesPerDay`, and per-`TaskType` allow / deny lists.
+- **`ThreadSummaryPanel`** (Phase 9) is the B2B counterpart of
+  `MorningDigestPanel`. It resolves the channel's primary thread by
+  finding the first top-level message via
+  `GET /api/chats/{channelId}/messages?includeReplies=true`, then
+  auto-runs `ai:summarize-thread` and streams the result through
+  `streamAITask`. Per-channel caching uses
+  `queryClient.setQueryData` / `getQueryData` keyed by channel id;
+  remounting on the same channel replays the cached output without
+  re-running inference. An in-flight `AbortController` is captured
+  per run; channel switches and unmounts cancel the active stream.
+- **`ThreadTasksPanel`** (Phase 9) auto-runs `ai:kapps-extract-tasks`
+  for the active channel, parses results via the Phase 7 prompt
+  library (`prompts/extract-tasks.ts`), and renders them through
+  the existing `TaskExtractionCard`. Caching mirrors
+  `ThreadSummaryPanel`.
+- **`B2BLayout`** right-rail tab order is **Summary | Tasks |
+  Knowledge | AI Employees** as of Phase 9. Default tab is
+  Summary. Connectors and Policy were demoted off the primary
+  rail; their components remain importable for an admin surface
+  but are no longer mounted in the main demo flow.
 
 ### 2.2 Frontend stack
 
@@ -179,7 +201,7 @@ frontend/
     ├── app/                          (AppShell, B2CLayout, B2BLayout, TopBar, MobileTabBar)
     ├── features/
     │   ├── chat/                     (ChatSurface, ThreadPanel, MessageBubble, MessageList, Composer, launcherDispatch, translate-utils)
-    │   ├── ai/                       (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, ConversationInsightsPanel, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, AIEmployeeModeBadge, activityLog, useEgressSummary, formatEgressBytes — the Phase 2 mock-only second-brain components (FamilyChecklistCard / ShoppingNudgesPanel / EventRSVPCard / TripPlannerCard) were deleted in Phase 8)
+    │   ├── ai/                       (ActionLauncher, PrivacyStrip, DeviceCapabilityPanel, DigestCard, SmartReplyBar, TranslationCaption, TaskExtractionCard, ThreadSummaryCard, ApprovalPrefillCard, ArtifactDraftCard, TaskCreatedPill, MorningDigestPanel, ConversationInsightsPanel, ThreadSummaryPanel, ThreadTasksPanel, GuardrailRewriteCard, MetricsDashboard, EgressSummaryPanel, AIEmployeeModeBadge, activityLog, useEgressSummary, formatEgressBytes — the Phase 2 mock-only second-brain components (FamilyChecklistCard / ShoppingNudgesPanel / EventRSVPCard / TripPlannerCard) were deleted in Phase 8; ThreadSummaryPanel + ThreadTasksPanel added in Phase 9 to drive the B2B right-rail's Summary and Tasks tabs)
     │   ├── memory/                   (AIMemoryPage, memoryStore — Phase 2)
     │   ├── kapps/                    (KAppCardRenderer, TaskCard, ApprovalCard, ArtifactCard, EventCard, FormCard, TasksKApp, CreateTaskForm, CreateApprovalForm, AuditLogPanel, OutputReview)
     │   ├── artifacts/                (ArtifactWorkspace, ArtifactDiffView, SourcePin, lineDiff, sections — Phase 3)
@@ -414,6 +436,20 @@ the IPC bridge and keep AI surfaces responsive on slow CPU hosts.
   rather than calling `getElectronAI()` synchronously, closing the
   preload-race window where the first smart-reply call could fire
   before `window.electronAI` was attached.
+- **Per-channel B2B summary + tasks cache.** The Phase 9
+  `ThreadSummaryPanel` and `ThreadTasksPanel` cache their last
+  completed output under react-query keys derived from the active
+  channel id (`b2b-thread-summary:<channelId>` and
+  `b2b-thread-tasks:<channelId>`). Switching channels and switching
+  back replays the cached output without re-running inference;
+  switching tabs (Summary ↔ Tasks ↔ Knowledge ↔ AI Employees)
+  unmounts and remounts the panel, but the cache survives so the
+  user does not pay the streaming cost twice. An in-flight run
+  captures an `AbortController` and cancels itself when the
+  channel changes mid-stream.
+- **B2B layout default channel.** `B2BLayout` auto-selects
+  `ch_vendor_management` (the richest seeded thread) on first mount
+  so the demo opens directly into the Phase 9 ground-zero flow.
 
 ---
 

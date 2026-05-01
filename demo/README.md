@@ -1,14 +1,20 @@
 # Demo screenshots
 
 This directory holds annotated captures of the on-device flows
-described in [PROPOSAL.md](../PROPOSAL.md) §5.
+described in [PROPOSAL.md](../PROPOSAL.md) §5. There are two
+captured sets:
 
-The B2C set was re-captured in Phase 8 against the live
-`LlamaCppAdapter` running `Bonsai-1.7B` (PrismML llama.cpp
-fork). Every visible affordance — bilingual translation, smart
-reply, summary, insights, task extraction, metrics — is real
-on-device LLM output, with the privacy strip showing
-`compute: on-device`, `model: bonsai-1.7b`, `egress: 0 B`.
+- **B2C — Bilingual chat** (Phase 8, re-captured against the live
+  `LlamaCppAdapter` running `Bonsai-1.7B`).
+- **B2B — Workspace collaboration** (Phase 9, captured against the
+  same on-device runtime).
+
+Every visible affordance in either set — bilingual translation,
+smart reply, conversation summary, conversation insights, thread
+summary, task extraction, approval prefill, PRD draft, knowledge
+extraction — is real on-device LLM output, with the privacy
+strip showing `compute: on-device`, `model: bonsai-1.7b`,
+`egress: 0 B`.
 
 ## B2C — Bilingual chat (Alice 🇺🇸 ↔ Minh 🇻🇳)
 
@@ -24,6 +30,27 @@ on-device LLM output, with the privacy strip showing
 | 08 | [`b2c/08-privacy-strip.png`](./b2c/08-privacy-strip.png) | A fully expanded privacy strip on a translation card, showing all eight surfaced elements: compute, model, tier, egress bytes, source-message pin, latency, run id, and confidence. |
 | 09 | [`b2c/09-device-capability.png`](./b2c/09-device-capability.png) | The `DeviceCapabilityPanel` with the real `bonsai-1.7b` model loaded against `llama-server` on `127.0.0.1:11400`. |
 | 10 | [`b2c/10-metrics-dashboard.png`](./b2c/10-metrics-dashboard.png) | The right-rail Stats tab — `MetricsDashboard` showing real translate / summarize / insights runs after the live demo. Tokens, latency, and `egress: 0 B` are populated from the local `activityLog`. |
+
+## B2B — Workspace collaboration
+
+Captured in Phase 9 against the same `llama-server` running
+`Bonsai-1.7B`. The B2B layout auto-selects `#vendor-management`
+(the richest seeded thread) on first mount, and the right-rail
+tabs are **Summary | Tasks | Knowledge | AI Employees** —
+Connectors and Policy were demoted off the primary rail.
+
+| # | File | What it shows |
+| - | ---- | ------------- |
+| 01 | [`b2b/01-workspace-overview.png`](./b2b/01-workspace-overview.png) | Full B2B layout: Acme Corp workspace, expandable Engineering / Finance / Product domains, channel list, `#vendor-management` selected, four-tab right rail visible. |
+| 02 | [`b2b/02-thread-summary.png`](./b2b/02-thread-summary.png) | Right-rail **Summary** tab with the LLM-generated summary of the 12-message vendor thread fully rendered (no streaming cursor). Privacy strip shows `compute: on-device`, `model: bonsai-1.7b`, `egress: 0 B`. |
+| 03 | [`b2b/03-action-launcher.png`](./b2b/03-action-launcher.png) | Action Launcher menu open over the chat with **Create / Analyze / Plan / Approve** options exposed. |
+| 04 | [`b2b/04-task-extraction.png`](./b2b/04-task-extraction.png) | Right-rail **Tasks** tab — `TaskExtractionCard` listing LLM-extracted tasks with owner / due / source-message backlink. Inference is complete; no spinners visible. |
+| 05 | [`b2b/05-approval-prefill.png`](./b2b/05-approval-prefill.png) | `ApprovalPrefillCard` with vendor / amount / justification / risk fields populated by `ai:prefill-approval` against the on-device LLM. The privacy strip is collapsed below. |
+| 06 | [`b2b/06-approval-review.png`](./b2b/06-approval-review.png) | `OutputReview` gate over the prefilled approval — **Accept / Edit / Discard** controls before any KApp write. |
+| 07 | [`b2b/07-prd-draft.png`](./b2b/07-prd-draft.png) | `ArtifactDraftCard` in the right-rail with a real PRD drafted by `ai:draft-artifact` (Nina PM AI's recipe), sections rendered with citations, streaming cursor gone. |
+| 08 | [`b2b/08-knowledge-graph.png`](./b2b/08-knowledge-graph.png) | Right-rail **Knowledge** tab — `KnowledgeGraphPanel` with five collapsible sections (Decisions, Owners, Risks, Requirements, Deadlines) populated by `ai:extract-knowledge` over the vendor thread. |
+| 09 | [`b2b/09-ai-employee-panel.png`](./b2b/09-ai-employee-panel.png) | Right-rail **AI Employees** tab — `AIEmployeePanel` with Kara Ops AI / Nina PM AI / Mika Sales AI, queue, budget, mode badges. |
+| 10 | [`b2b/10-privacy-strip.png`](./b2b/10-privacy-strip.png) | A fully expanded `PrivacyStrip` on a B2B AI output (thread summary): compute, model, tier, egress bytes, source-message pin, latency, run id, and confidence. Confirms the on-device guarantees end-to-end. |
 
 ## How to reproduce
 
@@ -66,9 +93,13 @@ on-device LLM output, with the privacy strip showing
      MODEL_NAME=bonsai-1.7b npm run electron:dev
    ```
 
-6. Open the B2C surface (`ch_dm_alice_minh` is auto-selected) and
-   wait for every translation card to finish rendering before
-   capturing each screenshot.
+6. Capture the B2C set: stay on the B2C surface
+   (`ch_dm_alice_minh` is auto-selected) and wait for every
+   translation card to finish rendering before capturing each
+   screenshot. Capture the B2B set: switch to B2B from the top
+   bar — `B2BLayout` auto-selects `ch_vendor_management` on first
+   mount — and let each right-rail tab finish streaming
+   (Summary, Tasks, Knowledge) before capturing.
 
 For each capture, verify three things before clicking shutter:
 

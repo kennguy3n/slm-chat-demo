@@ -18,6 +18,8 @@ export { TranslationCaption } from './TranslationCaption';
 export { TaskExtractionCard } from './TaskExtractionCard';
 export type { TaskItem } from './TaskExtractionCard';
 export { ThreadSummaryCard } from './ThreadSummaryCard';
+export { ThreadSummaryPanel } from './ThreadSummaryPanel';
+export { ThreadTasksPanel } from './ThreadTasksPanel';
 export {
   logActivity,
   listActivity,

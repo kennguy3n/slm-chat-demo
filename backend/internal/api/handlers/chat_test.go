@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/api"
 	"github.com/kennguy3n/slm-chat-demo/backend/internal/models"
@@ -16,6 +17,7 @@ import (
 func newTestServer() http.Handler {
 	mem := store.NewMemory()
 	store.Seed(mem)
+	seedTestKAppFixtures(mem)
 	audit := services.NewAudit(mem)
 	return api.NewRouter(api.Deps{
 		Identity:      services.NewIdentity(mem, "user_alice"),
@@ -32,6 +34,95 @@ func newTestServer() http.Handler {
 		Encryption:    services.NewEncryptionKeyService(mem),
 		TenantStorage: services.NewTenantStorageService(mem),
 		Store:         mem,
+	})
+}
+
+// seedTestKAppFixtures injects a representative Approval and
+// Artifact card into the in-memory store for handler tests. The
+// production `store.Seed` deliberately does not seed these any more
+// (the Phase 9 B2B ground-zero LLM redesign generates every B2B
+// card at runtime via the Action Launcher → on-device LLM path), so
+// the fixtures live here, scoped to the test package.
+func seedTestKAppFixtures(m *store.Memory) {
+	base := time.Date(2026, 4, 28, 9, 0, 0, 0, time.UTC)
+
+	m.PutCard(models.Card{
+		Kind:     models.CardKindApproval,
+		ThreadID: "msg_vend_root",
+		Approval: &models.Approval{
+			ID:         "appr_vendor_q3_logging",
+			ChannelID:  "ch_vendor_management",
+			TemplateID: "vendor_contract_v1",
+			Title:      "Q3 logging vendor contract",
+			Requester:  "user_dave",
+			Approvers:  []string{"user_eve"},
+			Fields: models.ApprovalFields{
+				Vendor:        "Acme Logs",
+				Amount:        "$42,000 / yr",
+				Justification: "Lowest-cost SOC 2-cleared bidder; CloudTrace failed last quarter's review.",
+				Risk:          "medium",
+			},
+			Status:         models.ApprovalStatusPending,
+			DecisionLog:    []models.ApprovalDecisionEntry{},
+			SourceThreadID: "msg_vend_root",
+			AIGenerated:    true,
+		},
+	})
+
+	m.PutCard(models.Card{
+		Kind:     models.CardKindArtifact,
+		ThreadID: "msg_eng_root",
+		Artifact: &models.Artifact{
+			ID:         "art_inline_translation_prd",
+			ChannelID:  "ch_engineering",
+			Type:       models.ArtifactTypePRD,
+			Title:      "Inline translation PRD",
+			TemplateID: "prd_v1",
+			SourceRefs: []models.ArtifactSourceRef{
+				{Kind: "thread", ID: "msg_eng_root", Note: "Engineering kickoff thread"},
+			},
+			Versions: []models.ArtifactVersion{
+				{
+					Version:   1,
+					CreatedAt: base.Add(-22 * time.Minute),
+					Author:    "user_alice",
+					Summary:   "Initial draft from engineering thread",
+					Body: "# Goal\n" +
+						"Render per-message inline translation under each chat bubble.\n\n" +
+						"# Requirements\n" +
+						"- Locale auto-detect; fall back to original on low confidence.\n" +
+						"- On-device only.\n\n" +
+						"# Metrics\n" +
+						"- > 90% of messages translated successfully without user toggle, top 5 locales.\n",
+					SourcePins: []models.ArtifactSourcePin{
+						{
+							SectionID:       "goal",
+							SourceMessageID: "msg_eng_root",
+							SourceThreadID:  "msg_eng_root",
+							Sender:          "user_alice",
+							Excerpt:         "Kicking off the inline-translation feature.",
+						},
+						{
+							SectionID:       "requirements",
+							SourceMessageID: "msg_eng_r1",
+							SourceThreadID:  "msg_eng_root",
+							Sender:          "user_dave",
+							Excerpt:         "locale auto-detect, on-device only, fall back to original on low confidence",
+						},
+						{
+							SectionID:       "metrics",
+							SourceMessageID: "msg_eng_r2",
+							SourceThreadID:  "msg_eng_root",
+							Sender:          "user_eve",
+							Excerpt:         "metric: % messages translated successfully ... target > 90% for top 5 locales",
+						},
+					},
+				},
+			},
+			Status:      models.ArtifactStatusDraft,
+			AIGenerated: true,
+			URL:         "/artifacts/art_inline_translation_prd",
+		},
 	})
 }
 

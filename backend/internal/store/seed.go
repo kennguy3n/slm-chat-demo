@@ -479,96 +479,21 @@ func seedMessages(m *Memory, base time.Time) {
 	addMsg(m, "msg_pl_r10", "ch_product_launch", "msg_pl_root", "user_eve", "Confirmed. I'll set the public ship-date as June 14 in the press kit and draft a contingency note for the design partner.", base.Add(-5*time.Minute))
 }
 
-// seedCards loads sample KApp cards so the frontend's KAppCardRenderer
-// demo has realistic data. The B2C ground-zero LLM redesign
-// (2026-05-01) removed the seed-coupled B2C task and event cards —
-// every B2C card now comes from the real on-device LLM at runtime
-// (task extraction, conversation insights). The remaining seeded
-// cards are B2B-only:
+// seedCards is intentionally a no-op as of the Phase 9 B2B
+// ground-zero LLM redesign (2026-05-01). Both the B2C and B2B
+// surfaces now generate every KApp card (Approval, Artifact, Task,
+// Event, Form) at runtime by routing the active channel/thread
+// through the on-device LLM via the Action Launcher → recipe →
+// `ai:*` IPC handlers. Seeding cards baked the demo to specific
+// mock outputs, which made it impossible to tell from the screen
+// whether the user was looking at real Bonsai-1.7B inference or a
+// hand-crafted fixture.
 //
-//   - an Approval drafted from the vendor-management thread (PROPOSAL.md 5.3);
-//   - an Artifact drafted from the engineering inline-translation thread
-//     (PROPOSAL.md 5.4).
-func seedCards(m *Memory, base time.Time) {
-	m.PutCard(models.Card{
-		Kind:     models.CardKindApproval,
-		ThreadID: "msg_vend_root",
-		Approval: &models.Approval{
-			ID:             "appr_vendor_q3_logging",
-			ChannelID:      "ch_vendor_management",
-			TemplateID:     "vendor_contract_v1",
-			Title:          "Q3 logging vendor contract",
-			Requester:      "user_dave",
-			Approvers:      []string{"user_eve"},
-			Fields: models.ApprovalFields{
-				Vendor:        "Acme Logs",
-				Amount:        "$42,000 / yr",
-				Justification: "Lowest-cost SOC 2-cleared bidder; CloudTrace failed last quarter's review.",
-				Risk:          "medium",
-			},
-			Status:         models.ApprovalStatusPending,
-			DecisionLog:    []models.ApprovalDecisionEntry{},
-			SourceThreadID: "msg_vend_root",
-			AIGenerated:    true,
-		},
-	})
-
-	m.PutCard(models.Card{
-		Kind:     models.CardKindArtifact,
-		ThreadID: "msg_eng_root",
-		Artifact: &models.Artifact{
-			ID:        "art_inline_translation_prd",
-			ChannelID: "ch_engineering",
-			Type:      models.ArtifactTypePRD,
-			Title:     "Inline translation PRD",
-			TemplateID: "prd_v1",
-			SourceRefs: []models.ArtifactSourceRef{
-				{Kind: "thread", ID: "msg_eng_root", Note: "Engineering kickoff thread"},
-			},
-			Versions: []models.ArtifactVersion{
-				{
-					Version:   1,
-					CreatedAt: base.Add(-22 * time.Minute),
-					Author:    "user_alice",
-					Summary:   "Initial draft from engineering thread",
-					Body: "# Goal\n" +
-						"Render per-message inline translation under each chat bubble.\n\n" +
-						"# Requirements\n" +
-						"- Locale auto-detect; fall back to original on low confidence.\n" +
-						"- On-device only.\n\n" +
-						"# Metrics\n" +
-						"- > 90% of messages translated successfully without user toggle, top 5 locales.\n",
-					SourcePins: []models.ArtifactSourcePin{
-						{
-							SectionID:       "goal",
-							SourceMessageID: "msg_eng_root",
-							SourceThreadID:  "msg_eng_root",
-							Sender:          "user_alice",
-							Excerpt:         "Kicking off the inline-translation feature.",
-						},
-						{
-							SectionID:       "requirements",
-							SourceMessageID: "msg_eng_r1",
-							SourceThreadID:  "msg_eng_root",
-							Sender:          "user_dave",
-							Excerpt:         "locale auto-detect, on-device only, fall back to original on low confidence",
-						},
-						{
-							SectionID:       "metrics",
-							SourceMessageID: "msg_eng_r2",
-							SourceThreadID:  "msg_eng_root",
-							Sender:          "user_eve",
-							Excerpt:         "metric: % messages translated successfully ... target > 90% for top 5 locales",
-						},
-					},
-				},
-			},
-			Status:      models.ArtifactStatusDraft,
-			AIGenerated: true,
-			URL:         "/artifacts/art_inline_translation_prd",
-		},
-	})
-
+// The function is kept (and called from Seed) so future phases can
+// reintroduce small, intentionally-illustrative seed records (e.g.
+// archived audit examples) without changing the wiring.
+func seedCards(_ *Memory, _ time.Time) {
+	// no-op: every B2B card is now generated on-device by the LLM.
 }
 
 func addMsg(m *Memory, id, channelID, threadID, senderID, content string, t time.Time) {
