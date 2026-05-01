@@ -99,6 +99,51 @@ describe('OllamaAdapter.stream', () => {
     }
     expect(chunks).toEqual([{ error: 'model offline', done: true }]);
   });
+
+  it('forwards req.temperature into options.temperature on /api/generate (translate pins to 0)', async () => {
+    // `runTranslate` pins `temperature: 0` so the 1.7B model runs
+    // greedy. Without this override the Ollama runtime would silently
+    // run translate at the Modelfile default (typically 0.8) and the
+    // model occasionally produces a free-form rewrite of the source
+    // instead of a translation. Note `0` is a meaningful override —
+    // the adapter checks for `undefined`, not falsiness.
+    const fetchImpl = vi.fn().mockResolvedValue(
+      ndjsonStream([JSON.stringify({ response: 'ok', done: true })]),
+    );
+    const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    for await (const _ of ad.stream({
+      taskType: 'translate',
+      prompt: 'Text: Hi',
+      system: 'translate to vi',
+      temperature: 0,
+    })) {
+      void _;
+    }
+    const [, init] = fetchImpl.mock.calls[0]!;
+    const body = JSON.parse((init as RequestInit).body as string) as {
+      options?: { temperature?: number };
+    };
+    expect(body.options?.temperature).toBe(0);
+  });
+
+  it('omits options.temperature when the caller does not specify one (other tasks inherit Modelfile default)', async () => {
+    // Smart-reply / summarize / draft don't pin temperature, so the
+    // adapter must not send an `options` object at all — we want
+    // those tasks to inherit Ollama's Modelfile default rather than
+    // being silently coerced to a hardcoded fallback.
+    const fetchImpl = vi.fn().mockResolvedValue(
+      ndjsonStream([JSON.stringify({ response: 'ok', done: true })]),
+    );
+    const ad = new OllamaAdapter({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    for await (const _ of ad.stream({ taskType: 'summarize', prompt: 'x' })) {
+      void _;
+    }
+    const [, init] = fetchImpl.mock.calls[0]!;
+    const body = JSON.parse((init as RequestInit).body as string) as {
+      options?: unknown;
+    };
+    expect(body.options).toBeUndefined();
+  });
 });
 
 describe('OllamaAdapter.status', () => {

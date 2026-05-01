@@ -36,6 +36,16 @@ interface OllamaGenerateRequest {
   // token arrives. We default to `false` throughout the app so every
   // on-device call produces direct response tokens.
   think?: boolean;
+  // Per-request sampler overrides. Ollama wires every key in this
+  // object into the underlying llama.cpp sampler chain for the call,
+  // overriding the Modelfile defaults. The translate task pins
+  // `options.temperature: 0` for greedy decoding — without this
+  // override Ollama runs at whatever the Modelfile default is
+  // (typically 0.8) and the 1.7B model occasionally produces a
+  // free-form rewrite of the source instead of a translation.
+  options?: {
+    temperature?: number;
+  };
 }
 
 interface OllamaGenerateResponse {
@@ -127,6 +137,16 @@ export class OllamaAdapter implements Adapter, StatusProvider, Loader {
       think: false,
     };
     if (req.system) body.system = req.system;
+    // Forward the sampler temperature when the caller specifies one.
+    // `runTranslate` pins `temperature: 0` so the 1.7B model runs
+    // greedy and can't wander off into a free-form rewrite of the
+    // source. Other tasks omit `req.temperature` and inherit Ollama's
+    // Modelfile default. Note `0` is a meaningful override here —
+    // we explicitly check for `undefined` rather than relying on a
+    // truthy guard.
+    if (req.temperature !== undefined) {
+      body.options = { temperature: req.temperature };
+    }
 
     // Tests inject fetchImpl directly — keep using fetch in that path.
     if (this.fetchInjected) {
