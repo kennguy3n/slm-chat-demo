@@ -364,7 +364,10 @@ def stream_completion(prompt: str,
         "top_p": 0.9,
         "n_predict": max_tokens,
         "cache_prompt": False,  # don't poison cross-surface measurements
-        "stop": stop or ["<|im_end|>", "<|im_start|>"],
+        # Match LlamaCppAdapter.stream stop tokens
+        # (frontend/electron/inference/llamacpp.ts:179) so the bench halts at
+        # exactly the same points as the production adapter.
+        "stop": stop or ["<|im_end|>", "<|endoftext|>"],
     }
     req = urllib.request.Request(
         f"{BASE_URL}/completion",
