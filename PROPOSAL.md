@@ -39,27 +39,43 @@ and carry the mental model across their personal and professional lives.
 
 ### Context-specific content
 
-| Shell surface          | B2C context (personal)                               | B2B context (workspace)                                          |
-| ---------------------- | ---------------------------------------------------- | ---------------------------------------------------------------- |
-| Chats / Channels       | Personal chats, family groups, community groups      | Workspace, domain, channel, threads                              |
-| Threads                | Reply threads inside a family/community chat         | Work threads tied to approvals, artifacts, connectors            |
-| AI Action Launcher     | Smart reply, translate, extract tasks, RSVP helper   | Core intents: Create, Analyze, Plan, Approve                     |
-| AI Memory / Knowledge  | Personal AI Memory (people, preferences, recurrences) | Workspace knowledge graph, policy, artifact corpus               |
-| Tasks                  | Personal tasks, reminders, shopping lists            | Workspace tasks, approvals, AI Employee queue                    |
-| Notifications          | Catch-up digest, event reminders, RSVP nudges        | Thread mentions, approval requests, connector alerts             |
-| Settings / Privacy     | Privacy strip, local-model controls, guardrails      | Compute governance, data egress policy, retention, audit         |
-| More / KApps           | Lightweight personal tools (lists, notes, RSVP)      | KApps, AI Employees, connectors, artifacts, forms, base/tables   |
+| Shell surface          | B2C context (personal)                                                              | B2B context (workspace)                                          |
+| ---------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Chats / Channels       | Bilingual 1:1 DM (Alice ↔ Minh, EN ↔ VI) with on-device translation                 | Workspace, domain, channel, threads                              |
+| Threads                | Reply threads inside the bilingual DM                                               | Work threads tied to approvals, artifacts, connectors            |
+| AI Action Launcher     | Smart reply, translate, conversation summary, conversation insights, task extraction | Core intents: Create, Analyze, Plan, Approve                     |
+| AI Memory / Knowledge  | Personal AI Memory (translation activity, language preferences)                     | Workspace knowledge graph, policy, artifact corpus               |
+| Tasks                  | Personal tasks extracted from chat                                                  | Workspace tasks, approvals, AI Employee queue                    |
+| Notifications          | Translation activity, smart-reply nudges                                            | Thread mentions, approval requests, connector alerts             |
+| Settings / Privacy     | Privacy strip, local-model controls, guardrails                                     | Compute governance, data egress policy, retention, audit         |
+| More / KApps           | Lightweight personal tools (translation history, metrics)                           | KApps, AI Employees, connectors, artifacts, forms, base/tables   |
 
 ### B2C context — surfaces in detail
 
-- **Personal chats** — 1:1 and small DMs.
-- **Family groups** — shared calendars, shopping, kid logistics.
-- **Community groups** — neighborhood, hobby, school groups with RSVPs.
-- **Personal tasks / reminders** — captured from chat, surfaced inline.
-- **AI Memory** — stores people, recurring events, preferences on-device.
+The Phase 8 ground-zero pass collapsed the B2C surface to a single
+bilingual 1:1 DM (Alice ↔ Minh, EN ↔ VI) so every visible
+affordance is a real on-device LLM call. The earlier family /
+community / shopping / RSVP / trip-planner cards were removed
+because they were mock-coupled and crowded out the LLM-first story.
+
+- **Bilingual DM** — 1:1 chat between Alice (English) and Minh
+  (Vietnamese). Every bubble is translated on-device through the
+  primary `LlamaCppAdapter` (or the `OllamaAdapter` fallback).
+- **Inline translation captions** — two-panel translation card on
+  every chat bubble; the panel in the viewer's preferred language
+  is the primary one.
 - **Smart reply / translation** — inline, never a separate screen.
-- **Event + RSVP cards** — generated from chat, accept/decline in place.
-- **Privacy strip** — visible per AI output: on-device, model used, bytes out.
+- **Conversation summary / insights** — right-rail tabs that
+  summarise the visible message tail and surface
+  topics / action items / decisions / sentiment.
+- **Task extraction** — detects actionable items in incoming
+  messages and offers task cards (user confirms before any task
+  is created).
+- **Metrics dashboard** — right-rail Stats tab over the user's own
+  local activity log (translation runs, tokens, latency, bytes
+  egressed, models used).
+- **Privacy strip** — visible per AI output: on-device, model used,
+  bytes out.
 
 ### B2B context — surfaces in detail
 
@@ -113,10 +129,9 @@ the alias the on-device adapter binds to is controlled by the
 | ------------------------------------- | :---------------------------: | :---------------------------------: |
 | Smart reply                           | ✓ primary                     | —                                    |
 | Inline translation                    | ✓ primary                     | —                                    |
-| Morning digest / catch-up             | ✓ primary                     | —                                    |
+| Conversation summary                  | ✓ primary                     | —                                    |
+| Conversation insights                 | ✓ primary                     | —                                    |
 | Extract tasks from a message          | ✓ primary                     | —                                    |
-| Shopping / checklist extraction       | ✓ primary                     | —                                    |
-| Event / RSVP card generation          | ✓ primary                     | —                                    |
 | B2B thread summary                    | ✓ primary                     | ✓ if thread > local context          |
 | PRD / RFC draft                       | ✓ primary                     | ✓ if corpus > local context          |
 | Approval prefill                      | ✓ primary                     | ✓ if cross-connector synthesis       |
@@ -149,14 +164,14 @@ different *use*), then B2C-specific AI, then B2B-specific AI.
 
 | Feature              | B2C use                                                    | B2B use                                                             |
 | -------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------- |
-| Chat + threads       | Personal / family / community chats with reply threads     | Workspace / domain / channel with work threads                      |
-| AI Action Launcher   | Smart reply, translate, extract, RSVP                      | Core intents: Create, Analyze, Plan, Approve                        |
-| Inline AI badges     | "3 items extracted", "Translated", "Catch up"              | "Thread summary", "Sources used", "Confidence 0.82"                  |
-| AI Memory            | Personal people, preferences, recurrences                   | Workspace policy, prior artifacts, decisions, entities              |
+| Chat + threads       | Bilingual 1:1 DM with reply threads                         | Workspace / domain / channel with work threads                      |
+| AI Action Launcher   | Smart reply, translate, conversation summary, conversation insights, task extraction | Core intents: Create, Analyze, Plan, Approve                        |
+| Inline AI badges     | "Translated", "Summary", "Insights"                         | "Thread summary", "Sources used", "Confidence 0.82"                  |
+| AI Memory            | Translation activity, language preferences                  | Workspace policy, prior artifacts, decisions, entities              |
 | Privacy strip        | On-device badge, bytes egress = 0, local model name         | Compute location, model, egress bytes, redaction notice             |
-| Task cards           | Personal tasks and reminders                                | Workspace tasks tied to threads and approvals                       |
-| Event / approval card| Event + RSVP card                                           | Approval card with prefill, decision, immutable log                 |
-| Knowledge search     | Search across own chats and memories                        | Search across workspace corpus and connectors                       |
+| Task cards           | Personal tasks extracted from chat                          | Workspace tasks tied to threads and approvals                       |
+| Approval / event card| — (no event card on the B2C surface post-Phase-8)           | Approval card with prefill, decision, immutable log                 |
+| Knowledge search     | Search across own chats and translation history             | Search across workspace corpus and connectors                       |
 | Local model selector | On-device (default) / Off                                    | On-device / Confidential server (policy-gated)                      |
 | Human confirmation   | Accept / edit / discard before any action is taken          | Accept / edit / discard; approvals require an explicit human decision |
 
@@ -251,8 +266,9 @@ Messaging-first with five bottom tabs:
 ```
 
 - **Tabs**: Message | Notification | Tasks | Settings | More.
-- **B2C mapping** — tabs reach personal and community chats; Tasks shows
-  family checklists and reminders; Notifications shows catch-up + RSVP.
+- **B2C mapping** — tabs reach the bilingual DM and translation
+  history; Tasks shows personal tasks extracted from chat;
+  Notifications shows translation activity and smart-reply nudges.
 - **B2B mapping** — tabs reach workspace and channel navigation; Tasks
   shows thread-linked work; Notifications shows approvals and mentions;
   More hosts KApps and AI Employees.
@@ -427,20 +443,23 @@ B2B right rail.
 The MVP is an **Electron desktop app** that runs on a laptop and shows
 the four flows above end-to-end with real local models. The Electron
 **main process** owns inference (TypeScript port of the original Go
-adapter contract; talks to a local Ollama daemon directly), the
-**renderer** is the same React UI, and a small Go data API provides
-chats, threads, workspaces and seeded KApp cards. No AI traffic ever
-leaves the device.
+adapter contract; talks to `llama-server` from the PrismML
+`llama.cpp` fork as the primary on-device runtime, with an Ollama
+daemon as the fallback runtime), the **renderer** is the same React
+UI, and a small Go data API provides chats, threads, workspaces and
+seeded KApp cards. No AI traffic ever leaves the device.
 
 ### Build first
 
 - **B2C**
-  - Morning catch-up digest.
-  - Inline translation.
+  - Bilingual DM (Alice ↔ Minh, EN ↔ VI) with on-device translation.
+  - Inline translation captions on every bubble.
   - Smart reply.
+  - Conversation summary (right-rail Summary tab).
+  - Conversation insights (right-rail Insights tab —
+    topics / action items / decisions / sentiment).
   - Task extraction from chat.
-  - Family shared checklist.
-  - Community event + RSVP card.
+  - Metrics dashboard (right-rail Stats tab).
 - **B2B**
   - Workspace / domain / channel navigation.
   - Thread view with inline AI badges.

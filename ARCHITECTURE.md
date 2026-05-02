@@ -6,12 +6,14 @@ server small-language-model (SLM) inference, AI-driven KApps (tasks, approvals,
 forms, artifacts), and a small Go data plane.
 
 The demo is structured as an **Electron app** with a React renderer and a
-TypeScript main process. The main process owns AI inference, talks directly to a
-local Ollama daemon (or `MockAdapter` when Ollama isn't running), and exposes
-all AI work to the renderer through a `contextBridge` IPC bridge. A small Go
-data API (chat, KApps, workspace, identity) is co-launched on `:8080` for chat
-and thread data only; later phases add artifact, retrieval, connector, event
-and audit services. WebGPU and Android AICore remain future inference paths.
+TypeScript main process. The main process owns AI inference, talks directly to
+`llama-server` from the PrismML `llama.cpp` fork as the primary on-device
+runtime, with a local Ollama daemon as the fallback runtime and `MockAdapter`
+as an offline fallback when neither is reachable. It exposes all AI work to
+the renderer through a `contextBridge` IPC bridge. A small Go data API (chat,
+KApps, workspace, identity) is co-launched on `:8080` for chat and thread data
+only; later phases add artifact, retrieval, connector, event and audit
+services. WebGPU and Android AICore remain future inference paths.
 
 ---
 
@@ -26,11 +28,13 @@ Electron App
 │       ↓ (IPC: window.electronAI.*)
 ├── Main Process (Node.js / TypeScript)
 │   ├── Inference Router (local / server decision)
-│   ├── Ollama Adapter / Mock Adapter
+│   ├── LlamaCppAdapter (primary)
+│   ├── OllamaAdapter   (fallback)
+│   ├── MockAdapter     (offline fallback)
 │   ├── Model lifecycle (load / unload / status)
 │   └── Privacy / policy engine
 │       ↓ (HTTP to local sidecar)
-├── llama-server (PrismML llama.cpp fork, default :11400) — preferred
+├── llama-server (PrismML llama.cpp fork, default :11400) — primary
 └── Ollama daemon            (default :11434, fallback)
     └── Bonsai-1.7B GGUF (hf.co/prism-ml/Bonsai-1.7B-gguf)
 

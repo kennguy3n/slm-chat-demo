@@ -54,6 +54,14 @@ Connectors and Policy were demoted off the primary rail.
 
 ## How to reproduce
 
+The primary path uses `LlamaCppAdapter` talking directly to
+`llama-server`; the Electron bootstrap auto-detects llama-server on
+`http://127.0.0.1:11400` and wires it as the on-device adapter,
+falling back to Ollama if it can't reach llama-server. The
+Ollama-API shim is no longer required for the B2C / B2B captures —
+it lives on as an optional path for the
+`OLLAMA_INTEGRATION=1` integration tests.
+
 1. **Build llama-server** (PrismML fork):
 
    ```bash
@@ -75,20 +83,30 @@ Connectors and Policy were demoted off the primary rail.
    ```bash
    ~/llama-cpp-prism/build/bin/llama-server \
      -m models/Bonsai-1.7B.gguf \
-     -c 4096 --parallel 1 -t 4 --host 127.0.0.1 --port 11400
+     -c 4096 --parallel 1 -t 8 --host 127.0.0.1 --port 11400
    ```
 
-4. **Start the Ollama-API shim** (translates `/api/generate` →
-   `/completion` and strips `<think>` tags):
-
-   ```bash
-   python3 scripts/ollama-shim.py --port 11434 --upstream http://127.0.0.1:11400
-   ```
-
-5. **Start the Go backend and Electron app**:
+4. **Start the Go backend and the Electron app**:
 
    ```bash
    cd backend && go run ./cmd/server
+   cd frontend && npm run electron:dev
+   ```
+
+   The Electron bootstrap probes `http://127.0.0.1:11400/health`
+   first and wires the `LlamaCppAdapter` when llama-server
+   responds, so no environment overrides are required for the
+   default reproduction. To override the llama-server URL or model
+   alias, set `LLAMACPP_BASE_URL` or `MODEL_NAME` before the
+   `npm run electron:dev` invocation.
+
+5. **(Optional) Start the Ollama-API shim** if you want to
+   exercise the `OllamaAdapter` fallback path (e.g. for the
+   `OLLAMA_INTEGRATION=1` integration tests, or to capture
+   side-by-side runs against a real Ollama daemon):
+
+   ```bash
+   python3 scripts/ollama-shim.py --port 11434 --upstream http://127.0.0.1:11400
    cd frontend && OLLAMA_BASE_URL=http://127.0.0.1:11434 \
      MODEL_NAME=bonsai-1.7b npm run electron:dev
    ```
