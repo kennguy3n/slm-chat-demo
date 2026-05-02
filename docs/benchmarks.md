@@ -123,8 +123,8 @@ the streaming UI feels.
 | Thread summary            | 12 | 390 | 192 | 12.47 |  5.44 | 35.30 | 7034 |
 | Task extraction           | 12 | 416 | 192 | 12.92 |  5.47 | 35.09 | 7452 |
 | Approval prefill          | 12 | 411 |  35 |  8.35 |  0.95 | 36.70 | 7392 |
-| PRD draft                 | 12 | 376 | 404 | 18.17 | 11.64 | 34.71 | 6530 |
-| Knowledge extraction      | 12 | 449 | 159 | 12.25 |  4.50 | 35.33 | 7748 |
+| PRD draft                 | 12 | 366 | 404 | 18.17 | 11.64 | 34.71 | 6530 |
+| Knowledge extraction      | 12 | 425 | 159 | 12.25 |  4.50 | 35.33 | 7748 |
 
 ### Headline numbers
 
@@ -134,7 +134,7 @@ the streaming UI feels.
   [`cpu-perf-tuning.md` §11](./cpu-perf-tuning.md#11-minimum-usable-thresholds).
 - **TTFT** is dominated by prompt processing at ~56 tok/s. Single-
   message translation lands the first token in ~4.7 s; B2B thread
-  surfaces (390–449 prompt tokens) need 6–8 s before the first
+  surfaces (390–425 prompt tokens) need 6–8 s before the first
   byte arrives at the renderer. This is what the streaming UI is
   designed for — once the first chunk arrives the visible rate is
   the gen-side 34–40 tok/s.

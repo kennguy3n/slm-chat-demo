@@ -13,6 +13,7 @@ tokens/second.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -511,6 +512,7 @@ def main() -> None:
         })
 
     out_path = "/tmp/bench/demo_surfaces.json"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\nWrote {out_path}")
