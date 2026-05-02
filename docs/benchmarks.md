@@ -163,9 +163,15 @@ the streaming UI feels.
 - Sampling: `temperature=0`, `top_p=0.9` for the demo-surface bench
   (greedy decoding) — matches the demo's translation / summary /
   prefill paths after PR #61.
-- `tok/s` reported is `predicted_per_second` from llama-server's
-  final SSE frame `timings` object (server-side measurement,
-  excludes network and SSE framing overhead).
+- `tok/s` reported in the tables is the client-side rate computed
+  by the bench script as `predicted_token_count / generation_wall_clock`
+  (token count from llama-server's final SSE frame `timings.predicted_n`,
+  wall clock measured by the script from first-token to stop). It
+  therefore includes SSE framing and loopback-network overhead. The
+  server-side `predicted_per_second` from llama-server's `timings`
+  object is within ~0.1 tok/s of these numbers on every surface — see
+  [`docs/benchmarks-raw.json`](./benchmarks-raw.json) for both fields
+  side-by-side.
 
 ## See also
 
