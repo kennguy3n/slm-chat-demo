@@ -61,6 +61,10 @@ because it gives three properties that simplify the operator story:
 
 See also:
 
+- [`docs/benchmarks.md`](./benchmarks.md) — fresh `llama-bench` and
+  end-to-end demo-surface latency numbers against
+  `Bonsai-1.7B.gguf` on the EPYC 7763 reference VM. §9 of this
+  document references those numbers directly.
 - `demo/README.md` — where the launch command and flag notes live.
 - `models/Modelfile.bonsai1_7b` — the Ollama Modelfile (ships with
   `num_ctx 1024`, `temperature 0.7`, `top_p 0.9`).
@@ -165,28 +169,42 @@ processing. Plug that back into `llama-server` as both `-t` (compute)
 and `-tb` (batch compute) unless the bench shows they should differ.
 
 For reference, on the EPYC 7763, 8 vCPU box used as the canonical
-benchmark host the optimum is `-t 6`; on a 4 vCPU laptop class
-host it tends to be `-t 3` or `-t 4`. Always re-run the
-sweep on your target host before pinning `-t`.
+benchmark host the optimum is **`-t 8`** for token generation
+(38.72 tok/s on `tg32`); `-t 6` is a hair faster on prompt
+processing (57.08 tok/s on `pp64`) but loses ~1.7 tok/s on
+generation. On a 4 vCPU laptop class host the optimum tends to be
+`-t 3` or `-t 4`. Always re-run the sweep on your target host
+before pinning `-t`. See [`docs/benchmarks.md`](./benchmarks.md)
+for the full sweep table.
 
 ## 5. Context reduction
 
-Attention cost scales with `-c`. The demo's prompt library
-(`frontend/electron/inference/prompts/shared.ts`) already trims to
-`PROMPT_THREAD_CAP = 15` messages and `PROMPT_MESSAGE_CAP = 120`
-runes per message, so most surfaces fit cleanly into `-c 1024`:
+Attention cost scales with KV-cache size, which scales with the
+depth of the conversation already in the context. The demo's prompt
+library (`frontend/electron/inference/prompts/shared.ts`) already
+trims to `PROMPT_THREAD_CAP = 15` messages and
+`PROMPT_MESSAGE_CAP = 120` runes per message, so most surfaces fit
+cleanly under `-c 1024`. Sweep depth with `-d` (n-depth) — the
+modern `llama-bench` argument that prefills `n` tokens of context
+before measuring throughput:
 
 ```bash
-./llama-bench -m Bonsai-1.7B.gguf -p 128 -n 128 -c 512  -t 6
-./llama-bench -m Bonsai-1.7B.gguf -p 128 -n 128 -c 1024 -t 6
-./llama-bench -m Bonsai-1.7B.gguf -p 128 -n 128 -c 2048 -t 6
+./llama-bench -m Bonsai-1.7B.gguf -p 128 -n 128 -d 0    -t 8
+./llama-bench -m Bonsai-1.7B.gguf -p 128 -n 128 -d 1024 -t 8
+./llama-bench -m Bonsai-1.7B.gguf -p 128 -n 128 -d 2048 -t 8
 ```
 
-- `-c 512`: classifier / router.
-- `-c 1024`: default for KChat AI surfaces — matches `num_ctx 1024`
-  in `models/Modelfile.bonsai1_7b`.
-- `-c 2048`: headroom for longer summaries; only when the box can
-  afford it.
+Measured fall-off on the EPYC 7763 reference VM (full table in
+[`docs/benchmarks.md`](./benchmarks.md#context-depth-sweep--p-128--n-128--r-3--t-8--ngl-0)):
+depth 0 → 4096 drops `tg128` from 38.83 → 23.43 tok/s, i.e. about
+40 %. Most B2C / B2B surfaces sit at ≤ 1024 prompt tokens, where
+the drop is only ~14 %.
+
+- depth ≤ 512: classifier / router.
+- depth ≤ 1024: default for KChat AI surfaces — matches
+  `num_ctx 1024` in `models/Modelfile.bonsai1_7b`.
+- depth ≤ 2048: headroom for longer summaries; only when the box
+  can afford it.
 
 ## 6. Runtime flags
 
@@ -242,23 +260,46 @@ already small enough that most CPU-only hosts can stay at `f16`.
 
 Bonsai-1.7B is sized so that streaming on commodity CPUs lands
 comfortably above the interactive-latency floor on every demo
-surface. Fresh `llama-bench` results against `Bonsai-1.7B.gguf`
-will land here once a capture
-pass is run on the EPYC 7763 reference VM; the rough expectation
-matrix is:
+surface. Fresh `llama-bench` results against `Bonsai-1.7B.gguf` on
+the EPYC 7763 reference VM (8 vCPU, AVX2+FMA, no AVX-512) follow.
+Full tables and methodology in
+[`docs/benchmarks.md`](./benchmarks.md).
+
+### Measured (EPYC 7763, 8 vCPU, AVX2+FMA, `-t 8`, `-ngl 0`)
+
+| Workload                          | Throughput (tok/s) |
+| --------------------------------- | -----------------: |
+| Prompt processing (`pp64`)        | 55.6 – 57.1        |
+| Token generation (`tg32`, depth 0)| 38.7               |
+| Token generation, depth 1024      | 33.3               |
+| Token generation, depth 2048      | 29.1               |
+| Token generation, depth 4096      | 23.4               |
+
+Measured end-to-end on the same host across the demo surfaces
+(B2C bilingual DM + B2B vendor-management thread, full table in
+[`docs/benchmarks.md`](./benchmarks.md#end-to-end-demo-surface-latency)):
+every surface lands between **34.3 and 39.9 tok/s** generation,
+with TTFT in the 2.9 – 8.8 s range gated by prompt processing.
+
+### Expectation matrix (other host classes)
+
+The table below is rough guidance for hosts that haven't been
+benchmarked yet — the EPYC 7763 row is anchored to the measured
+numbers above.
 
 | Class                                    | Expected tok/s |
 | ---------------------------------------- | -------------- |
 | Weak shared 2 vCPU x86                   | 5 – 12         |
 | Decent 4 dedicated vCPU x86 (AVX2+FMA)   | 25 – 40        |
-| Good 8 dedicated vCPU x86 (AVX2+FMA)     | 40 – 60        |
+| Good 8 dedicated vCPU x86 (AVX2+FMA)     | 35 – 40 (measured here) |
 | Apple M-series (Metal)                   | much higher    |
 | ARM server with NEON                     | much higher    |
 | Discrete GPU (CUDA / ROCm)               | much higher    |
 
-Bonsai-1.7B should comfortably clear every threshold
+Bonsai-1.7B comfortably clears every threshold
 in [Minimum usable thresholds](#11-minimum-usable-thresholds) on the
-same hardware.
+EPYC 7763 reference VM, and is expected to do the same on hosts in
+the "Decent" row and above.
 
 ## 10. Model alternatives for CPU-only
 

@@ -327,7 +327,10 @@ have not yet shipped:
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — Electron renderer, main-
   process inference, Go data API, AI policy engine, KApps object
   model.
-- [PHASES.md](./PHASES.md) — seven-phase delivery plan.
+- [PHASES.md](./PHASES.md) — phased delivery plan (Phases 0–9).
 - [PROGRESS.md](./PROGRESS.md) — per-phase tracker and changelog.
 - [docs/cpu-perf-tuning.md](./docs/cpu-perf-tuning.md) — CPU-only
   tuning guide and per-arch quant choice.
+- [docs/benchmarks.md](./docs/benchmarks.md) — Bonsai-1.7B
+  CPU-only benchmark numbers (llama-bench + end-to-end demo
+  surface latency) on the EPYC 7763 reference VM.
